@@ -166,7 +166,7 @@ class HookManager
 			if (isset($trace[0])) {
 				$hookInformations = [
 					'name' => $method,
-					'contexts' => explode(':', !empty($parameters['context']) ? $parameters['context'] : []),
+					'contexts' => $this->contextarray,
 					'file' => $trace[0]['file'],
 					'line' => $trace[0]['line'],
 				];

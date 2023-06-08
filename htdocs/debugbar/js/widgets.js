@@ -90,7 +90,7 @@
             dd.html('<span><strong>File: </strong> ' + object.file
                 + '</span><span><strong>Line: </strong>' + object.line
 				+ '</span><span><strong>Count: </strong>' + object.count
-                + '</span><span><strong>Contexts: </strong>' + (object.contexts === null ? 'Not set' : object.contexts)
+                + '</span><span><strong>Contexts: </strong>' + (object.contexts === null || object.contexts === '' ? 'Not set' : object.contexts)
                 + '</span>'
             );
         }
