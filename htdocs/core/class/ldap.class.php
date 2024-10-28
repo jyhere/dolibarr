@@ -356,7 +356,12 @@ class Ldap
 					if ($ldapdebug) {
 						dol_syslog(get_class($this)."::connectBind serverPing true, we try ldap_connect to ".$host, LOG_DEBUG);
 					}
-					$this->connection = ldap_connect($host, $this->serverPort);
+					if (version_compare(PHP_VERSION, '8.3.0', '>=')) {
+						$uri = $host.':'.$this->serverPort;
+						$this->connection = ldap_connect($uri);
+					} else {
+						$this->connection = ldap_connect($host, $this->serverPort);
+					}
 				} else {
 					if (preg_match('/^ldaps/i', $host)) {
 						// With host = ldaps://server, the serverPing to ssl://server sometimes fails, even if the ldap_connect succeed, so
@@ -364,7 +369,12 @@ class Ldap
 						if ($ldapdebug) {
 							dol_syslog(get_class($this)."::connectBind serverPing false, we try ldap_connect to ".$host, LOG_DEBUG);
 						}
-						$this->connection = ldap_connect($host, $this->serverPort);
+						if (version_compare(PHP_VERSION, '8.3.0', '>=')) {
+							$uri = $host.':'.$this->serverPort;
+							$this->connection = ldap_connect($uri);
+						} else {
+							$this->connection = ldap_connect($host, $this->serverPort);
+						}
 					} else {
 						if ($ldapdebug) {
 							dol_syslog(get_class($this)."::connectBind serverPing false, no ldap_connect ".$host, LOG_DEBUG);
@@ -512,14 +522,27 @@ class Ldap
 	/**
 	 * Unbind of LDAP server (close connection).
 	 *
-	 * @return	boolean					true or false
-	 * @see close()
+	 * @return		boolean		true or false
+	 * @see	close()
 	 */
 	public function unbind()
 	{
 		$this->result = true;
-		if (is_resource($this->connection) || is_object($this->connection)) {
-			$this->result = @ldap_unbind($this->connection);
+		if (version_compare(PHP_VERSION, '8.1.0', '>=')) {
+			if (is_object($this->connection)) {
+				try {
+					$this->result = ldap_unbind($this->connection);
+				} catch (Throwable $exception) {
+					$this->error = 'Failed to unbind LDAP connection: '.$exception;
+					$this->result = false;
+					dol_syslog(get_class($this).'::unbind - '.$this->error, LOG_WARNING);
+				}
+			}
+		} else {
+			if (is_resource($this->connection)) {
+				// @phan-suppress-next-line PhanTypeMismatchArgumentInternalReal
+				$this->result = @ldap_unbind($this->connection);
+			}
 		}
 		if ($this->result) {
 			return true;
@@ -1145,13 +1168,13 @@ class Ldap
 	 *	Returns an array containing a details or list of LDAP record(s).
 	 *	ldapsearch -LLLx -hlocalhost -Dcn=admin,dc=parinux,dc=org -w password -b "ou=adherents,ou=people,dc=parinux,dc=org" userPassword
 	 *
-	 *	@param	string	$search			 	Value of field to search, '*' for all. Not used if $activefilter is set.
-	 *	@param	string	$userDn			 	DN (Ex: ou=adherents,ou=people,dc=parinux,dc=org)
-	 *	@param	string	$useridentifier 	Name of key field (Ex: uid).
-	 *	@param	array	$attributeArray 	Array of fields required. Note this array must also contain field $useridentifier (Ex: sn,userPassword)
-	 *	@param	int		$activefilter		'1' or 'user'=use field this->filter as filter instead of parameter $search, 'group'=use field this->filtergroup as filter, 'member'=use field this->filtermember as filter
-	 *	@param	array	$attributeAsArray 	Array of fields wanted as an array not a string
-	 *	@return	array|int					if KO: <0 || if OK: array of [id_record][ldap_field]=value
+	 *	@param	string			$search			 	Value of field to search, '*' for all. Not used if $activefilter is set.
+	 *	@param	string			$userDn			 	DN (Ex: ou=adherents,ou=people,dc=parinux,dc=org)
+	 *	@param	string			$useridentifier 	Name of key field (Ex: uid).
+	 *	@param	string[]		$attributeArray 	Array of fields required. Note this array must also contain field $useridentifier (Ex: sn,userPassword)
+	 *	@param	0|1|'1'|'user'|'group'|'member'	$activefilter	'1' or 'user'=use field this->filter as filter instead of parameter $search, 'group'=use field this->filtergroup as filter, 'member'=use field this->filtermember as filter
+	 *	@param	string[]		$attributeAsArray 	Array of fields wanted as an array not a string
+	 *	@return	array<string,array<string,string>>|int<min,-1>				if KO: <0 || if OK: array of [id_record][ldap_field]=value
 	 */
 	public function getRecords($search, $userDn, $useridentifier, $attributeArray, $activefilter = 0, $attributeAsArray = array())
 	{

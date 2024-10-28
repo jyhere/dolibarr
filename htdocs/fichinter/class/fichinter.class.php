@@ -30,14 +30,18 @@
  * 	\brief      File for class to manage interventions
  */
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
-require_once DOL_DOCUMENT_ROOT.'/core/class/commonobjectline.class.php';
-
+require_once DOL_DOCUMENT_ROOT.'/fichinter/class/fichinterligne.class.php';
+require_once DOL_DOCUMENT_ROOT.'/core/class/commonsignedobject.class.php';
 
 /**
  *	Class to manage interventions
+ * @property	int				$signed_status
+ * @static		array<int>		$SIGNED_STATUSES
  */
 class Fichinter extends CommonObject
 {
+	use CommonSignedObject;
+
 	public $fields = array(
 		'rowid' => array('type' => 'integer', 'label' => 'TechnicalID', 'enabled' => 1, 'visible' => -1, 'notnull' => 1, 'position' => 10),
 		'fk_soc' => array('type' => 'integer:Societe:societe/class/societe.class.php', 'label' => 'ThirdParty', 'enabled' => 'isModEnabled("societe")', 'visible' => -1, 'notnull' => 1, 'position' => 15),
@@ -57,7 +61,7 @@ class Fichinter extends CommonObject
 		'dateo' => array('type' => 'date', 'label' => 'Dateo', 'enabled' => 1, 'visible' => -1, 'position' => 85),
 		'datee' => array('type' => 'date', 'label' => 'Datee', 'enabled' => 1, 'visible' => -1, 'position' => 90),
 		'datet' => array('type' => 'date', 'label' => 'Datet', 'enabled' => 1, 'visible' => -1, 'position' => 95),
-		'duree' => array('type' => 'double', 'label' => 'Duree', 'enabled' => 1, 'visible' => -1, 'position' => 100),
+		'duree' => array('type' => 'integer', 'label' => 'Duree', 'enabled' => 1, 'visible' => -1, 'position' => 100),
 		'signed_status' => array('type' => 'smallint(6)', 'label' => 'SignedStatus', 'enabled' => 1, 'visible' => -1, 'position' => 101, 'arrayofkeyval' => array(0 => 'NoSignature', 1 => 'SignedSender', 2 => 'SignedReceiver', 3 => 'SignedReceiverOnline', 9 => 'SignedAll')),
 		'description' => array('type' => 'html', 'label' => 'Description', 'enabled' => 1, 'visible' => -1, 'position' => 105, 'showoncombobox' => 2),
 		'note_private' => array('type' => 'html', 'label' => 'NotePrivate', 'enabled' => 1, 'visible' => 0, 'position' => 110),
@@ -80,11 +84,6 @@ class Fichinter extends CommonObject
 	public $table_element = 'fichinter';
 
 	/**
-	 * @var string Field with ID of parent key if this field has a parent
-	 */
-	public $fk_element = 'fk_fichinter';
-
-	/**
 	 * @var string    Name of subtable line
 	 */
 	public $table_element_line = 'fichinterdet';
@@ -104,6 +103,9 @@ class Fichinter extends CommonObject
 	 */
 	public $socid;
 
+	/**
+	 * @var User User that created intervention
+	 */
 	public $author;
 
 	/**
@@ -132,7 +134,7 @@ class Fichinter extends CommonObject
 	/**
 	 * Date modification record (tms)
 	 *
-	 * @var integer
+	 * @var int
 	 */
 	public $datem;
 
@@ -145,12 +147,6 @@ class Fichinter extends CommonObject
 	 * @var int status
 	 */
 	public $statut = 0; // 0=draft, 1=validated, 2=invoiced, 3=Terminate
-
-	/**
-	 * Signed Status of the intervention (0=NoSignature, 1=SignedBySender, 2=SignedByReceiver, 9=SignedByAll)
-	 * @var int
-	 */
-	public $signed_status = 0;
 
 	/**
 	 * @var string description
@@ -174,7 +170,7 @@ class Fichinter extends CommonObject
 	public $ref_client;
 
 	/**
-	 * @var array extraparams
+	 * @var array<string,string>  (Encoded as JSON in database)
 	 */
 	public $extraparams = array();
 
@@ -202,17 +198,6 @@ class Fichinter extends CommonObject
 	 * Closed
 	 */
 	const STATUS_CLOSED = 3;
-
-	/**
-	 * Signed statuses dictionary. Label used as key for string localizations.
-	 */
-	const SIGNED_STATUSES = [
-		'STATUS_NO_SIGNATURE' => 0,
-		'STATUS_SIGNED_SENDER' => 1,
-		'STATUS_SIGNED_RECEIVER' => 2,
-		'STATUS_SIGNED_RECEIVER_ONLINE' => 3,
-		'STATUS_SIGNED_ALL' => 9 // To handle future kind of signature (ex: tripartite contract)
-	];
 
 	/**
 	 * Date delivery
@@ -424,7 +409,7 @@ class Fichinter extends CommonObject
 		if (!is_numeric($this->duration)) {
 			$this->duration = 0;
 		}
-		if (!dol_strlen($this->fk_project)) {
+		if (!dol_strlen((string) $this->fk_project)) {
 			$this->fk_project = 0;
 		}
 		if (isset($this->ref_client)) {
@@ -509,7 +494,7 @@ class Fichinter extends CommonObject
 				$this->socid        = $obj->fk_soc;
 				$this->status       = $obj->status;
 				$this->statut       = $obj->status;	// deprecated
-				$this->signed_status= $obj->signed_status;
+				$this->signed_status = $obj->signed_status;
 				$this->duration     = $obj->duree;
 				$this->datec        = $this->db->jdate($obj->datec);
 				$this->dateo        = $this->db->jdate($obj->dateo);
@@ -526,7 +511,7 @@ class Fichinter extends CommonObject
 
 				$this->user_creation_id = $obj->fk_user_author;
 
-				$this->extraparams = (array) json_decode($obj->extraparams, true);
+				$this->extraparams = is_null($obj->extraparams) ? [] : (array) json_decode($obj->extraparams, true);
 
 				$this->last_main_doc = $obj->last_main_doc;
 
@@ -798,13 +783,13 @@ class Fichinter extends CommonObject
 	/**
 	 *  Create a document onto disk according to template module.
 	 *
-	 *  @param      string                  $modele         Force model to use ('' to not force)
-	 *  @param      Translate               $outputlangs    Object langs to use for output
-	 *  @param      int                     $hidedetails    Hide details of lines
-	 *  @param      int                     $hidedesc       Hide description
-	 *  @param      int                     $hideref        Hide ref
-	 *  @param   null|array  $moreparams     Array to provide more information
-	 *  @return     int                                     0 if KO, 1 if OK
+	 *  @param	string                  $modele         Force model to use ('' to not force)
+	 *  @param	Translate               $outputlangs    Object langs to use for output
+	 *  @param	int<0,1>				$hidedetails    Hide details of lines
+	 *  @param	int<0,1>				$hidedesc       Hide description
+	 *  @param	int<0,1>				$hideref        Hide ref
+	 *  @param	?array<string,mixed>	$moreparams     Array to provide more information
+	 *  @return	int                                     0 if KO, 1 if OK
 	 */
 	public function generateDocument($modele, $outputlangs, $hidedetails = 0, $hidedesc = 0, $hideref = 0, $moreparams = null)
 	{
@@ -878,57 +863,14 @@ class Fichinter extends CommonObject
 	}
 
 	/**
-	 *	Returns the label for signed status
-	 *
-	 *	@param		int		$mode	0=long label, 1=short label, 2=Picto + short label, 3=Picto, 4=Picto + long label, 5=Short label + Picto
-	 *	@return		string			Label
-	 */
-	public function getLibSignedStatus(int $mode = 0): string
-	{
-		global $langs;
-		$langs->load("commercial");
-		$list_signed_status = $this->getSignedStatusLocalisedArray();
-		$signed_status_label = $list_signed_status[$this->signed_status];
-		$signed_status_label_short = $list_signed_status[$this->signed_status];
-		$signed_status_code = 'status'.$this->signed_status;
-		return dolGetStatus($signed_status_label, $signed_status_label_short, '', $signed_status_code, $mode);
-	}
-
-	/**
-	 *	Returns an array of signed statuses with associated localized labels
-	 *
-	 *	@return array
-	 */
-	public function getSignedStatusLocalisedArray(): array
-	{
-		global $langs;
-		$langs->load("commercial");
-
-		$l10n_signed_status_labels = [
-			self::SIGNED_STATUSES['STATUS_NO_SIGNATURE']			=> 'NoSignature',
-			self::SIGNED_STATUSES['STATUS_SIGNED_SENDER']			=> 'SignedSender',
-			self::SIGNED_STATUSES['STATUS_SIGNED_RECEIVER']			=> 'SignedReceiver',
-			self::SIGNED_STATUSES['STATUS_SIGNED_RECEIVER_ONLINE']	=> 'SignedReceiverOnline',
-			self::SIGNED_STATUSES['STATUS_SIGNED_ALL']				=> 'SignedAll'
-		];
-
-		$l10n_signed_status = [];
-		foreach (self::SIGNED_STATUSES as $signed_status_code) {
-			$l10n_signed_status[$signed_status_code] = $langs->transnoentitiesnoconv($l10n_signed_status_labels[$signed_status_code]);
-		}
-		return $l10n_signed_status;
-	}
-
-	/**
 	 * getTooltipContentArray
-	 *
-	 * @param array $params ex option, infologin
+	 * @param array<string,mixed> $params params to construct tooltip data
 	 * @since v18
-	 * @return array
+	 * @return array{picto?:string,ref?:string,refsupplier?:string,label?:string,date?:string,date_echeance?:string,amountht?:string,total_ht?:string,totaltva?:string,amountlt1?:string,amountlt2?:string,amountrevenustamp?:string,totalttc?:string}|array{optimize:string}
 	 */
 	public function getTooltipContentArray($params)
 	{
-		global $conf, $langs;
+		global $langs;
 
 		$langs->load('interventions');
 
@@ -1072,6 +1014,7 @@ class Fichinter extends CommonObject
 			}
 
 			$obj = new $classname();
+			'@phan-var-force ModeleNumRefFicheinter $obj';
 			$numref = "";
 			$numref = $obj->getNextValue($soc, $this);
 
@@ -1174,7 +1117,7 @@ class Fichinter extends CommonObject
 		if (!$error) {
 			$main = MAIN_DB_PREFIX.'fichinterdet';
 			$ef = $main."_extrafields";
-			$sql = "DELETE FROM $ef WHERE fk_object IN (SELECT rowid FROM $main WHERE fk_fichinter = ".((int) $this->id).")";
+			$sql = "DELETE FROM ".$this->db->sanitize($ef)." WHERE fk_object IN (SELECT rowid FROM ".$this->db->sanitize($main)." WHERE fk_fichinter = ".((int) $this->id).")";
 
 			$resql = $this->db->query($sql);
 			if (!$resql) {
@@ -1436,9 +1379,9 @@ class Fichinter extends CommonObject
 	 *  @param      user	$user					User that do the action
 	 *	@param    	int		$fichinterid			Id of intervention
 	 *	@param    	string	$desc					Line description
-	 *	@param      integer	$date_intervention  	Intervention date
+	 *	@param      int		$date_intervention  	Intervention date
 	 *	@param      int		$duration            	Intervention duration
-	 *  @param		array	$array_options			Array option
+	 *  @param		array<string,?mixed>	$array_options	Array option
 	 *	@return    	int             				>0 if ok, <0 if ko
 	 */
 	public function addline($user, $fichinterid, $desc, $date_intervention, $duration, $array_options = [])
@@ -1667,6 +1610,7 @@ class Fichinter extends CommonObject
 		}
 		if (!empty($arraydata['thirdparty'])) {
 			$tmpthirdparty = $arraydata['thirdparty'];
+			'@phan-var-force Societe $tmpthirdparty';
 			$return .= '<br><span class="info-box-label">'.$tmpthirdparty->getNomUrl(1).'</span>';
 		}
 		if (property_exists($this, 'duration')) {
@@ -1679,400 +1623,5 @@ class Fichinter extends CommonObject
 		$return .= '</div>';
 		$return .= '</div>';
 		return $return;
-	}
-
-	/**
-	 * Set signed status & object context. Call sign action trigger.
-	 *
-	 * @param	User	$user			Object user that modify
-	 * @param	int		$status			New signed status to set (often a constant like self::STATUS_XXX)
-	 * @param	int		$notrigger		1 = Does not execute triggers, 0 = Execute triggers
-	 * @param	string	$triggercode	Trigger code to use
-	 * @return	int						0 < if KO, > 0 if OK
-	 */
-	public function setSignedStatus(User $user, int $status = 0, int $notrigger = 0, string $triggercode = ''): int
-	{
-		global $langs;
-		$langs->loadLangs(array('interventions', 'commercial'));
-		$this->signed_status = $status;
-		$this->context['signature'] = $status;
-		switch ($status) {
-			case 0:
-				$this->context['actionmsg2'] = $langs->transnoentitiesnoconv('InterventionUnsignedInDolibarr');
-				break;
-			case 1:
-				$this->context['actionmsg2'] = $langs->transnoentitiesnoconv('SignedSender');
-				break;
-			case 2:
-				$this->context['actionmsg2'] = $langs->transnoentitiesnoconv('SignedReceiver');
-				break;
-			case 3:
-				$this->context['actionmsg2'] = $langs->transnoentitiesnoconv('SignedReceiverOnline');
-				break;
-			case 9:
-				$this->context['actionmsg2'] = $langs->transnoentitiesnoconv('SignedAll');
-				break;
-		}
-		return $this->setSignedStatusCommon($user, $status, $notrigger, $triggercode);
-	}
-}
-
-/**
- *	Class to manage intervention lines
- */
-class FichinterLigne extends CommonObjectLine
-{
-	/**
-	 * @var DoliDB Database handler.
-	 */
-	public $db;
-
-	/**
-	 * @var string Error code (or message)
-	 */
-	public $error = '';
-
-	// From llx_fichinterdet
-	/**
-	 * @var int ID
-	 */
-	public $fk_fichinter;
-
-	public $desc; 		// Description ligne
-
-	/**
-	 * @var int Date of intervention
-	 */
-	public $date; 		// Date intervention
-	/**
-	 * @var int Date of intervention
-	 * @deprecated
-	 */
-	public $datei; 		// Date intervention
-
-	public $duration; 	// Duration of intervention
-	public $rang = 0;
-	public $tva_tx;
-
-	/**
-	 * Unit price before taxes
-	 * @var float
-	 */
-	public $subprice;
-
-	/**
-	 * @var string ID to identify managed object
-	 */
-	public $element = 'fichinterdet';
-
-	/**
-	 * @var string Name of table without prefix where object is stored
-	 */
-	public $table_element = 'fichinterdet';
-
-	/**
-	 * @var string Field with ID of parent key if this field has a parent
-	 */
-	public $fk_element = 'fk_fichinter';
-
-
-
-	/**
-	 *  Constructor
-	 *
-	 *  @param  DoliDB  $db     Database handler
-	 */
-	public function __construct($db)
-	{
-		$this->db = $db;
-	}
-
-	/**
-	 *	Retrieve the line of intervention
-	 *
-	 *	@param  int		$rowid		Line id
-	 *	@return	int					Return integer <0 if KO, >0 if OK
-	 */
-	public function fetch($rowid)
-	{
-		dol_syslog("FichinterLigne::fetch", LOG_DEBUG);
-
-		$sql = 'SELECT ft.rowid, ft.fk_fichinter, ft.description, ft.duree, ft.rang, ft.date';
-		$sql .= ' FROM '.MAIN_DB_PREFIX.'fichinterdet as ft';
-		$sql .= ' WHERE ft.rowid = '.((int) $rowid);
-
-		$resql = $this->db->query($sql);
-		if ($resql) {
-			$objp = $this->db->fetch_object($resql);
-			$this->rowid          	= $objp->rowid;
-			$this->id               = $objp->rowid;
-			$this->fk_fichinter   	= $objp->fk_fichinter;
-			$this->date = $this->db->jdate($objp->date);
-			$this->datei = $this->db->jdate($objp->date);	// For backward compatibility
-			$this->desc           	= $objp->description;
-			$this->duration       	= $objp->duree;
-			$this->rang           	= $objp->rang;
-
-			$this->db->free($resql);
-
-			$this->fetch_optionals();
-
-			return 1;
-		} else {
-			$this->error = $this->db->error().' sql='.$sql;
-			return -1;
-		}
-	}
-
-	/**
-	 *	Insert the line into database
-	 *
-	 *	@param		User	$user 		Object user that make creation
-	 *	@param		int		$notrigger	Disable all triggers
-	 *	@return		int		Return integer <0 if ko, >0 if ok
-	 */
-	public function insert($user, $notrigger = 0)
-	{
-		$error = 0;
-
-		dol_syslog("FichinterLigne::insert rang=".$this->rang);
-
-		if (empty($this->date) && !empty($this->datei)) {	// For backward compatibility
-			$this->date = $this->datei;
-		}
-
-		$this->db->begin();
-
-		$rangToUse = $this->rang;
-		if ($rangToUse == -1) {
-			// Recupere rang max de la ligne d'intervention dans $rangmax
-			$sql = 'SELECT max(rang) as max FROM '.MAIN_DB_PREFIX.'fichinterdet';
-			$sql .= ' WHERE fk_fichinter = '.((int) $this->fk_fichinter);
-			$resql = $this->db->query($sql);
-			if ($resql) {
-				$obj = $this->db->fetch_object($resql);
-				$rangToUse = $obj->max + 1;
-			} else {
-				dol_print_error($this->db);
-				$this->db->rollback();
-				return -1;
-			}
-		}
-
-		// Insertion dans base de la ligne
-		$sql = 'INSERT INTO '.MAIN_DB_PREFIX.'fichinterdet';
-		$sql .= ' (fk_fichinter, description, date, duree, rang)';
-		$sql .= " VALUES (".((int) $this->fk_fichinter).",";
-		$sql .= " '".$this->db->escape($this->desc)."',";
-		$sql .= " '".$this->db->idate($this->date)."',";
-		$sql .= " ".((int) $this->duration).",";
-		$sql .= ' '.((int) $rangToUse);
-		$sql .= ')';
-
-		dol_syslog("FichinterLigne::insert", LOG_DEBUG);
-		$resql = $this->db->query($sql);
-		if ($resql) {
-			$this->id = $this->db->last_insert_id(MAIN_DB_PREFIX.'fichinterdet');
-			$this->rowid = $this->id;
-
-			if (!$error) {
-				$result = $this->insertExtraFields();
-				if ($result < 0) {
-					$error++;
-				}
-			}
-
-
-			$result = $this->update_total();
-
-			if ($result > 0) {
-				$this->rang = $rangToUse;
-
-				if (!$notrigger) {
-					// Call trigger
-					$result = $this->call_trigger('LINEFICHINTER_CREATE', $user);
-					if ($result < 0) {
-						$error++;
-					}
-					// End call triggers
-				}
-			}
-
-			if (!$error) {
-				$this->db->commit();
-				return $result;
-			} else {
-				$this->db->rollback();
-				return -1;
-			}
-		} else {
-			$this->error = $this->db->error()." sql=".$sql;
-			$this->db->rollback();
-			return -1;
-		}
-	}
-
-
-	/**
-	 *	Update intervention into database
-	 *
-	 *	@param		User	$user 		Object user that make creation
-	 *	@param		int		$notrigger	Disable all triggers
-	 *	@return		int		Return integer <0 if ko, >0 if ok
-	 */
-	public function update($user, $notrigger = 0)
-	{
-		$error = 0;
-
-		if (empty($this->date) && !empty($this->datei)) {	// For backward compatibility
-			$this->date = $this->datei;
-		}
-
-		$this->db->begin();
-
-		// Mise a jour ligne en base
-		$sql = "UPDATE ".MAIN_DB_PREFIX."fichinterdet SET";
-		$sql .= " description = '".$this->db->escape($this->desc)."',";
-		$sql .= " date = '".$this->db->idate($this->date)."',";
-		$sql .= " duree = ".((int) $this->duration).",";
-		$sql .= " rang = ".((int) $this->rang);
-		$sql .= " WHERE rowid = ".((int) $this->id);
-
-		dol_syslog("FichinterLigne::update", LOG_DEBUG);
-		$resql = $this->db->query($sql);
-		if ($resql) {
-			if (!$error) {
-				$result = $this->insertExtraFields();
-				if ($result < 0) {
-					$error++;
-				}
-			}
-
-			$result = $this->update_total();
-			if ($result > 0) {
-				if (!$notrigger) {
-					// Call trigger
-					$result = $this->call_trigger('LINEFICHINTER_MODIFY', $user);
-					if ($result < 0) {
-						$error++;
-					}
-					// End call triggers
-				}
-			}
-
-			if (!$error) {
-				$this->db->commit();
-				return $result;
-			} else {
-				$this->error = $this->db->lasterror();
-				$this->db->rollback();
-				return -1;
-			}
-		} else {
-			$this->error = $this->db->lasterror();
-			$this->db->rollback();
-			return -1;
-		}
-	}
-
-	// phpcs:disable PEAR.NamingConventions.ValidFunctionName.ScopeNotCamelCaps
-	/**
-	 *	Update total duration into llx_fichinter
-	 *
-	 *	@return		int		Return integer <0 si ko, >0 si ok
-	 */
-	public function update_total()
-	{
-		// phpcs:enable
-		global $conf;
-
-		$this->db->begin();
-
-		$sql = "SELECT SUM(duree) as total_duration, min(date) as dateo, max(date) as datee ";
-		$sql .= " FROM ".MAIN_DB_PREFIX."fichinterdet";
-		$sql .= " WHERE fk_fichinter=".((int) $this->fk_fichinter);
-
-		dol_syslog("FichinterLigne::update_total", LOG_DEBUG);
-		$resql = $this->db->query($sql);
-		if ($resql) {
-			$obj = $this->db->fetch_object($resql);
-			$total_duration = 0;
-			if (!empty($obj->total_duration)) {
-				$total_duration = $obj->total_duration;
-			}
-
-			$sql = "UPDATE ".MAIN_DB_PREFIX."fichinter";
-			$sql .= " SET duree = ".((int) $total_duration);
-			$sql .= " , dateo = ".(!empty($obj->dateo) ? "'".$this->db->escape($obj->dateo)."'" : "null");
-			$sql .= " , datee = ".(!empty($obj->datee) ? "'".$this->db->escape($obj->datee)."'" : "null");
-			$sql .= " WHERE rowid = ".((int) $this->fk_fichinter);
-
-			dol_syslog("FichinterLigne::update_total", LOG_DEBUG);
-			$resql = $this->db->query($sql);
-			if ($resql) {
-				$this->db->commit();
-				return 1;
-			} else {
-				$this->error = $this->db->error();
-				$this->db->rollback();
-				return -2;
-			}
-		} else {
-			$this->error = $this->db->error();
-			$this->db->rollback();
-			return -1;
-		}
-	}
-
-	/**
-	 *	Delete a intervention line
-	 *
-	 *	@param		User	$user 		Object user that make creation
-	 *	@param		int		$notrigger	Disable all triggers
-	 *	@return     int		>0 if ok, <0 if ko
-	 */
-	public function deleteLine($user, $notrigger = 0)
-	{
-		$error = 0;
-
-		dol_syslog(get_class($this)."::deleteline lineid=".$this->id);
-
-		$this->db->begin();
-
-		$result = $this->deleteExtraFields();
-		if ($result < 0) {
-			$error++;
-			$this->db->rollback();
-			return -1;
-		}
-
-		$sql = "DELETE FROM ".MAIN_DB_PREFIX."fichinterdet WHERE rowid = ".((int) $this->id);
-		$resql = $this->db->query($sql);
-
-		if ($resql) {
-			$result = $this->update_total();
-			if ($result > 0) {
-				if (!$notrigger) {
-					// Call trigger
-					$result = $this->call_trigger('LINEFICHINTER_DELETE', $user);
-					if ($result < 0) {
-						$error++;
-						$this->db->rollback();
-						return -1;
-					}
-					// End call triggers
-				}
-
-				$this->db->commit();
-				return $result;
-			} else {
-				$this->db->rollback();
-				return -1;
-			}
-		} else {
-			$this->error = $this->db->error()." sql=".$sql;
-			$this->db->rollback();
-			return -1;
-		}
 	}
 }

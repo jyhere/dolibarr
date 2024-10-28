@@ -65,19 +65,23 @@ class DoliStorage implements TokenStorageInterface
 	public $date_creation;
 	public $date_modification;
 
+	public $userid;		// ID of user for user specific OAuth entries
+
 
 	/**
 	 * @param 	DoliDB 	$db					Database handler
 	 * @param 	\Conf 	$notused			Conf object (not used as parameter, used with global $conf)
 	 * @param	string	$keyforprovider		Key to manage several providers of the same type. For example 'abc' will be added to 'Google' to defined storage key.
+	 * @param	string	$tenant				Value of tenant if used
 	 */
-	public function __construct(DoliDB $db, \Conf $notused, $keyforprovider = '')
+	public function __construct(DoliDB $db, \Conf $notused, $keyforprovider = '', $tenant = '')
 	{
 		$this->db = $db;
 		$this->keyforprovider = $keyforprovider;
 		$this->token = '';
 		$this->tokens = array();
 		$this->states = array();
+		$this->tenant = $tenant;
 		//$this->key = $key;
 		//$this->stateKey = $stateKey;
 	}
@@ -105,7 +109,7 @@ class DoliStorage implements TokenStorageInterface
 
 		//var_dump("storeAccessToken");
 		//var_dump($token);
-		dol_syslog("storeAccessToken service=".$service);
+		dol_syslog(__METHOD__." storeAccessToken service=".$service);
 
 		$servicepluskeyforprovider = $service;
 		if (!empty($this->keyforprovider)) {
@@ -226,6 +230,9 @@ class DoliStorage implements TokenStorageInterface
 		$sql = "DELETE FROM ".MAIN_DB_PREFIX."oauth_token";
 		$sql .= " WHERE service = '".$this->db->escape($servicepluskeyforprovider)."'";
 		$sql .= " AND entity IN (".getEntity('oauth_token').")";
+		if (!empty($this->userid)) {
+			$sql .= " AND fk_user = ".((int) $this->userid);
+		}
 		$resql = $this->db->query($sql);
 		//}
 
@@ -376,7 +383,7 @@ class DoliStorage implements TokenStorageInterface
 	{
 		// Set/Reset tenant now so it will be defined for.
 		// TODO We must store it into the table llx_oauth_token
-		$this->tenant = getDolGlobalString('OAUTH_MICROSOFT'.($this->keyforprovider ? '-'.$this->keyforprovider : '').'_TENANT');
+		//$this->tenant = getDolGlobalString('OAUTH_MICROSOFT'.($this->keyforprovider ? '-'.$this->keyforprovider : '').'_TENANT');
 
 		return $this->tenant;
 	}

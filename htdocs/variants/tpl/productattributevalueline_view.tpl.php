@@ -23,7 +23,6 @@
  * $dateSelector
  * $forceall (0 by default, 1 for supplier invoices/orders)
  * $element     (used to test $user->hasRight($element, 'creer'))
- * $permtoedit  (used to replace test $user->hasRight($element, 'creer'))
  * $senderissupplier (0 by default, 1 for supplier invoices/orders)
  * $inputalsopricewithtax (0 by default, 1 to also show column with unit price including tax)
  * $outputalsopricetotalwithtax
@@ -66,8 +65,9 @@ if ($user->hasRight('variants', 'write') && $action != 'selectlines') {
 	$coldisplay++;
 	if (empty($disableedit)) { ?>
 		<a class="editfielda reposition" href="<?php print $_SERVER["PHP_SELF"].'?id='.$this->id.'&action=editline&token='.newToken().'&lineid='.$line->id.'#line_'.$line->id; ?>">
-		<?php print img_edit().'</a>';
-	}
+		<?php print img_edit(); ?>
+		</a>
+	<?php }
 	print '</td>';
 
 	print '<td class="linecoldelete center width25">';
@@ -103,7 +103,7 @@ if ($user->hasRight('variants', 'write') && $action != 'selectlines') {
 }
 
 if ($action == 'selectlines') { ?>
-	<td class="linecolcheck center"><input type="checkbox" class="linecheckbox" name="line_checkbox[<?php print $i + 1; ?>]" value="<?php print $line->id; ?>" ></td>
+	<td class="linecolcheck center"><input type="checkbox" class="linecheckbox" name="line_checkbox[<?php print $i + 1; ?>]" value="<?php print $line->id; ?>"></td>
 <?php }
 
 print "</tr>\n";

@@ -2,7 +2,7 @@
 /* Copyright (C) 2016	    Marcos García		<marcosgdf@gmail.com>
  * Copyright (C) 2022       Open-Dsi			<support@open-dsi.fr>
  * Copyright (C) 2023-2024  Frédéric France     <frederic.france@free.fr>
- * Copyright (C) 2024		MDW							<mdeweerd@users.noreply.github.com>
+ * Copyright (C) 2024		MDW					<mdeweerd@users.noreply.github.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -167,7 +167,7 @@ class ProductAttribute extends CommonObject
 		$this->db = $db;
 
 		$this->ismultientitymanaged = 1;
-		$this->isextrafieldmanaged = 0;
+		$this->isextrafieldmanaged = 1;
 		$this->entity = $conf->entity;
 
 		if (!getDolGlobalString('MAIN_SHOW_TECHNICAL_ID') && isset($this->fields['rowid'])) {
@@ -255,6 +255,10 @@ class ProductAttribute extends CommonObject
 
 		if (!$error) {
 			$this->id = $this->db->last_insert_id(MAIN_DB_PREFIX . $this->table_element);
+			$result = $this->insertExtraFields();
+			if ($result < 0) {
+				$error++;
+			}
 		}
 
 		if (!$error && !$notrigger) {
@@ -322,6 +326,7 @@ class ProductAttribute extends CommonObject
 			$this->label = $obj->label;
 			$this->rang = $obj->position; // deprecated
 			$this->position = $obj->position;
+			$this->fetch_optionals();
 		}
 		$this->db->free($resql);
 
@@ -418,7 +423,12 @@ class ProductAttribute extends CommonObject
 			$this->errors[] = "Error " . $this->db->lasterror();
 			$error++;
 		}
-
+		if (!$error) {
+			$result = $this->insertExtraFields();
+			if ($result < 0) {
+				$error++;
+			}
+		}
 		if (!$error && !$notrigger) {
 			// Call trigger
 			$result = $this->call_trigger('PRODUCT_ATTRIBUTE_MODIFY', $user);
@@ -575,6 +585,7 @@ class ProductAttribute extends CommonObject
 				$line->ref = $obj->ref;
 				$line->value = $obj->value;
 				$line->position = $obj->position;
+				$line->fetch_optionals();
 
 				$this->lines[$i] = $line;
 				$i++;
@@ -630,7 +641,7 @@ class ProductAttribute extends CommonObject
 
 		$this->db->begin();
 
-		//Fetch current line from the database and then clone the object and set it in $oldcopy property
+		// Fetch current line from the database and then clone the object and set it in $oldcopy property
 		$this->line = new ProductAttributeValue($this->db);
 
 		// Position to use
@@ -680,7 +691,7 @@ class ProductAttribute extends CommonObject
 
 		$this->db->begin();
 
-		//Fetch current line from the database and then clone the object and set it in $oldcopy property
+		// Fetch current line from the database and then clone the object and set it in $oldcopy property
 		$this->line = new ProductAttributeValue($this->db);
 		$result = $this->line->fetch($lineid);
 		if ($result > 0) {
@@ -721,7 +732,7 @@ class ProductAttribute extends CommonObject
 
 		$this->db->begin();
 
-		//Fetch current line from the database
+		// Fetch current line from the database
 		$this->line = new ProductAttributeValue($this->db);
 		$result = $this->line->fetch($lineid);
 		if ($result > 0) {
@@ -1223,6 +1234,43 @@ class ProductAttribute extends CommonObject
 	}
 
 	/**
+	 *	Return a thumb for kanban views
+	 *
+	 *	@param	string	    			$option		Where point the link (0=> main card, 1,2 => shipment, 'nolink'=>No link)
+	 *  @param	?array<string,string>	$arraydata	Array of data
+	 *  @return	string								HTML Code for Kanban thumb.
+	 */
+	public function getKanbanView($option = '', $arraydata = null)
+	{
+		$selected = (empty($arraydata['selected']) ? 0 : $arraydata['selected']);
+
+		$return = '<div class="box-flex-item box-flex-grow-zero">';
+		$return .= '<div class="info-box info-box-sm">';
+		$return .= '<span class="info-box-icon bg-infobox-action">';
+		$return .= img_picto('', $this->picto);
+		$return .= '</span>';
+		$return .= '<div class="info-box-content">';
+		$return .= '<span class="info-box-ref inline-block tdoverflowmax150 valignmiddle">'.(method_exists($this, 'getNomUrl') ? $this->getNomUrl() : $this->ref).'</span>';
+		if ($selected >= 0) {
+			$return .= '<input id="cb'.$this->id.'" class="flat checkforselect fright" type="checkbox" name="toselect[]" value="'.$this->id.'"'.($selected ? ' checked="checked"' : '').'>';
+		}
+		if (property_exists($this, 'label')) {
+			$return .= ' <div class="inline-block opacitymedium valignmiddle tdoverflowmax100">'.$this->label.'</div>';
+		}
+		if (property_exists($this, 'thirdparty') && is_object($this->thirdparty)) {
+			$return .= '<br><div class="info-box-ref tdoverflowmax150">'.$this->thirdparty->getNomUrl(1).'</div>';
+		}
+		if (method_exists($this, 'getLibStatut')) {
+			$return .= '<br><div class="info-box-status">'.$this->getLibStatut(3).'</div>';
+		}
+		$return .= '</div>';
+		$return .= '</div>';
+		$return .= '</div>';
+
+		return $return;
+	}
+
+	/**
 	 *  Return the label of the status
 	 *
 	 *  @param  int		$mode          0=long label, 1=short label, 2=Picto + short label, 3=Picto, 4=Picto + long label, 5=Short label + Picto, 6=Long label + Picto
@@ -1399,7 +1447,7 @@ class ProductAttribute extends CommonObject
 	 *	@param  Societe	    		$seller            	Object of seller third party
 	 *	@param  Societe	    		$buyer             	Object of buyer third party
 	 *	@param	int					$selected		   	Object line selected
-	 *  @param  Extrafields			$extrafields		Object of extrafields
+	 *  @param  ?Extrafields		$extrafields		Object of extrafields
 	 *  @param	string				$defaulttpldir		Directory where to find the template (deprecated)
 	 *	@return	void
 	 */

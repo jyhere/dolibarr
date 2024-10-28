@@ -51,9 +51,9 @@ if (isModEnabled('multicompany') && $conf->entity > 1 && getDolGlobalString('MUL
 	accessforbidden();
 }
 
-$canreadperms = true;
+$permissiontoread = true;
 if (getDolGlobalString('MAIN_USE_ADVANCED_PERMS')) {
-	$canreadperms = (!empty($user->admin) || $user->hasRight('user', 'group_advance', 'read'));
+	$permissiontoread = (!empty($user->admin) || $user->hasRight('user', 'group_advance', 'read'));
 }
 
 
@@ -111,7 +111,7 @@ print '<div class="underbanner clearboth"></div>';
 print '<table class="border centpercent tableforfield">';
 
 // Name (already in dol_banner, we keep it to have the GlobalGroup picto, but we should move it in dol_banner)
-if (!empty($conf->mutlicompany->enabled)) {
+if (isModEnabled('multicompany')) {
 	print '<tr><td class="titlefield">'.$langs->trans("Name").'</td>';
 	print '<td class="valeur">'.$object->name;
 	if (!$object->entity) {
