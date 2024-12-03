@@ -6,6 +6,7 @@
  * Copyright (C) 2016		ATM Consulting		<support@atm-consulting.fr>
  * Copyright (C) 2019-2024  Frédéric France     <frederic.france@free.fr>
  * Copyright (C) 2024		MDW					<mdeweerd@users.noreply.github.com>
+ * Copyright (C) 2024		Jean-Rémi TAPONIER	<jean-remi@netlogic.fr>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -190,7 +191,7 @@ if ($productid > 0) {
 	$sql .= " AND ps.fk_product = ".((int) $productid);
 }
 if (! empty($search_fk_warehouse)) {
-	$sql .= " AND ps.fk_entrepot IN (".$db->sanitize(join(",", $search_fk_warehouse)).")";
+	$sql .= " AND ps.fk_entrepot IN (".$db->sanitize(implode(",", $search_fk_warehouse)).")";
 }
 if ($search_ref) {
 	$sql .= natural_search("p.ref", $search_ref);
@@ -218,7 +219,7 @@ if ($productid > 0) {
 	$sql .= " AND sm.fk_product = ".((int) $productid);
 }
 if (!empty($search_fk_warehouse)) {
-	$sql .= " AND sm.fk_entrepot IN (".$db->sanitize(join(",", $search_fk_warehouse)).")";
+	$sql .= " AND sm.fk_entrepot IN (".$db->sanitize(implode(",", $search_fk_warehouse)).")";
 }
 if ($search_ref) {
 	$sql .= natural_search("p.ref", $search_ref);
