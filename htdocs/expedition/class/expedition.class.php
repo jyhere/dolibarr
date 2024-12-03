@@ -137,11 +137,6 @@ class Expedition extends CommonObject
 	public $billed;
 
 	/**
-	 * @var string name of pdf model
-	 */
-	public $model_pdf;
-
-	/**
 	 * @var int|string
 	 */
 	public $trueWeight;
@@ -430,6 +425,7 @@ class Expedition extends CommonObject
 		if (empty($this->date_shipping) && !empty($this->date_expedition)) {
 			$this->date_shipping = $this->date_expedition;
 		}
+		$this->entity = setEntity($this);
 
 		$this->user = $user;
 
@@ -462,7 +458,7 @@ class Expedition extends CommonObject
 		$sql .= ", signed_status";
 		$sql .= ") VALUES (";
 		$sql .= "'(PROV)'";
-		$sql .= ", ".((int) $conf->entity);
+		$sql .= ", ".((int) $this->entity);
 		$sql .= ", ".($this->ref_customer ? "'".$this->db->escape($this->ref_customer)."'" : "null");
 		$sql .= ", ".($this->ref_ext ? "'".$this->db->escape($this->ref_ext)."'" : "null");
 		$sql .= ", '".$this->db->idate($now)."'";
@@ -1249,6 +1245,14 @@ class Expedition extends CommonObject
 		if (!$resql) {
 			$error++;
 			$this->errors[] = "Error ".$this->db->lasterror();
+		}
+
+		// Actions on extra fields
+		if (!$error) {
+			$result = $this->insertExtraFields();
+			if ($result < 0) {
+				$error++;
+			}
 		}
 
 		if (!$error && !$notrigger) {
@@ -2156,7 +2160,7 @@ class Expedition extends CommonObject
 		$this->note_private = 'Private note';
 		$this->note_public = 'Public note';
 
-		$nbp = 5;
+		$nbp = min(1000, GETPOSTINT('nblines') ? GETPOSTINT('nblines') : 5);	// We can force the nb of lines to test from command line (but not more than 1000)
 		$xnbp = 0;
 		while ($xnbp < $nbp) {
 			$line = new ExpeditionLigne($this->db);
@@ -2213,6 +2217,34 @@ class Expedition extends CommonObject
 			$resql = $this->db->query($sql);
 			if ($resql) {
 				$this->date_delivery = $delivery_date;
+				return 1;
+			} else {
+				$this->error = $this->db->error();
+				return -1;
+			}
+		} else {
+			return -2;
+		}
+	}
+
+	/**
+	 *	Set the shipping date
+	 *
+	 *	@param      User			$user        		Object user that modify
+	 *	@param      integer 		$shipping_date		Date of shipping
+	 *	@return     int         						Return integer <0 if KO, >0 if OK
+	 */
+	public function setShippingDate($user, $shipping_date)
+	{
+		if ($user->hasRight('expedition', 'creer')) {
+			$sql = "UPDATE ".MAIN_DB_PREFIX."expedition";
+			$sql .= " SET date_expedition = ".($shipping_date ? "'".$this->db->idate($shipping_date)."'" : 'null');
+			$sql .= " WHERE rowid = ".((int) $this->id);
+
+			dol_syslog(get_class($this)."::setShippingDate", LOG_DEBUG);
+			$resql = $this->db->query($sql);
+			if ($resql) {
+				$this->date_shipping = $shipping_date;
 				return 1;
 			} else {
 				$this->error = $this->db->error();

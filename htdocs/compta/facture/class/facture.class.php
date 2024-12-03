@@ -249,11 +249,6 @@ class Facture extends CommonInvoice
 	public $tab_next_situation_invoice = array();
 
 	/**
-	 * @var static object oldcopy
-	 */
-	public $oldcopy;
-
-	/**
 	 * @var float percentage of retainage
 	 */
 	public $retained_warranty;
@@ -523,6 +518,7 @@ class Facture extends CommonInvoice
 			$this->fk_multicurrency = 0;
 			$this->multicurrency_tx = 1;
 		}
+		$this->entity = setEntity($this);
 
 		dol_syslog(get_class($this)."::create user=".$user->id." date=".$this->date);
 
@@ -718,7 +714,7 @@ class Facture extends CommonInvoice
 		$sql .= ")";
 		$sql .= " VALUES (";
 		$sql .= "'(PROV)'";
-		$sql .= ", ".setEntity($this);
+		$sql .= ", ".(int) $this->entity;
 		$sql .= ", ".($this->ref_ext ? "'".$this->db->escape($this->ref_ext)."'" : "null");
 		$sql .= ", '".$this->db->escape($this->type)."'";
 		$sql .= ", ".($this->subtype ? "'".$this->db->escape($this->subtype)."'" : "null");
@@ -1472,6 +1468,8 @@ class Facture extends CommonInvoice
 		$this->fk_account = $object->fk_account;
 		$this->cond_reglement_id    = $object->cond_reglement_id;
 		$this->mode_reglement_id    = $object->mode_reglement_id;
+		$this->fk_incoterms    		= $object->fk_incoterms;
+		$this->location_incoterms	= $object->location_incoterms;
 		$this->availability_id      = $object->availability_id;
 		$this->demand_reason_id     = $object->demand_reason_id;
 		$this->delivery_date        = $object->delivery_date;
@@ -2572,7 +2570,7 @@ class Facture extends CommonInvoice
 		$sql .= " localtax2=".(isset($this->total_localtax2) ? (float) $this->total_localtax2 : "null").",";
 		$sql .= " total_ht=".(isset($this->total_ht) ? (float) $this->total_ht : "null").",";
 		$sql .= " total_ttc=".(isset($this->total_ttc) ? (float) $this->total_ttc : "null").",";
-		$sql .= " revenuestamp=".((isset($this->revenuestamp) && $this->revenuestamp != '') ? (int) $this->revenuestamp : "null").",";
+		$sql .= " revenuestamp=".((isset($this->revenuestamp) && $this->revenuestamp != '') ? (float) $this->revenuestamp : "null").",";
 		$sql .= " fk_statut=".(isset($this->status) ? (int) $this->status : "null").",";
 		$sql .= " fk_user_valid=".(isset($this->fk_user_valid) ? (int) $this->fk_user_valid : "null").",";
 		$sql .= " fk_facture_source=".(isset($this->fk_facture_source) ? (int) $this->fk_facture_source : "null").",";
@@ -3634,7 +3632,7 @@ class Facture extends CommonInvoice
 				$this->date_validation = $now;
 				$i = 0;
 
-				if (getDolGlobalString('INVOICE_USE_SITUATION')) {
+				if (getDolGlobalInt('INVOICE_USE_SITUATION')) {
 					$final = true;
 					$nboflines = count($this->lines);
 					while (($i < $nboflines) && $final) {
@@ -5156,7 +5154,7 @@ class Facture extends CommonInvoice
 
 		if (empty($option) || $option != 'nolines') {
 			// Lines
-			$nbp = 5;
+			$nbp = min(1000, GETPOSTINT('nblines') ? GETPOSTINT('nblines') : 5);	// We can force the nb of lines to test from command line (but not more than 1000)
 			$xnbp = 0;
 			while ($xnbp < $nbp) {
 				$line = new FactureLigne($this->db);
