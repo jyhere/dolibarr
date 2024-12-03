@@ -68,6 +68,7 @@ if (GETPOSTISSET('dateday') && GETPOSTISSET('datemonth') && GETPOSTISSET('dateye
 
 $search_ref = GETPOST('search_ref', 'alphanohtml');
 $search_nom = GETPOST('search_nom', 'alphanohtml');
+$search_stock_at_date = GETPOST('search_stock_at_date', 'alphanohtml');
 
 $now = dol_now();
 
@@ -141,6 +142,7 @@ if (GETPOST('button_removefilter_x', 'alpha') || GETPOST('button_removefilter.x'
 	$search_fk_warehouse = array();
 	$search_ref = '';
 	$search_nom = '';
+	$search_stock_at_date = '';
 }
 
 $warehouseStatus = array();
@@ -149,129 +151,6 @@ if (getDolGlobalString('ENTREPOT_EXTRA_STATUS')) {
 	$warehouseStatus[] = Entrepot::STATUS_OPEN_ALL;
 	$warehouseStatus[] = Entrepot::STATUS_OPEN_INTERNAL;
 }
-
-// Get array with current stock per product, warehouse
-$stock_prod_warehouse = array();
-$stock_prod = array();
-if ($date && $dateIsValid) {	// Avoid heavy sql if mandatory date is not defined
-	$sql = "SELECT ps.fk_product, ps.fk_entrepot as fk_warehouse,";
-	$sql .= " SUM(ps.reel) AS stock";
-	$sql .= " FROM ".MAIN_DB_PREFIX."product_stock as ps";
-	$sql .= ", ".MAIN_DB_PREFIX."entrepot as w";
-	$sql .= ", ".MAIN_DB_PREFIX."product as p";
-	$sql .= " WHERE w.entity IN (".getEntity('stock').")";
-	$sql .= " AND w.rowid = ps.fk_entrepot AND p.rowid = ps.fk_product";
-	if (getDolGlobalString('ENTREPOT_EXTRA_STATUS') && count($warehouseStatus)) {
-		$sql .= " AND w.statut IN (".$db->sanitize(implode(',', $warehouseStatus)).")";
-	}
-	if ($productid > 0) {
-		$sql .= " AND ps.fk_product = ".((int) $productid);
-	}
-	if (! empty($search_fk_warehouse)) {
-		$sql .= " AND ps.fk_entrepot IN (".$db->sanitize(implode(",", $search_fk_warehouse)).")";
-	}
-	if ($search_ref) {
-		$sql .= natural_search("p.ref", $search_ref);
-	}
-	if ($search_nom) {
-		$sql .= natural_search("p.label", $search_nom);
-	}
-	$sql .= " GROUP BY fk_product, fk_entrepot";
-	//print $sql;
-
-	$resql = $db->query($sql);
-	if ($resql) {
-		$num = $db->num_rows($resql);
-		$i = 0;
-
-		while ($i < $num) {
-			$obj = $db->fetch_object($resql);
-
-			$tmp_fk_product   = $obj->fk_product;
-			$tmp_fk_warehouse = $obj->fk_warehouse;
-			$stock = $obj->stock;
-
-			$stock_prod_warehouse[$tmp_fk_product][$tmp_fk_warehouse] = $stock;
-			$stock_prod[$tmp_fk_product] = (isset($stock_prod[$tmp_fk_product]) ? $stock_prod[$tmp_fk_product] : 0) + $stock;
-
-			$i++;
-		}
-
-		$db->free($resql);
-	} else {
-		dol_print_error($db);
-	}
-	//var_dump($stock_prod_warehouse);
-} elseif ($action == 'filter') {	// Test on permissions not required here
-	setEventMessages($langs->trans("ErrorFieldRequired", $langs->transnoentitiesnoconv("Date")), null, 'errors');
-}
-
-// Get array with list of stock movements between date and now (for product/warehouse=
-$movements_prod_warehouse = array();
-$movements_prod = array();
-$movements_prod_warehouse_nb = array();
-$movements_prod_nb = array();
-if ($date && $dateIsValid) {
-	$sql = "SELECT sm.fk_product, sm.fk_entrepot, SUM(sm.value) AS stock, COUNT(sm.rowid) AS nbofmovement";
-	$sql .= " FROM ".MAIN_DB_PREFIX."stock_mouvement as sm";
-	$sql .= ", ".MAIN_DB_PREFIX."entrepot as w";
-	$sql .= ", ".MAIN_DB_PREFIX."product as p";
-	$sql .= " WHERE w.entity IN (".getEntity('stock').")";
-	$sql .= " AND w.rowid = sm.fk_entrepot AND p.rowid = sm.fk_product ";
-	if (getDolGlobalString('ENTREPOT_EXTRA_STATUS') && count($warehouseStatus)) {
-		$sql .= " AND w.statut IN (".$db->sanitize(implode(',', $warehouseStatus)).")";
-	}
-	if ($mode == 'future') {
-		$sql .= " AND sm.datem <= '".$db->idate($dateendofday)."'";
-	} else {
-		$sql .= " AND sm.datem >= '".$db->idate($dateendofday)."'";
-	}
-	if ($productid > 0) {
-		$sql .= " AND sm.fk_product = ".((int) $productid);
-	}
-	if (!empty($search_fk_warehouse)) {
-		$sql .= " AND sm.fk_entrepot IN (".$db->sanitize(implode(",", $search_fk_warehouse)).")";
-	}
-	if ($search_ref) {
-		$sql .= " AND p.ref LIKE '%".$db->escape($search_ref)."%' ";
-	}
-	if ($search_nom) {
-		$sql .= " AND p.label LIKE '%".$db->escape($search_nom)."%' ";
-	}
-	$sql .= " GROUP BY sm.fk_product, sm.fk_entrepot";
-
-	$resql = $db->query($sql);
-
-	if ($resql) {
-		$num = $db->num_rows($resql);
-		$i = 0;
-
-		while ($i < $num) {
-			$obj = $db->fetch_object($resql);
-			$fk_product = $obj->fk_product;
-			$fk_entrepot 	= $obj->fk_entrepot;
-			$stock = $obj->stock;
-			$nbofmovement	= $obj->nbofmovement;
-
-			// Pour llx_product_stock.reel
-			$movements_prod_warehouse[$fk_product][$fk_entrepot] = $stock;
-			$movements_prod_warehouse_nb[$fk_product][$fk_entrepot] = $nbofmovement;
-
-			// Pour llx_product.stock
-			$movements_prod[$fk_product] = $stock + (array_key_exists($fk_product, $movements_prod) ? $movements_prod[$fk_product] : 0);
-			$movements_prod_nb[$fk_product] = $nbofmovement + (array_key_exists($fk_product, $movements_prod_nb) ? $movements_prod_nb[$fk_product] : 0);
-
-			$i++;
-		}
-
-		$db->free($resql);
-	} else {
-		dol_print_error($db);
-	}
-}
-//var_dump($movements_prod_warehouse);
-//var_dump($movements_prod);
-
 
 /*
  * View
@@ -287,22 +166,68 @@ $title = $langs->trans('StockAtDate');
 
 $sql = 'SELECT p.rowid, p.ref, p.label, p.description, p.price, p.pmp,';
 $sql .= ' p.price_ttc, p.price_base_type, p.fk_product_type, p.desiredstock, p.seuil_stock_alerte,';
-$sql .= ' p.tms as datem, p.duration, p.tobuy, p.stock, ';
-if (!empty($search_fk_warehouse)) {
-	$sql .= " SUM(p.pmp * ps.reel) as currentvalue, SUM(p.price * ps.reel) as sellvalue";
-	$sql .= ', SUM(ps.reel) as stock_reel';
-} else {
-	$sql .= " SUM(p.pmp * p.stock) as currentvalue, SUM(p.price * p.stock) as sellvalue";
-}
+$sql .= ' p.tms as datem, p.duration, p.tobuy, nbofmovement, ';
+$sql .= ' IFNULL(current.stock, 0) AS stock, IFNULL(current.stock, 0) - IFNULL(delta_stock.stock, 0) AS stock_at_date, ';
+$sql .= ' SUM(p.pmp * IFNULL(current.stock, 0)) AS estimatedvalue, SUM(p.price * IFNULL(current.stock, 0)) AS sellvalue';
+
 // Add fields from hooks
 $parameters = array();
 $reshook = $hookmanager->executeHooks('printFieldListSelect', $parameters); // Note that $action and $object may have been modified by hook
 $sql .= $hookmanager->resPrint;
 
 $sql .= ' FROM '.MAIN_DB_PREFIX.'product as p';
-if (!empty($search_fk_warehouse)) {
-	$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'product_stock as ps ON p.rowid = ps.fk_product AND ps.fk_entrepot IN ('.$db->sanitize(implode(",", $search_fk_warehouse)).")";
+
+// Subquery for current stock
+$sql .= ' LEFT JOIN (SELECT ps.fk_product, SUM(ps.reel) AS stock';
+$sql .= ' FROM '.MAIN_DB_PREFIX.'product_stock AS ps';
+$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'entrepot AS w ON w.rowid = ps.fk_entrepot';
+$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = ps.fk_product';
+$sql .= " WHERE w.entity IN (".getEntity('stock').")";
+if (!empty($conf->global->ENTREPOT_EXTRA_STATUS) && count($warehouseStatus)) {
+	$sql .= " AND w.statut IN (".$db->sanitize(implode(',', $warehouseStatus)).")";
 }
+if ($productid > 0) {
+	$sql .= " AND ps.fk_product = ".((int) $productid);
+}
+if (! empty($search_fk_warehouse)) {
+	$sql .= " AND ps.fk_entrepot IN (".$db->sanitize(join(",", $search_fk_warehouse)).")";
+}
+if ($search_ref) {
+	$sql .= natural_search("p.ref", $search_ref);
+}
+if ($search_nom) {
+	$sql .= natural_search("p.label", $search_nom);
+}
+$sql .= ' GROUP BY fk_product) AS current ON current.fk_product = p.rowid';
+
+// Subquery for delta stock from selected date
+$sql .= ' LEFT JOIN (SELECT sm.fk_product, SUM(sm.value) AS stock, COUNT(sm.rowid) AS nbofmovement';
+$sql .= ' FROM '.MAIN_DB_PREFIX.'stock_mouvement AS sm';
+$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'entrepot AS w ON w.rowid = sm.fk_entrepot';
+$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'product AS p ON p.rowid = sm.fk_product';
+$sql .= " WHERE w.entity IN (".getEntity('stock').")";
+if (!empty($conf->global->ENTREPOT_EXTRA_STATUS) && count($warehouseStatus)) {
+	$sql .= " AND w.statut IN (".$db->sanitize(implode(',', $warehouseStatus)).")";
+}
+if ($mode == 'future') {
+	$sql .= " AND sm.datem <= '".$db->idate($dateendofday)."'";
+} else {
+	$sql .= " AND sm.datem >= '".$db->idate($dateendofday)."'";
+}
+if ($productid > 0) {
+	$sql .= " AND sm.fk_product = ".((int) $productid);
+}
+if (!empty($search_fk_warehouse)) {
+	$sql .= " AND sm.fk_entrepot IN (".$db->sanitize(join(",", $search_fk_warehouse)).")";
+}
+if ($search_ref) {
+	$sql .= natural_search("p.ref", $search_ref);
+}
+if ($search_nom) {
+	$sql .= natural_search("p.label", $search_nom);
+}
+$sql .= 'GROUP BY sm.fk_product) AS delta_stock ON delta_stock.fk_product = p.rowid';
+
 // Add fields from hooks
 $parameters = array();
 $reshook = $hookmanager->executeHooks('printFieldListJoin', $parameters); // Note that $action and $object may have been modified by hook
@@ -323,19 +248,27 @@ if ($search_ref) {
 if ($search_nom) {
 	$sql .= natural_search('p.label', $search_nom);
 }
-$sql .= ' GROUP BY p.rowid, p.ref, p.label, p.description, p.price, p.pmp, p.price_ttc, p.price_base_type, p.fk_product_type, p.desiredstock, p.seuil_stock_alerte,';
-$sql .= ' p.tms, p.duration, p.tobuy, p.stock';
 // Add where from hooks
 $parameters = array();
 $reshook = $hookmanager->executeHooks('printFieldListWhere', $parameters); // Note that $action and $object may have been modified by hook
 $sql .= $hookmanager->resPrint;
 
-if ($sortfield == 'stock_reel' && empty($search_fk_warehouse)) {
-	$sortfield = 'stock';
+$sql .= ' GROUP BY p.rowid, p.ref, p.label, p.description, p.price, p.pmp, p.price_ttc, p.price_base_type, p.fk_product_type, p.desiredstock, p.seuil_stock_alerte,';
+$sql .= ' p.tms, p.duration, p.tobuy, p.stock';
+
+// Add HAVING from hooks
+$parameters = array();
+$reshook = $hookmanager->executeHooks('printFieldListHaving', $parameters, $object); // Note that $action and $object may have been modified by hook
+if (!empty($hookmanager->resPrint) || $search_stock_at_date) {
+	$sql .= ' HAVING 1=1 ';
+	if (!empty($hookmanager->resPrint)) {
+		$sql .= $hookmanager->resPrint;
+	}
+	if ($search_stock_at_date) {
+		$sql .= natural_search("stock_at_date", $search_stock_at_date, 1);
+	}
 }
-if ($sortfield == 'stock' && !empty($search_fk_warehouse)) {
-	$sortfield = 'stock_reel';
-}
+
 $sql .= $db->order($sortfield, $sortorder);
 
 $nbtotalofrecords = '';
@@ -349,7 +282,6 @@ if ($date && $dateIsValid) {	// We avoid a heavy sql if mandatory parameter date
 		}
 	}
 
-	//print $sql;
 	if ($ext != 'csv') {
 		$sql .= $db->plimit($limit + 1, $offset);
 		$resql = $db->query($sql);
@@ -485,6 +417,7 @@ if ($ext == 'csv') {
 			$param_warehouse.
 			"&search_ref=".dol_escape_htmltag($search_ref).
 			"&search_nom=".dol_escape_htmltag($search_nom).
+			"&search_stock_at_date=".dol_escape_htmltag($search_stock_at_date).
 			(GETPOSTISSET('dateday') ? "&dateday=".GETPOSTINT('dateday') : '').
 			(GETPOSTISSET('datemonth') ? "&datemonth=".GETPOSTINT('datemonth') : '').
 			(GETPOSTISSET('dateyear') ? "&dateyear=".GETPOSTINT('dateyear') : '').
@@ -506,7 +439,11 @@ if ($ext == 'csv') {
 	print '<tr class="liste_titre_filter">';
 	print '<td class="liste_titre"><input class="flat" type="text" name="search_ref" size="8" value="'.dol_escape_htmltag($search_ref).'"></td>';
 	print '<td class="liste_titre"><input class="flat" type="text" name="search_nom" size="8" value="'.dol_escape_htmltag($search_nom).'"></td>';
-	print '<td class="liste_titre"></td>';
+	if ($mode == 'future') {
+		print '<td class="liste_titre"></td>';
+	} else {
+		print '<td class="liste_titre right"><input class="flat" type="text" name="search_stock_at_date" size="8" value="'.dol_escape_htmltag($search_stock_at_date).'"></td>';
+	}
 	print '<td class="liste_titre"></td>';
 	print '<td class="liste_titre"></td>';
 	if ($mode == 'future') {
@@ -542,7 +479,7 @@ if ($ext == 'csv') {
 		print_liste_field_titre($stocklabel, $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ', 'VirtualStockAtDateDesc');
 		print_liste_field_titre('VirtualStock', $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ', 'VirtualStockDesc');
 	} else {
-		print_liste_field_titre($stocklabel, $_SERVER["PHP_SELF"], '', $param, '', '', $sortfield, $sortorder, 'right ');
+		print_liste_field_titre($stocklabel, $_SERVER["PHP_SELF"], 'stock_at_date', $param, '', '', $sortfield, $sortorder, 'right ');
 		$tooltiptext = $langs->trans("QtyAtDate").' x '.$langs->trans("AverageUnitPricePMPShort").' ('.$langs->trans("Currently").')';
 		print_liste_field_titre("EstimatedStockValue", $_SERVER["PHP_SELF"], "estimatedvalue", '', $param, '', $sortfield, $sortorder, 'right ', $tooltiptext, 1);
 		$tooltiptext = $langs->trans("QtyAtDate").' x '.$langs->trans("SellingPrice").' ('.$langs->trans("Currently").')';
@@ -614,46 +551,33 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 		if ($mode == 'future') {
 			$prod->load_stock('warehouseopen,warehouseinternal,nobatch', 0, $dateendofday);
-			$stock = $prod->stock_theorique;		// virtual stock at a date
+			$stock_at_date = $prod->stock_theorique; // virtual stock at a date
 			$prod->load_stock('warehouseopen,warehouseinternal,nobatch', 0);
 			$virtualstock = $prod->stock_theorique;	// virtual stock in infinite future
-		} else {
-			$stock = $currentstock;
-			$nbofmovement = 0;
-			if (!empty($search_fk_warehouse)) {
-				foreach ($search_fk_warehouse as $val) {
-					$stock -= empty($movements_prod_warehouse[$objp->rowid][$val]) ? 0 : $movements_prod_warehouse[$objp->rowid][$val];
-					$nbofmovement += empty($movements_prod_warehouse_nb[$objp->rowid][$val]) ? 0 : $movements_prod_warehouse_nb[$objp->rowid][$val];
-				}
-			} else {
-				$stock -= empty($movements_prod[$objp->rowid]) ? 0 : $movements_prod[$objp->rowid];
-				$nbofmovement += empty($movements_prod_nb[$objp->rowid]) ? 0 : $movements_prod_nb[$objp->rowid];
-			}
 		}
-
 
 		if ($ext == 'csv') {
 			if ($mode == 'future') {
 				print implode(";", array(
 					'"'.$objp->ref.'"',
 					'"'.$objp->label.'"',
-					'"'.price2num($currentstock, 'MS').'"',
-					'"'.price2num($stock, 'MS').'"',
+					'"'.price2num($objp->stock, 'MS').'"',
+					'"'.price2num($stock_at_date, 'MS').'"',
 					'"'.price2num($virtualstock, 'MS').'"'))."\r\n";
 				$totalvirtualstock += $virtualstock;
 			} else {
 				print implode(";", array(
 					'"'.$objp->ref.'"',
 					'"'.$objp->label.'"',
-					'"'.price(price2num($stock, 'MS')).'"',
-					price2num($stock * $objp->pmp, 'MT') ? '"'.price2num($stock * $objp->pmp, 'MT').'"' : '',
-					!getDolGlobalString('PRODUIT_MULTIPRICES') ? '"'.price2num($stock * $objp->price, 'MT').'"' : '"'.$langs->trans("Variable").'('.$langs->trans("OptionMULTIPRICESIsOn").')"',
-					"$nbofmovement",
-					'"'.price2num($currentstock, 'MS').'"'))."\r\n";
-				$totalbuyingprice += $stock * $objp->pmp;
-				$totalsellingprice += $stock * $objp->price;
+					'"'.price(price2num($objp->stock_at_date, 'MS')).'"',
+					price2num($objp->stock_at_date * $objp->pmp, 'MT') ? '"'.price2num($objp->stock_at_date * $objp->pmp, 'MT').'"' : '',
+					!getDolGlobalString('PRODUIT_MULTIPRICES') ? '"'.price2num($objp->stock_at_date * $objp->price, 'MT').'"' : '"'.$langs->trans("Variable").'('.$langs->trans("OptionMULTIPRICESIsOn").')"',
+					"$objp->nbofmovement",
+					'"'.price2num($objp->stock, 'MS').'"'))."\r\n";
+				$totalbuyingprice += $objp->stock_at_date * $objp->pmp;
+				$totalsellingprice += $objp->stock_at_date * $objp->price;
 			}
-			$totalcurrentstock += $currentstock;
+			$totalcurrentstock += $objp->stock;
 		} else {
 			print '<tr class="oddeven">';
 
@@ -667,23 +591,23 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 			if ($mode == 'future') {
 				// Current stock
-				print '<td class="right">'.price(price2num($currentstock, 'MS')).'</td>';
-				//$totalcurrentstock += $currentstock;
+				print '<td class="right">'.price(price2num($objp->stock, 'MS')).'</td>';
+				//$totalcurrentstock += $objp->stock;
 
 				print '<td class="right"></td>';
 
 				// Virtual stock at date
-				print '<td class="right">'.price(price2num($stock, 'MS')).'</td>';
+				print '<td class="right">'.price(price2num($stock_at_date, 'MS')).'</td>';
 
 				// Final virtual stock
 				print '<td class="right">'.price(price2num($virtualstock, 'MS')).'</td>';
 				$totalvirtualstock += $virtualstock;
 			} else {
 				// Stock at date
-				print '<td class="right">'.($stock ? price(price2num($stock, 'MS')) : ('<span class="opacitymedium">0</span>')).'</td>';
+				print '<td class="right">'.($objp->stock_at_date ? price(price2num($objp->stock_at_date, 'MS')) : ('<span class="opacitymedium">0</span>')).'</td>';
 
 				// PMP value
-				$estimatedvalue = $stock * $objp->pmp;
+				$estimatedvalue = $objp->stock_at_date * $objp->pmp;
 				print '<td class="right" title="'.dolPrintHTMLForAttribute($langs->trans("AverageUnitPricePMPShort").' ('.$langs->trans("Currently").'): '.price(price2num($objp->pmp, 'MU'), 1)).'">';
 				if (price2num($estimatedvalue, 'MT')) {
 					print '<span class="amount">'.price(price2num($estimatedvalue, 'MT'), 1).'</span>';
@@ -701,11 +625,11 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 				print '">';
 				if (!getDolGlobalString('PRODUIT_MULTIPRICES')) {
 					print '<span class="amount">';
-					if ($stock || (float) ($stock * $objp->price)) {
-						print price(price2num($stock * $objp->price, 'MT'), 1);
+					if ($objp->stock_at_date || (float) ($objp->stock_at_date * $objp->price)) {
+						print price(price2num($objp->stock_at_date * $objp->price, 'MT'), 1);
 					}
 					print '</span>';
-					$totalsellingprice += $stock * $objp->price;
+					$totalsellingprice += $objp->stock_at_date * $objp->price;
 				} else {
 					$htmltext = $langs->trans("OptionMULTIPRICESIsOn");
 					print $form->textwithtooltip('<span class="opacitymedium">'.$langs->trans("Variable").'</span>', $htmltext);
@@ -714,7 +638,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 				// Movements
 				print '<td class="right">';
-				if ($nbofmovement > 0) {
+				if ($objp->nbofmovement > 0) {
 					$url = DOL_URL_ROOT.'/product/stock/movement_list.php?idproduct='.$objp->rowid;
 					if (GETPOSTISSET('datemonth')) {
 						$url .= '&search_date_startday='.GETPOSTINT('dateday');
@@ -732,7 +656,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 						print '<a href="'.$url.'">';
 					}
 					print $langs->trans("Movements");
-					print '<span class="tabs paddingleft"><span class="badge">'.$nbofmovement.'</span></span>';
+					print '<span class="tabs paddingleft"><span class="badge">'.$objp->nbofmovement.'</span></span>';
 					if ($url) {
 						print '</a>';
 					}
@@ -740,9 +664,9 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 				print '</td>';
 
 				// Current stock
-				print '<td class="right">'.($currentstock ? price(price2num($currentstock, 'MS')) : '<span class="opacitymedium">0</span>').'</td>';
+				print '<td class="right">'.($objp->stock ? price(price2num($objp->stock, 'MS')) : '<span class="opacitymedium">0</span>').'</td>';
 			}
-			$totalcurrentstock += $currentstock;
+			$totalcurrentstock += $objp->stock;
 
 			// Fields from hook
 			$parameters = array('objp' => $objp);
