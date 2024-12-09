@@ -552,7 +552,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 
 		if ($mode == 'future') {
 			$prod->load_stock('warehouseopen,warehouseinternal,nobatch', 0, $dateendofday);
-			$stock_at_date = $prod->stock_theorique; // virtual stock at a date
+			$objp->stock_at_date = $prod->stock_theorique; // virtual stock at a date
 			$prod->load_stock('warehouseopen,warehouseinternal,nobatch', 0);
 			$virtualstock = $prod->stock_theorique;	// virtual stock in infinite future
 		}
@@ -563,7 +563,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 					'"'.$objp->ref.'"',
 					'"'.$objp->label.'"',
 					'"'.price2num($objp->stock, 'MS').'"',
-					'"'.price2num($stock_at_date, 'MS').'"',
+					'"'.price2num($objp->stock_at_date, 'MS').'"',
 					'"'.price2num($virtualstock, 'MS').'"'))."\r\n";
 				$totalvirtualstock += $virtualstock;
 			} else {
@@ -598,7 +598,7 @@ while ($i < ($limit ? min($num, $limit) : $num)) {
 				print '<td class="right"></td>';
 
 				// Virtual stock at date
-				print '<td class="right">'.price(price2num($stock_at_date, 'MS')).'</td>';
+				print '<td class="right">'.price(price2num($objp->stock_at_date, 'MS')).'</td>';
 
 				// Final virtual stock
 				print '<td class="right">'.price(price2num($virtualstock, 'MS')).'</td>';
