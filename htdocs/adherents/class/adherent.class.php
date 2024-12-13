@@ -374,7 +374,7 @@ class Adherent extends CommonObject
 	 */
 	const STATUS_VALIDATED = 1;
 	/**
-	 * Resiliated
+	 * Resiliated (membership end and was not renew)
 	 */
 	const STATUS_RESILIATED = 0;
 	/**

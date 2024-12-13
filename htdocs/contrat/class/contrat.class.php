@@ -1006,12 +1006,13 @@ class Contrat extends CommonObject
 	/**
 	 *  Create a contract into database
 	 *
-	 *  @param	User	$user       User that create
-	 *  @return int  				Return integer <0 if KO, id of contract if OK
+	 *  @param	User		$user       User that create
+	 *  @param	int<0,1> 	$notrigger	0=launch triggers after, 1=disable triggers
+	 *  @return int  					Return integer <0 if KO, id of contract if OK
 	 */
-	public function create($user)
+	public function create($user, $notrigger = 0)
 	{
-		global $conf, $langs, $mysoc;
+		global $conf, $langs;
 
 		// Check parameters
 		$paramsok = 1;
@@ -1167,22 +1168,18 @@ class Contrat extends CommonObject
 				}
 			}
 
-			if (!$error) {
+			if (!$error && !$notrigger) {
 				// Call trigger
 				$result = $this->call_trigger('CONTRACT_CREATE', $user);
 				if ($result < 0) {
 					$error++;
 				}
 				// End call triggers
+			}
 
-				if (!$error) {
-					$this->db->commit();
-					return $this->id;
-				} else {
-					dol_syslog(get_class($this)."::create - 30 - ".$this->error, LOG_ERR);
-					$this->db->rollback();
-					return -3;
-				}
+			if (!$error) {
+				$this->db->commit();
+				return $this->id;
 			} else {
 				$this->error = "Failed to add contract";
 				dol_syslog(get_class($this)."::create - 20 - ".$this->error, LOG_ERR);

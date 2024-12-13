@@ -2343,10 +2343,10 @@ if ($num > 0) {
 			}
 			// Type ent
 			if (!empty($arrayfields['typent.code']['checked'])) {
-				print '<td class="center">';
 				if (!is_array($typenArray) || count($typenArray) == 0) {
 					$typenArray = $formcompany->typent_array(1);
 				}
+				print '<td class="center tdoverflowmax100" title="'.dolPrintHTML($typenArray[$obj->typent_code]).'">';
 				if (!empty($obj->typent_code)) {
 					print $typenArray[$obj->typent_code];
 				}
@@ -2357,10 +2357,10 @@ if ($num > 0) {
 			}
 			// Staff
 			if (!empty($arrayfields['staff.code']['checked'])) {
-				print '<td class="center">';
 				if (!is_array($conf->cache['staff']) || count($conf->cache['staff']) == 0) {
 					$conf->cache['staff'] = $formcompany->effectif_array(1);
 				}
+				print '<td class="center tdoverflowmax100" title="'.dolPrintHTML($conf->cache['staff'][$obj->staff_code]).'">';
 				print $conf->cache['staff'][$obj->staff_code];
 				print '</td>';
 				if (!$i) {
@@ -2532,8 +2532,6 @@ if ($num > 0) {
 						}
 					}
 					//else print $langs->trans("NoSalesRepresentativeAffected");
-				} else {
-					print '&nbsp;';
 				}
 				print '</td>';
 				if (!$i) {

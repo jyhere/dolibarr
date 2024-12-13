@@ -4761,7 +4761,6 @@ ul.noborder li:nth-child(odd):not(.liste_titre) {
 
 
 /* Set the color for hover lines */
-
 .tmenucompanylogo.nohover, .tmenucompanylogo.nohover:hover {
 	opacity: unset !important;
 }
@@ -4770,11 +4769,11 @@ ul.noborder li:nth-child(odd):not(.liste_titre) {
 	box-shadow: unset;
 	-webkit-box-shadow: unset;
 }
-
-.oddeven:hover, .evenodd:hover, .oddevenimport:hover, .evenoddimport:hover, .impair:hover, .pair:hover
+.oddeven:hover:not(.nohover), .evenodd:hover:not(.nohover), .oddevenimport:hover:not(.nohover), .evenoddimport:hover:not(.nohover), .impair:hover:not(.nohover), .pair:hover:not(.nohover) {
 {
 	background: rgb(<?php echo $colorbacklinepairhover; ?>) !important;
 }
+
 .tredited {
 	background: rgb(<?php echo $colorbacklinepairchecked; ?>) !important;   /* Must be background to be stronger than background of odd or even */
 }
@@ -5397,7 +5396,7 @@ div.info {
 	background: #eff8fc;
 	color: #558;
 }
-div.fiche div.info {
+div.fiche div.info, div.fiche div.warning {
 	box-shadow: 4px 4px 12px #e4e4e4;
 	margin: 1em 0em 1.2em 0em;
 }

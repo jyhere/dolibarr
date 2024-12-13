@@ -611,6 +611,11 @@ $sql .= " WHERE s.entity IN (".getEntity('societe').")";
 if (!$user->hasRight('fournisseur', 'lire')) {
 	$sql .= " AND (s.fournisseur <> 1 OR s.client <> 0)"; // client=0, fournisseur=0 must be visible
 }
+
+// Force the sales representative if they don't have permissions
+if (!$user->hasRight('societe', 'client', 'voir') && !$socid) {
+	$search_sale = $user->id;
+}
 // Search on sale representative
 if (!empty($search_sale) && $search_sale != '-1') {
 	$search_sale_req = array_filter($search_sale, function (string $value): bool {

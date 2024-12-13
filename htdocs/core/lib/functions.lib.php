@@ -163,12 +163,23 @@ function getMultidirOutput($object, $module = '', $forobject = 0, $mode = 'outpu
 				$s .= ($mode != 'outputrel' ? '/' : '').get_exdir(0, 0, 0, 0, $object);
 			}
 			return $s;
+		} elseif (isset($conf->$module) && property_exists($conf->$module, 'dir_output')) {
+			$s = '';
+			if ($mode != 'outputrel') {
+				$s = $conf->$module->dir_output;
+			}
+			if ($forobject && $object->id > 0) {
+				$s .= ($mode != 'outputrel' ? '/' : '').get_exdir(0, 0, 0, 0, $object);
+			}
+			return $s;
 		} else {
 			return 'error-diroutput-not-defined-for-this-object='.$module;
 		}
 	} elseif ($mode == 'temp') {
 		if (isset($conf->$module) && property_exists($conf->$module, 'multidir_temp')) {
 			return $conf->$module->multidir_temp[(empty($object->entity) ? $conf->entity : $object->entity)];
+		} elseif (isset($conf->$module) && property_exists($conf->$module, 'dir_temp')) {
+			return $conf->$module->dir_temp;
 		} else {
 			return 'error-dirtemp-not-defined-for-this-object='.$module;
 		}
@@ -11722,7 +11733,7 @@ function natural_search($fields, $value, $mode = 0, $nofirstand = 0)
  */
 function showDirectDownloadLink($object)
 {
-	global $conf, $langs;
+	global $langs;
 
 	$out = '';
 	$url = $object->getLastMainDocLink($object->element);
@@ -11834,6 +11845,25 @@ function getAdvancedPreviewUrl($modulepart, $relativepath, $alldata = 0, $param 
 	}
 }
 
+/**
+ * Make content of an input box selected when we click into input field.
+ *
+ * @param int		$idcode			Id of special code
+ * @return string
+ */
+function getLabelSpecialCode($idcode)
+{
+	global $langs;
+
+	$arrayspecialines = array(1 => 'Transport', 2 => 'EcoTax', 3 => 'Option');
+	if ($idcode > 10) {
+		return 'Module ID '.$idcode;
+	}
+	if (!empty($arrayspecialines[$idcode])) {
+		return $langs->trans($arrayspecialines[$idcode]);
+	}
+	return '';
+}
 
 /**
  * Make content of an input box selected when we click into input field.
