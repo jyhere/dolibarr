@@ -317,6 +317,9 @@ tr.liste_titre th.liste_titre_sel:not(.maxwidthsearch), tr.liste_titre td.liste_
 tr.liste_titre th.liste_titre:not(.maxwidthsearch), tr.liste_titre td.liste_titre:not(.maxwidthsearch) { opacity: 0.8; }
 /* th.liste_titre_sel a, th.liste_titre a, td.liste_titre_sel a, td.liste_titre a { color: #766; } */
 tr.liste_titre_filter th.liste_titre { text-align: unset; }
+.liste_titre.trheight5em {
+	height: 4em !important;
+}
 
 input {
 	font-size: unset;
@@ -3872,7 +3875,7 @@ a.fmdirlia {
 
 
 /* ============================================================================== */
-/* Onglets                                                                        */
+/* Tabs                                                                           */
 /* ============================================================================== */
 div.tabs {
 	text-align: <?php print $left; ?>;
