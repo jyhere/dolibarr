@@ -5677,48 +5677,6 @@ parameters:
 			path: ../../../htdocs/core/class/html.form.class.php
 
 		-
-			message: '#^Property Form\:\:\$cache_conditions_paiements has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_demand_reason has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_invoice_subtype has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_transport_mode has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_types_fees has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_types_paiements has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
-			message: '#^Property Form\:\:\$cache_vatrates has no type specified\.$#'
-			identifier: missingType.property
-			count: 1
-			path: ../../../htdocs/core/class/html.form.class.php
-
-		-
 			message: '#^Return type of call to function dol_sort_array contains unresolvable type\.$#'
 			identifier: function.unresolvableReturnType
 			count: 3
