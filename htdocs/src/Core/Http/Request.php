@@ -87,11 +87,17 @@ final class Request
 		/** @var array<string,string> $cookies */
 		$cookies = $_COOKIE;
 
+		// main.inc.php may unset() $_POST (invalid CSRF token): read defensively.
+		/** @var array<string,mixed> $query */
+		$query = isset($_GET) && is_array($_GET) ? $_GET : []; // @phpstan-ignore isset.variable
+		/** @var array<string,mixed> $post */
+		$post = isset($_POST) && is_array($_POST) ? $_POST : []; // @phpstan-ignore isset.variable
+
 		return new self(
 			is_string($method) ? $method : 'GET',
 			is_string($uri) ? $uri : '/',
-			$_GET,
-			$_POST,
+			$query,
+			$post,
 			$headers,
 			$cookies,
 			$urlRoot

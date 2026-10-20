@@ -39,6 +39,7 @@ final class RouteCache
 
 	/**
 	 * @param list<RouteDefinition> $definitions
+	 * @throws \RuntimeException When the cache cannot be written
 	 */
 	public function store(array $definitions): void
 	{
@@ -46,14 +47,20 @@ final class RouteCache
 		$content = '<?php return '.var_export($rows, true).';'."\n";
 
 		$dir = dirname($this->file);
-		if (!is_dir($dir)) {
-			mkdir($dir, 0775, true);
+		if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+			throw new \RuntimeException('Cannot create cache directory '.$dir);
 		}
-		$tmp = tempnam($dir, 'routes');
-		if ($tmp === false) {
+		if (!is_writable($dir)) {
+			throw new \RuntimeException('Cache directory '.$dir.' is not writable');
+		}
+		$tmp = @tempnam($dir, 'routes');
+		if ($tmp === false || realpath(dirname($tmp)) !== realpath($dir)) {
+			if ($tmp !== false) {
+				@unlink($tmp);
+			}
 			throw new \RuntimeException('Cannot create temporary cache file in '.$dir);
 		}
-		if (file_put_contents($tmp, $content) === false || !rename($tmp, $this->file)) {
+		if (@file_put_contents($tmp, $content) === false || !@rename($tmp, $this->file)) {
 			@unlink($tmp);
 			throw new \RuntimeException('Cannot write route cache '.$this->file);
 		}

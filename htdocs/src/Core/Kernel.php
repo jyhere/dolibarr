@@ -12,6 +12,7 @@ use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Module\ModuleInterface;
+use Dolibarr\Core\Routing\ArgumentResolver;
 use Dolibarr\Core\Routing\MatchedRoute;
 use Dolibarr\Core\Routing\MethodNotAllowedException;
 use Dolibarr\Core\Routing\RouteCache;
@@ -27,8 +28,10 @@ use Dolibarr\Core\View\ViewModel;
 /**
  * Front controller kernel.
  *
- * match() runs BEFORE main.inc.php and must not depend on Dolibarr;
- * run() runs after it and uses the legacy globals through LegacyContext.
+ * match() runs BEFORE main.inc.php and must not depend on Dolibarr; its request
+ * is only used for routing (method and path). run() runs after main.inc.php and
+ * rebuilds the request, so that what main.inc.php neutralised (invalid CSRF
+ * token: $_POST and some $_GET entries unset) never reaches a controller.
  *
  * @phpstan-type MatchResult array{mode: string, matched: ?MatchedRoute, request: Request, error: ?\Throwable}
  */
@@ -84,7 +87,7 @@ final class Kernel
 	 */
 	public function run(array $matchResult, mixed $mainIncResult): Response
 	{
-		$request = $matchResult['request'];
+		$request = $this->requestForRun();
 		$error = $matchResult['error'];
 
 		if ($error instanceof MethodNotAllowedException) {
@@ -140,6 +143,14 @@ final class Kernel
 	}
 
 	/**
+	 * Request rebuilt from the superglobals as left by main.inc.php.
+	 */
+	public function requestForRun(): Request
+	{
+		return Request::fromGlobals($this->urlRoot);
+	}
+
+	/**
 	 * Invoke the controller action, resolving its arguments from its parameter list.
 	 */
 	private function dispatch(Container $container, Responder $responder, MatchedRoute $matched, Request $request): Response
@@ -147,22 +158,7 @@ final class Kernel
 		$route = $matched->route;
 		$controller = $container->get($route->controller);
 		$method = new \ReflectionMethod($controller, $route->action);
-
-		$args = [];
-		foreach ($method->getParameters() as $parameter) {
-			$type = $parameter->getType();
-			$typeName = $type instanceof \ReflectionNamedType ? $type->getName() : null;
-			$name = $parameter->getName();
-			if ($typeName === Request::class) {
-				$args[] = $request;
-			} elseif (array_key_exists($name, $matched->params)) {
-				$args[] = $typeName === 'int' ? (int) $matched->params[$name] : $matched->params[$name];
-			} else {
-				throw new \LogicException('Cannot resolve parameter $'.$name.' of '.$route->controller.'::'.$route->action.'()');
-			}
-		}
-
-		$result = $method->invokeArgs($controller, $args);
+		$result = $method->invokeArgs($controller, (new ArgumentResolver())->resolve($method, $matched, $request));
 		if ($result instanceof Response) {
 			return $result;
 		}
@@ -239,7 +235,12 @@ final class Kernel
 
 		if ($definitions === null) {
 			$definitions = (new RouteCompiler())->compile($controllers);
-			$cache->store($definitions);
+			try {
+				$cache->store($definitions);
+			} catch (\RuntimeException $e) {
+				// The Logger service needs main.inc.php, not loaded yet: use the PHP error log.
+				error_log('Dolibarr MVC: route cache not written, routes compiled for this request only: '.$e->getMessage());
+			}
 		}
 
 		return $this->definitions = $definitions;

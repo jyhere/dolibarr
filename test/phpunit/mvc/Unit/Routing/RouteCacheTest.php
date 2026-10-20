@@ -41,4 +41,16 @@ final class RouteCacheTest extends TestCase
 			@unlink($controller);
 		}
 	}
+
+	public function testStoreThrowsWhenCacheDirectoryCannotBeCreated(): void
+	{
+		$notADir = tempnam(sys_get_temp_dir(), 'routes-file');
+		self::assertIsString($notADir);
+		try {
+			$this->expectException(\RuntimeException::class);
+			(new RouteCache($notADir.'/cache/routes.php'))->store([]);
+		} finally {
+			unlink($notADir);
+		}
+	}
 }

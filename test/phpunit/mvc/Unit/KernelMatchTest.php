@@ -19,15 +19,28 @@ final class KernelMatchTest extends TestCase
 	/** @var array<mixed> */
 	private array $server;
 
+	/** @var array<mixed> */
+	private array $get;
+
+	/** @var array<mixed> */
+	private array $post;
+
 	protected function setUp(): void
 	{
 		$this->server = $_SERVER;
+		$this->get = $_GET;
+		$this->post = $_POST;
 		$this->dataRoot = sys_get_temp_dir().'/kernel-match-'.uniqid();
 	}
 
 	protected function tearDown(): void
 	{
 		$_SERVER = $this->server;
+		$_GET = $this->get;
+		$_POST = $this->post;
+		if (is_file($this->dataRoot)) {
+			unlink($this->dataRoot);
+		}
 		@unlink($this->dataRoot.'/cache/routes.php');
 		@rmdir($this->dataRoot.'/cache');
 		@rmdir($this->dataRoot);
@@ -81,6 +94,46 @@ final class KernelMatchTest extends TestCase
 		$this->match('GET', '/d/fixture/public');
 
 		self::assertFileExists($this->dataRoot.'/cache/routes.php');
+	}
+
+	public function testRequestForRunReflectsGlobalsNeutralisedAfterMatch(): void
+	{
+		$_POST = ['token' => 'bogus', 'x' => '1'];
+		$_GET = ['action' => 'delete', 'id' => '5'];
+		$_SERVER['REQUEST_METHOD'] = 'POST';
+		$_SERVER['REQUEST_URI'] = '/d/fixture/public';
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+		$result = $kernel->match();
+		self::assertSame('1', $result['request']->post('x'));
+
+		// What main.inc.php does on an invalid CSRF token
+		unset($_POST);
+		unset($_GET['action']);
+
+		$request = $kernel->requestForRun();
+		self::assertNull($request->post('x'));
+		self::assertNull($request->query('action'));
+		self::assertSame('5', $request->query('id'));
+		self::assertSame('/fixture/public', $request->path());
+	}
+
+	public function testUnwritableCacheDirectoryStillMatchesAndLogs(): void
+	{
+		// A data root that is a regular file: its cache directory cannot be created.
+		file_put_contents($this->dataRoot, '');
+		$log = tempnam(sys_get_temp_dir(), 'kernel-log');
+		self::assertIsString($log);
+		$previous = ini_set('error_log', $log);
+		try {
+			$result = $this->match('GET', '/d/fixture/42');
+		} finally {
+			ini_set('error_log', $previous === false ? '' : $previous);
+		}
+
+		self::assertSame(BootstrapMode::PROTECTED, $result['mode']);
+		self::assertNotNull($result['matched']);
+		self::assertStringContainsString('route cache not written', (string) file_get_contents($log));
+		unlink($log);
 	}
 
 	public function testConstantsForEachMode(): void
