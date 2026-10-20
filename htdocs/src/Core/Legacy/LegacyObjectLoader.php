@@ -5,42 +5,67 @@ declare(strict_types=1);
 namespace Dolibarr\Core\Legacy;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Entity\EntityDefinition;
 
 /**
- * Loads legacy objects, memoized per request.
+ * Loads legacy objects, memoized per request (one instance per class and id).
  */
 final class LegacyObjectLoader
 {
-	/** @var array<int,?\User> */
-	private array $users = [];
+	/** @var array<string,?\CommonObject> indexed by "class#id" */
+	private array $objects = [];
 
 	public function __construct(private readonly Connection $connection)
 	{
 	}
 
+	/**
+	 * @throws \LogicException When \User does not load as a \User
+	 */
 	public function user(int $id): ?\User
 	{
-		if (array_key_exists($id, $this->users)) {
-			return $this->users[$id];
+		$user = $this->load(\User::class, '/user/class/user.class.php', $id);
+		if ($user !== null && !$user instanceof \User) {
+			throw new \LogicException('The legacy user loader did not return a \User');
 		}
 
-		require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
-
-		$user = new \User($this->connection->legacy());
-
-		return $this->users[$id] = $user->fetch($id) > 0 ? $user : null;
+		return $user;
 	}
 
 	/**
-	 * The legacy object of the element $element (CommonObject::$element), for the generic components.
+	 * The legacy object of an entity type, from its EntityDefinition legacy class and file.
 	 *
-	 * @throws \LogicException When the element is not supported yet (only 'user' today)
+	 * @throws \LogicException When the definition declares no legacy class
 	 */
-	public function byElement(string $element, int $id): ?\CommonObject
+	public function byElement(EntityDefinition $definition, int $id): ?\CommonObject
 	{
-		return match ($element) {
-			'user' => $this->user($id),
-			default => throw new \LogicException('No legacy object loader for the element '.$element),
-		};
+		if ($definition->legacyClass === null || $definition->legacyClassFile === null) {
+			throw new \LogicException('The entity '.$definition->slug.' declares no legacy class');
+		}
+
+		return $this->load($definition->legacyClass, $definition->legacyClassFile, $id);
+	}
+
+	/**
+	 * require_once DOL_DOCUMENT_ROOT.$file, new $class($db), fetch($id): the object, null when fetch() finds nothing.
+	 *
+	 * @param class-string<\CommonObject> $class
+	 *
+	 * @throws \LogicException When $class is not a \CommonObject
+	 */
+	private function load(string $class, string $file, int $id): ?\CommonObject
+	{
+		$key = $class.'#'.$id;
+		if (array_key_exists($key, $this->objects)) {
+			return $this->objects[$key];
+		}
+
+		require_once DOL_DOCUMENT_ROOT.$file;
+		if (!is_subclass_of($class, \CommonObject::class)) {
+			throw new \LogicException($class.' is not a legacy \CommonObject');
+		}
+		$object = new $class($this->connection->legacy());
+
+		return $this->objects[$key] = $object->fetch($id) > 0 ? $object : null;
 	}
 }

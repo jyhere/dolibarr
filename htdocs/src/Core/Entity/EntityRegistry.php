@@ -25,6 +25,20 @@ final class EntityRegistry
 		return $this->definitions[$slug] ?? throw new \InvalidArgumentException('Unknown entity slug '.$slug);
 	}
 
+	/**
+	 * The definition whose legacy element is $element (CommonObject::$element), null when none.
+	 */
+	public function findByElement(string $element): ?EntityDefinition
+	{
+		foreach ($this->definitions as $definition) {
+			if ($definition->element === $element) {
+				return $definition;
+			}
+		}
+
+		return null;
+	}
+
 	public function has(string $slug): bool
 	{
 		return isset($this->definitions[$slug]);

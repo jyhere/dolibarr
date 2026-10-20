@@ -20,4 +20,12 @@ interface EntityTabs
 	 * @return array{tabsHtml: string, bannerHtml: string, tabsEndHtml: string, headerRowsHtml: string}
 	 */
 	public function chrome(object $legacyObject, object $entity, string $activeTab): array;
+
+	/**
+	 * What the legacy tab page $page (e.g. 'note' for htdocs/user/note.php) sets up before its actions:
+	 * translation domains, hook contexts, doActions parameters.
+	 *
+	 * @throws \InvalidArgumentException When the page is not supported
+	 */
+	public function legacyPageSettings(string $page): LegacyPageSettings;
 }

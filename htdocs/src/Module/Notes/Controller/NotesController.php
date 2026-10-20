@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\Notes\Controller;
 
-use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Core\Entity\EntityRegistry;
+use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Entity\EntityTabs;
 use Dolibarr\Core\Entity\HasNotes;
+use Dolibarr\Core\Entity\LegacyPageSettings;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
@@ -34,20 +35,18 @@ use Dolibarr\Module\Notes\View\NotesChrome;
  * The notes tab of any declared entity: the view of htdocs/<element>/note.php (user/note.php for the user)
  * and its actions, core/actions_setnotes.inc.php.
  *
- * The entity's services come from its EntityDefinition: the repository (repositoryId) exposes
- * find(int $id): ?object returning a HasNotes entity (the convention of the entity repositories), the
- * checker (permissionCheckerId) is an EntityPermissions, the tabs factory (tabsFactoryId) an EntityTabs.
+ * The entity's services come from its EntityDefinition through EntityServices (see the EntityDefinition
+ * checklist): its EntityRepository returns a HasNotes entity, its EntityPermissions says who reads and edits
+ * the notes, its EntityTabs gives the tabs, the banner and the settings of its legacy note page (translation
+ * domains, hook contexts, doActions parameters).
  */
 final class NotesController
 {
 	private const ACTIONS = ['setnote_public' => 'note_public', 'setnote_private' => 'note_private'];
 
-	/** user/note.php l.52 */
-	private const DOMAINS = ['companies', 'members', 'bills', 'users'];
-
 	public function __construct(
 		private readonly EntityRegistry $registry,
-		private readonly Container $container,
+		private readonly EntityServices $services,
 		private readonly CurrentUser $me,
 		private readonly LegacyHooks $hooks,
 		private readonly LegacyObjectLoader $legacy,
@@ -64,6 +63,7 @@ final class NotesController
 	/**
 	 * The notes, in edit mode for one of them with ?action=editnote_public|editnote_private (note.php
 	 * l.100-160). doActions runs as in note.php, but a GET never writes: the actions are POSTed to update().
+	 * {entity} is the slug of a declared entity type: slugs match [a-z]+ (the route requirement).
 	 *
 	 * @throws NotFoundException     When the entity type or the entity does not exist
 	 * @throws AccessDeniedException When the current user may not read the entity
@@ -71,13 +71,12 @@ final class NotesController
 	#[Route('/{entity}/{id}/note', methods: ['GET'], name: 'entity_note', requirements: ['entity' => '[a-z]+', 'id' => '\d+'])]
 	public function show(Request $r, string $entity, int $id): ViewModel
 	{
-		[$definition, $found, $perms, $legacyObject] = $this->prepare($entity, $id);
+		[$definition, $found, $perms, $tabs, $settings, $legacyObject] = $this->prepare($entity, $id);
 		$action = $this->action($r);
-		$doActions = $this->doActions($legacyObject, $action);
+		$doActions = $this->doActions($settings, $legacyObject, $action);
 
 		$permissionNote = $perms->canEditNotes($found);
 		$showPrivate = $this->showPrivate();
-		$tabs = $this->service($definition->tabsFactoryId, EntityTabs::class);
 
 		$view = new ViewModel('notes:notes', [
 			'outputBeforeHeader' => $doActions->output,
@@ -104,19 +103,19 @@ final class NotesController
 	#[Route('/{entity}/{id}/note', methods: ['POST'], name: 'entity_note_post', requirements: ['entity' => '[a-z]+', 'id' => '\d+'])]
 	public function update(Request $r, string $entity, int $id): RedirectResponse
 	{
-		[$definition, $found, $perms, $legacyObject] = $this->prepare($entity, $id);
+		[$definition, $found, $perms, , $settings, $legacyObject] = $this->prepare($entity, $id);
 		$back = new RedirectResponse($this->urls->generate('entity_note', ['entity' => $definition->slug, 'id' => $id]));
 
 		// Invalid CSRF token (main.inc.php l.456-478, its warning already set): doActions with an empty action, nothing written
 		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
-			$this->doActions($legacyObject, '');
+			$this->doActions($settings, $legacyObject, '');
 
 			return $back;
 		}
 
 		// note.php l.83-90: the standard actions only when doActions returns 0
 		$action = $this->action($r);
-		if ($this->doActions($legacyObject, $action)->code !== 0) {
+		if ($this->doActions($settings, $legacyObject, $action)->code !== 0) {
 			return $back;
 		}
 		$field = self::ACTIONS[$action] ?? null;
@@ -156,13 +155,14 @@ final class NotesController
 	}
 
 	/**
-	 * The definition, the entity readable by the current user, its checker and its legacy object; the domains
-	 * and hook contexts of note.php (l.52, l.77).
+	 * The definition, the entity readable by the current user, its checker, its tabs, the settings of its
+	 * legacy note page (domains loaded and hook contexts initialised here) and its legacy object.
 	 *
-	 * @return array{EntityDefinition, HasNotes, EntityPermissions, \CommonObject}
+	 * @return array{EntityDefinition, HasNotes, EntityPermissions, EntityTabs, LegacyPageSettings, \CommonObject}
 	 *
 	 * @throws NotFoundException
 	 * @throws AccessDeniedException
+	 * @throws \LogicException When the entity does not implement HasNotes
 	 */
 	private function prepare(string $slug, int $id): array
 	{
@@ -171,11 +171,7 @@ final class NotesController
 		}
 		$definition = $this->registry->get($slug);
 
-		$repository = $this->container->get($definition->repositoryId);
-		if (!method_exists($repository, 'find')) {
-			throw new \LogicException('The repository of '.$slug.' has no find(int) method');
-		}
-		$found = $repository->find($id);
+		$found = $this->services->repository($definition)->find($id);
 		if ($found === null) {
 			throw new NotFoundException($slug.' '.$id.' not found');
 		}
@@ -183,31 +179,33 @@ final class NotesController
 			throw new \LogicException('The entity '.$slug.' does not implement '.HasNotes::class);
 		}
 
-		$perms = $this->service($definition->permissionCheckerId, EntityPermissions::class);
+		$perms = $this->services->permissions($definition);
 		if (!$perms->canRead($found)) {
 			throw new AccessDeniedException();
 		}
 
-		foreach ([...self::DOMAINS, 'errors'] as $domain) {
+		$tabs = $this->services->tabs($definition);
+		$settings = $tabs->legacyPageSettings('note');
+		foreach ($settings->translationDomains as $domain) {
 			$this->t->load($domain);
 		}
-		$this->hooks->init([$definition->element.'card', $definition->element.'note', 'globalcard']);
+		$this->hooks->init($settings->hookContexts);
 
-		$legacyObject = $this->legacy->byElement($definition->element, $id);
+		$legacyObject = $this->legacy->byElement($definition, $id);
 		if ($legacyObject === null) {
 			throw new NotFoundException($slug.' '.$id.' not found');
 		}
 
-		return [$definition, $found, $perms, $legacyObject];
+		return [$definition, $found, $perms, $tabs, $settings, $legacyObject];
 	}
 
 	/**
-	 * note.php l.83-87: doActions with array('id' => $socid), $socid the company of the current user (l.71-74).
+	 * The doActions hook of the legacy note page (user/note.php l.83-87), with its parameters.
 	 */
-	private function doActions(\CommonObject $legacyObject, string $action): HookResult
+	private function doActions(LegacyPageSettings $settings, \CommonObject $legacyObject, string $action): HookResult
 	{
 		$object = $legacyObject;
-		$result = $this->hooks->execute('doActions', ['id' => max(0, $this->me->companyId())], $object, $action);
+		$result = $this->hooks->execute('doActions', $settings->doActionsParams, $object, $action);
 		if ($result->failed()) {
 			foreach ($result->errors as $error) {
 				$this->flash->error($error);
@@ -235,21 +233,5 @@ final class NotesController
 		$value = $r->get($name, $filter);
 
 		return is_string($value) ? $value : '';
-	}
-
-	/**
-	 * @template T of object
-	 * @param class-string<T> $type
-	 * @return T
-	 * @throws \LogicException When the service has not the expected type
-	 */
-	private function service(string $id, string $type): object
-	{
-		$service = $this->container->get($id);
-		if (!$service instanceof $type) {
-			throw new \LogicException('Service '.$id.' is not a '.$type);
-		}
-
-		return $service;
 	}
 }

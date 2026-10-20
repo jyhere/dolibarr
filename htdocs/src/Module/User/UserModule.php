@@ -60,7 +60,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function entities(): array
 	{
-		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show')];
+		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php')];
 	}
 
 	public function services(Container $c): void

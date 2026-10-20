@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\View;
 
 use Dolibarr\Core\Entity\EntityTabs;
+use Dolibarr\Core\Entity\LegacyPageSettings;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Routing\UrlGenerator;
@@ -319,6 +320,26 @@ final class UserCardChrome implements EntityTabs
 			'tabsEndHtml' => dol_get_fiche_end(),
 			'headerRowsHtml' => $this->noteLoginRow($legacyObject),
 		];
+	}
+
+	/**
+	 * htdocs/user/note.php: $langs->loadLangs() l.52, initHooks() l.77, the doActions parameters l.83 with
+	 * $socid the company of the current user (l.71-74).
+	 *
+	 * @throws \InvalidArgumentException When the page is not supported
+	 */
+	public function legacyPageSettings(string $page): LegacyPageSettings
+	{
+		if ($page !== 'note') {
+			throw new \InvalidArgumentException('No legacy page settings for the user page '.$page);
+		}
+		$socid = 0;
+		$me = $this->ctx->user;
+		if ($me !== null && $me->socid > 0) {
+			$socid = (int) $me->socid;
+		}
+
+		return new LegacyPageSettings(['companies', 'members', 'bills', 'users'], ['usercard', 'usernote', 'globalcard'], ['id' => $socid]);
 	}
 
 	/**

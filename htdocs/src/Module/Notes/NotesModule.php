@@ -9,6 +9,7 @@ use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Entity\EntityRegistry;
+use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
@@ -61,12 +62,12 @@ final class NotesModule implements ModuleInterface
 			self::get($c, LegacyTriggers::class),
 			self::get($c, LegacyContext::class),
 			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Logger::class)
+			self::get($c, Logger::class),
+			self::get($c, EntityRegistry::class)
 		));
-		// The controller resolves the services of each entity (repository, checker, tabs) by their ids in the container
 		$c->set(NotesController::class, static fn (Container $c): NotesController => new NotesController(
 			self::get($c, EntityRegistry::class),
-			$c,
+			self::get($c, EntityServices::class),
 			self::get($c, CurrentUser::class),
 			self::get($c, LegacyHooks::class),
 			self::get($c, LegacyObjectLoader::class),

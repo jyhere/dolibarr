@@ -22,6 +22,16 @@ final class EntityRegistryTest extends TestCase
 		self::assertSame($definition, $registry->get('user'));
 	}
 
+	public function testFindByElement(): void
+	{
+		$registry = new EntityRegistry();
+		$definition = new EntityDefinition('thirdparty', \stdClass::class, 'repo', 'societe', 'societe', 'checker', 'tabs', 'thirdparty_show');
+		$registry->register($definition);
+
+		self::assertSame($definition, $registry->findByElement('societe'));
+		self::assertNull($registry->findByElement('thirdparty'));
+	}
+
 	public function testUnknownSlugThrows(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);

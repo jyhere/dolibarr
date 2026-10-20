@@ -7,6 +7,7 @@ namespace Dolibarr\Core;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRegistry;
+use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
@@ -95,6 +96,7 @@ final class CoreServices
 			}
 		}
 		$c->instance(EntityRegistry::class, $registry);
+		$c->set(EntityServices::class, static fn (Container $c): EntityServices => new EntityServices($c));
 
 		$templateDirs = ['core' => __DIR__.'/templates'];
 		foreach ($modules as $module) {

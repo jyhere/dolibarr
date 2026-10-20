@@ -8,6 +8,7 @@ use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRegistry;
+use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
@@ -382,7 +383,7 @@ final class NotesControllerTest extends TestCase
 	private function dispatcher(): EventDispatcher
 	{
 		$dispatcher = new EventDispatcher();
-		(new NoteTriggerBridge(new LegacyTriggers($this->ctx), $this->ctx, new LegacyObjectLoader($this->connection), new Logger()))->register($dispatcher);
+		(new NoteTriggerBridge(new LegacyTriggers($this->ctx), $this->ctx, new LegacyObjectLoader($this->connection), new Logger(), $this->registry()))->register($dispatcher);
 
 		return $dispatcher;
 	}
@@ -397,18 +398,14 @@ final class NotesControllerTest extends TestCase
 			$hm = new \HookManager($ctx->db);
 			ScriptedHooks::register($hm, 'usernote', $scripted);
 		}
-		$registry = new EntityRegistry();
-		foreach ((new UserModule())->entities() as $definition) {
-			$registry->register($definition);
-		}
 		$container = new Container();
 		$container->instance(UserRepository::class, $this->repo());
 		$container->instance(UserPermissionChecker::class, new UserPermissionChecker($me, false, false, false, [], false, false, (int) $ctx->conf->entity));
 		$container->instance(UserCardChrome::class, new UserCardChrome($ctx, $urls));
 
 		return new NotesController(
-			$registry,
-			$container,
+			$this->registry(),
+			new EntityServices($container),
 			$me,
 			new LegacyHooks($hm),
 			new LegacyObjectLoader($this->connection),
@@ -420,6 +417,16 @@ final class NotesControllerTest extends TestCase
 			new LegacyTranslator($ctx->langs),
 			$urls
 		);
+	}
+
+	private function registry(): EntityRegistry
+	{
+		$registry = new EntityRegistry();
+		foreach ((new UserModule())->entities() as $definition) {
+			$registry->register($definition);
+		}
+
+		return $registry;
 	}
 
 	private function repo(): UserRepository

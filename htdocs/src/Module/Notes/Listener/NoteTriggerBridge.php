@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\Notes\Listener;
 
+use Dolibarr\Core\Entity\EntityRegistry;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
@@ -20,7 +21,8 @@ final class NoteTriggerBridge
 		private readonly LegacyTriggers $triggers,
 		private readonly LegacyContext $ctx,
 		private readonly LegacyObjectLoader $loader,
-		private readonly Logger $log
+		private readonly Logger $log,
+		private readonly EntityRegistry $registry
 	) {
 	}
 
@@ -31,7 +33,9 @@ final class NoteTriggerBridge
 
 	/**
 	 * @throws NoteTriggerException When a trigger fails, so that the write is rolled back
-	 * @throws \LogicException      Without a logged legacy user, or for an element without legacy loader
+	 * The legacy object is loaded from the EntityDefinition of the event's element.
+	 *
+	 * @throws \LogicException      Without a logged legacy user, or for an element no module declares
 	 */
 	public function onNoteUpdated(NoteUpdated $e): void
 	{
@@ -42,7 +46,11 @@ final class NoteTriggerBridge
 		if ($actor === null) {
 			throw new \LogicException('A note trigger needs the logged legacy user');
 		}
-		$object = $this->loader->byElement($e->element, $e->id);
+		$definition = $this->registry->findByElement($e->element);
+		if ($definition === null) {
+			throw new \LogicException('No entity type declared for the element '.$e->element);
+		}
+		$object = $this->loader->byElement($definition, $e->id);
 		if ($object === null) {
 			$this->log->warning('NoteTriggerBridge: '.$e->element.' '.$e->id.' not found, MODIFY trigger skipped');
 

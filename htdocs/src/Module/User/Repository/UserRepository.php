@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Repository;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Entity\EntityRepository;
 use Dolibarr\Module\User\Entity\User;
 
 /**
  * Read-only access to llx_user. Secret columns are never selected.
  */
-final class UserRepository
+final class UserRepository implements EntityRepository
 {
 	/** Computed in SQL so the API key value itself is never loaded. */
 	public const HAS_API_KEY_SQL = "CASE WHEN u.api_key IS NOT NULL AND u.api_key <> '' THEN 1 ELSE 0 END AS has_api_key";
