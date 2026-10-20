@@ -24,9 +24,9 @@ final class RightsRepository
 	 * mode, sorted by family position, module position and id) for the modules having a descriptor
 	 * (l.601-618), with the grants of $userId (l.352-406). The modules in the order of their first right.
 	 *
-	 * @return array<string, list<RightDefinition>>
+	 * The group rights by entity (perms.php's $permsgroupbyentity, given to the insertExtraHeader hook) come with it.
 	 */
-	public function catalogFor(int $userId, int $entity, bool $advancedPerms): array
+	public function catalogFor(int $userId, int $entity, bool $advancedPerms): RightsCatalog
 	{
 		$modules = $this->chrome->moduleDescriptors($entity);
 		$granted = array_fill_keys($this->userRights($userId, $entity), true);
@@ -61,6 +61,8 @@ final class RightsRepository
 		usort($rows, static fn (array $a, array $b): int => $a['position'] <=> $b['position']);
 
 		$reception = $this->config->isModuleEnabled('reception');
+		// Grouped by module: perms.php prints a break line at each change of module (l.640), so it would repeat a
+		// module whose rights interleave with another's in position order; here they stay under one break line.
 		$catalog = [];
 		foreach ($rows as $row) {
 			$obj = $row['obj'];
@@ -86,7 +88,7 @@ final class RightsRepository
 			);
 		}
 
-		return $catalog;
+		return new RightsCatalog($catalog, $byEntity);
 	}
 
 	/**

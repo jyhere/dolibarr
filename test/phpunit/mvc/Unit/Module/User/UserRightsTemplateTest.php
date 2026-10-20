@@ -34,7 +34,7 @@ final class UserRightsTemplateTest extends TestCase
 		self::assertStringContainsString('<i data-frag="footerHook"></i>', $html);
 		self::assertStringContainsString('<i data-frag="tabsEnd"></i>', $html);
 		// l.507-524: All / None of every module, expand / collapse
-		self::assertStringContainsString('<input type="hidden" name="action" value="addrights"><input type="hidden" name="module" value="allmodules"><input type="hidden" name="confirm" value="yes"><input type="submit"', $html);
+		self::assertStringContainsString('<input type="hidden" name="action" value="addrights"><input type="hidden" name="module" value="allmodules"><input type="hidden" name="confirm" value="yes"><input type="hidden" name="page_y" value=""><input type="submit"', $html);
 		self::assertStringContainsString('<a class="showallperms" title="TR:ShowAllPerms" alt="TR:ShowAllPerms" href="#"><i data-frag="expandAll"></i>', $html);
 		// l.658-663: the break line
 		self::assertStringContainsString('<tr class="oddeven trforbreakperms trforbreaknobg" data-hide-perms="user" data-j="1">', $html);
@@ -43,6 +43,9 @@ final class UserRightsTemplateTest extends TestCase
 		self::assertStringContainsString('<input type="hidden" name="module" value="user"><input type="hidden" name="confirm" value="yes"><input type="hidden" name="updatedmodulename" value="user">', $html);
 		// l.745-753: owned, a POST removing it; l.788-797: not owned, a POST adding it
 		self::assertStringContainsString('<!-- user has perm --><td class="center nowrap"><form method="POST" action="/user/3/rights" class="inline-block"><input type="hidden" name="token" value="stub-token"><input type="hidden" name="action" value="delrights"><input type="hidden" name="rights" value="251">', $html);
+		// The scroll position, filled by the .reposition handler of lib_foot.js.php and kept by the redirect
+		self::assertStringContainsString('<input type="hidden" name="updatedmodulename" value="user"><input type="hidden" name="page_y" value=""><button type="submit" id="251"', $html);
+		self::assertSame(substr_count($html, '<form method="POST"'), substr_count($html, 'name="page_y"'));
 		self::assertStringContainsString('<button type="submit" id="251" class="reposition addexpandedmodulesinparamlist nobordertransp nopadding cursorpointer"><i data-frag="remove"></i></button></form>', $html);
 		self::assertStringContainsString('<!-- do not own permission --><td class="center nowrap"><form method="POST" action="/user/3/rights" class="inline-block"><input type="hidden" name="token" value="stub-token"><input type="hidden" name="action" value="addrights"><input type="hidden" name="rights" value="252">', $html);
 		// The label escaped, the badge and warnings raw, the descriptions, the admin id column

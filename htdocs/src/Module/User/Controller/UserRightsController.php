@@ -74,9 +74,10 @@ final class UserRightsController
 		// l.100: always the current entity
 		$entity = $this->config->entity();
 		$advancedPerms = $this->config->int('MAIN_USE_ADVANCED_PERMS') > 0;
-		$catalog = $this->rights->catalogFor($id, $entity, $advancedPerms);
+		$rightsCatalog = $this->rights->catalogFor($id, $entity, $advancedPerms);
+		$catalog = $rightsCatalog->byModule;
 		$meta = $this->chrome->moduleMeta($entity);
-		$byEntity = $this->rights->groupRightsByEntity($id, $entity);
+		$byEntity = $rightsCatalog->permsGroupByEntity;
 		// l.631-637
 		$hasGroupRights = ($byEntity[0] ?? []) !== [] || ($byEntity[$entity] ?? []) !== [];
 		$canEdit = $this->perms->canEditRights($user);
@@ -159,8 +160,17 @@ final class UserRightsController
 	public function update(Request $r, int $id): Response
 	{
 		[$user, $settings, $legacyUser] = $this->prepare($id);
+		// l.134-138: the query string is kept, page_y included (added to the .reposition links by lib_foot.js.php l.230-245)
+		$query = ['id' => $id];
 		$updatedModule = $this->param($r, 'updatedmodulename', 'alpha');
-		$back = new RedirectResponse($this->urls->generate('user_rights', $updatedModule !== '' ? ['id' => $id, 'updatedmodulename' => $updatedModule] : ['id' => $id]));
+		if ($updatedModule !== '') {
+			$query['updatedmodulename'] = $updatedModule;
+		}
+		$pageY = $r->getInt('page_y');
+		if ($pageY > 0) {
+			$query['page_y'] = $pageY;
+		}
+		$back = new RedirectResponse($this->urls->generate('user_rights', $query));
 
 		// Invalid CSRF token (main.inc.php l.456-478, its warning already set): doActions with an empty action, nothing written
 		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {

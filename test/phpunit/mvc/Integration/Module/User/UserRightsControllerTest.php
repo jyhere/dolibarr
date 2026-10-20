@@ -100,7 +100,7 @@ final class UserRightsControllerTest extends TestCase
 		$read = $this->rightId('user', 'user', 'lire');
 
 		// perms.php l.114-139: all the rights of a module, then the tab without action, token nor confirm
-		$response = $this->controller()->update($this->post($target->id, ['action' => 'addrights', 'module' => 'user', 'confirm' => 'yes', 'updatedmodulename' => 'user']), $target->id);
+		$response = $this->controller()->update($this->post($target->id, ['action' => 'addrights', 'module' => 'user', 'confirm' => 'yes', 'updatedmodulename' => 'user', 'page_y' => '0']), $target->id);
 		$this->assertRedirectsToRights($response, $target->id, '?updatedmodulename=user');
 		$userRights = $this->rows('user_rights ur JOIN '.MAIN_DB_PREFIX."rights_def r ON r.id = ur.fk_id AND r.entity = ur.entity WHERE r.module = 'user' AND ur.fk_user = ".$target->id);
 		self::assertSame($this->rows("rights_def WHERE module = 'user' AND entity = ".((int) $this->ctx->conf->entity)), $userRights);
@@ -119,9 +119,9 @@ final class UserRightsControllerTest extends TestCase
 			self::assertTrue($right['granted']);
 		}
 
-		// l.142-167: one right
-		$response = $this->controller()->update($this->post($target->id, ['action' => 'delrights', 'rights' => $read, 'confirm' => 'yes']), $target->id);
-		$this->assertRedirectsToRights($response, $target->id, '');
+		// l.142-167: one right; the scroll position kept by the redirect (l.162-166 keep the query string)
+		$response = $this->controller()->update($this->post($target->id, ['action' => 'delrights', 'rights' => $read, 'confirm' => 'yes', 'page_y' => '420']), $target->id);
+		$this->assertRedirectsToRights($response, $target->id, '?page_y=420');
 		self::assertSame(0, $this->rows('user_rights WHERE fk_user = '.$target->id.' AND fk_id = '.$read));
 		// delrights() also removes the rights needing the read one (user->user->*)
 		self::assertLessThan($userRights, $this->rows('user_rights WHERE fk_user = '.$target->id));

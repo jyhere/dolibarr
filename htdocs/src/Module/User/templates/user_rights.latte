@@ -2,8 +2,9 @@
 	(GET links with a token) are small POST forms here, their submit styled as the link. *}
 {layout 'core:@layout'}
 
-{* One toggle of perms.php as a POST form: a text submit styled as the link ($text), else a button with the picto *}
-{define toggle, string $formAction, string $action, string $field, string $value, string $module, string $class, string $text, string $pictoHtml = '', string $buttonId = ''}<form method="POST" action="{$formAction}" class="inline-block"><input type="hidden" name="token" value="{token()}"><input type="hidden" name="action" value="{$action}"><input type="hidden" name="{$field}" value="{$value}"><input type="hidden" name="confirm" value="yes">{if $module !== ''}<input type="hidden" name="updatedmodulename" value="{$module}">{/if}{if $text !== ''}<input type="submit" class="{$class}" title="{$text}" value="{$text}">{else}<button type="submit"{if $buttonId !== ''} id="{$buttonId}"{/if} class="{$class}">{$pictoHtml|noescape}</button>{/if}</form>{/define}
+{* One toggle of perms.php as a POST form: a text submit styled as the link ($text), else a button with the picto.
+	page_y is filled on click by the .reposition handler of core/js/lib_foot.js.php l.230-245 (all submits have that class). *}
+{define toggle, string $formAction, string $action, string $field, string $value, string $module, string $class, string $text, string $pictoHtml = '', string $buttonId = ''}<form method="POST" action="{$formAction}" class="inline-block"><input type="hidden" name="token" value="{token()}"><input type="hidden" name="action" value="{$action}"><input type="hidden" name="{$field}" value="{$value}"><input type="hidden" name="confirm" value="yes">{if $module !== ''}<input type="hidden" name="updatedmodulename" value="{$module}">{/if}<input type="hidden" name="page_y" value="">{if $text !== ''}<input type="submit" class="{$class}" title="{$text}" value="{$text}">{else}<button type="submit"{if $buttonId !== ''} id="{$buttonId}"{/if} class="{$class}">{$pictoHtml|noescape}</button>{/if}</form>{/define}
 
 {block content}
 {$chrome['tabsHtml']|noescape}

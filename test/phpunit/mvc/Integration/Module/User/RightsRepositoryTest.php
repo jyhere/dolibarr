@@ -50,7 +50,7 @@ final class RightsRepositoryTest extends TestCase
 	public function testCatalogListsEnabledModulesRightsSortedLikePerms(): void
 	{
 		$entity = (int) $this->ctx->conf->entity;
-		$catalog = $this->repository()->catalogFor(1, $entity, false);
+		$catalog = $this->repository()->catalogFor(1, $entity, false)->byModule;
 
 		self::assertArrayHasKey('user', $catalog);
 		$userRights = array_map(static fn (RightDefinition $d): string => $d->perms.'.'.$d->subperms, $catalog['user']);
@@ -77,7 +77,7 @@ final class RightsRepositoryTest extends TestCase
 	{
 		$entity = (int) $this->ctx->conf->entity;
 		$advance = 0;
-		foreach ($this->repository()->catalogFor(1, $entity, true) as $rights) {
+		foreach ($this->repository()->catalogFor(1, $entity, true)->byModule as $rights) {
 			foreach ($rights as $right) {
 				$advance += str_ends_with($right->perms, '_advance') ? 1 : 0;
 			}
@@ -100,8 +100,11 @@ final class RightsRepositoryTest extends TestCase
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_rights (entity, fk_usergroup, fk_id) VALUES ('.$entity.', '.$group.', '.$export.')');
 
 		$repo = $this->repository();
+		$catalog = $repo->catalogFor($target->id, $entity, false);
+		// perms.php's $permsgroupbyentity, read once with the catalogue
+		self::assertSame([$entity => [$export]], $catalog->permsGroupByEntity);
 		$byId = [];
-		foreach ($repo->catalogFor($target->id, $entity, false)['user'] as $right) {
+		foreach ($catalog->byModule['user'] as $right) {
 			$byId[$right->id] = $right;
 		}
 
