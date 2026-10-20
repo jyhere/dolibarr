@@ -21,6 +21,11 @@ The following changes may create regressions for some external modules, but were
 * Removed library MathPHP. Was introduced in 2023. Never used by Dolibarr after 3 years.
 
 
+For users:
+----------
+NEW: Experimental MVC core (htdocs/src, app.php front controller) with /login, /logout and /user/{id} coexisting with legacy pages. Requires PHP 8.2+.
+
+
 ***** ChangeLog for 24.0.2 compared to 24.0.1 *****
 
 FIX: #33502
