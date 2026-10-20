@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-global $conf, $user, $langs, $db, $mysoc;
+global $conf, $user, $langs, $db, $mysoc, $hookmanager, $extrafields;
 
 define('NOSESSION', '1');
 define('NOLOGIN', '1');

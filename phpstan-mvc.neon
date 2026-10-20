@@ -6,3 +6,9 @@ parameters:
 	level: 10
 	scanDirectories:
 		- htdocs/includes/latte
+		- htdocs/core/class
+		- htdocs/core/db
+		- htdocs/core/lib
+		- htdocs/user/class
+	scanFiles:
+		- htdocs/main.inc.php
