@@ -25,6 +25,7 @@ use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
+use Dolibarr\Module\User\Repository\UserWriter;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\Service\UserValidator;
@@ -34,6 +35,7 @@ use Dolibarr\Module\User\View\UserFormChrome;
 use Dolibarr\Tests\Integration\Fixture\LimitUsersConfig;
 use Dolibarr\Tests\Integration\Fixture\OverridesLegacyConf;
 use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
+use Dolibarr\Tests\Integration\Fixture\SendRecordingWriter;
 use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
 use PHPUnit\Framework\TestCase;
 
@@ -211,6 +213,22 @@ final class UserActionsTest extends TestCase
 		self::assertSame([$this->trans('OnlyAdminUsersCanDeleteAdminUsers')], $_SESSION['dol_events']['errors'] ?? []);
 	}
 
+	public function testAdminOfAnEntityCannotDeleteSuperadmin(): void
+	{
+		$actor = $this->disposable('Actor', true);
+		$target = $this->disposable('Superadmin', true);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
+
+		// An admin of entity 1 (not a superadmin)
+		$response = $this->controller(new RightsCurrentUser($actor->id, true, [], 0, 1))
+			->delete($this->post($target->id, ['action' => 'confirm_delete', 'confirm' => 'yes']), $target->id);
+
+		$this->assertRedirectsToCard($response, $target->id);
+		self::assertNotNull($this->repo()->find($target->id));
+		// card.php l.264-267
+		self::assertSame([$this->trans('OnlySuperAdminUsersCanDeleteSuperAdminUsers')], $_SESSION['dol_events']['errors'] ?? []);
+	}
+
 	public function testResetPasswordReturnsNewClearAndFlashesIt(): void
 	{
 		$target = $this->disposable('Target');
@@ -230,6 +248,42 @@ final class UserActionsTest extends TestCase
 		$clear = html_entity_decode(substr((string) $warnings[0], strlen($prefix), strlen((string) $warnings[0]) - strlen($prefix) - strlen($suffix)), ENT_COMPAT, 'UTF-8');
 		self::assertNotSame('', $clear);
 		self::assertTrue(dol_verifyHash($clear, $after), 'The flashed password is the stored one');
+	}
+
+	public function testSendPasswordSendsTheNewPasswordAndFlashesTheEmail(): void
+	{
+		$target = $this->disposable('Target', false, 'mvc_test_'.uniqid().'@example.com');
+		$before = $this->passCrypted($target->id);
+		$writer = new SendRecordingWriter($this->writer());
+
+		$response = $this->controller(null, null, null, $writer)->setPassword($this->post($target->id, ['action' => 'confirm_passwordsend', 'confirm' => 'yes']), $target->id);
+
+		$this->assertRedirectsToCard($response, $target->id);
+		$after = $this->passCrypted($target->id);
+		self::assertNotSame($before, $after);
+		self::assertCount(1, $writer->sent);
+		[$sentId, $sentClear] = $writer->sent[0];
+		self::assertSame($target->id, $sentId);
+		self::assertTrue(dol_verifyHash($sentClear, $after), 'The password sent is the stored one');
+		// card.php l.788: success message with the address, the password itself is not shown
+		self::assertSame([$this->trans('PasswordChangedAndSentTo', (string) $target->email)], $_SESSION['dol_events']['mesgs'] ?? []);
+		self::assertArrayNotHasKey('warnings', $_SESSION['dol_events'] ?? []);
+	}
+
+	public function testSendPasswordFailureFlashesTheErrorAndKeepsTheNewPassword(): void
+	{
+		$target = $this->disposable('Target', false, 'mvc_test_'.uniqid().'@example.com');
+		$before = $this->passCrypted($target->id);
+		$writer = new SendRecordingWriter($this->writer(), ['Mailer failed']);
+
+		$response = $this->controller(null, null, null, $writer)->setPassword($this->post($target->id, ['action' => 'confirm_passwordsend', 'confirm' => 'yes']), $target->id);
+
+		$this->assertRedirectsToCard($response, $target->id);
+		self::assertCount(1, $writer->sent);
+		// card.php l.789-791: the error of send_password(), the password stays changed
+		self::assertNotSame($before, $this->passCrypted($target->id));
+		self::assertSame(['Mailer failed'], $_SESSION['dol_events']['errors'] ?? []);
+		self::assertArrayNotHasKey('mesgs', $_SESSION['dol_events'] ?? []);
 	}
 
 	public function testResetPasswordWithoutRightWritesNothing(): void
@@ -289,6 +343,20 @@ final class UserActionsTest extends TestCase
 		self::assertStringContainsString('name="token"', $dialog);
 		self::assertStringContainsString('name="confirm"', $dialog);
 		self::assertStringContainsString($this->trans('DisableAUser'), $dialog);
+		$this->assertNoIsPreselected($dialog);
+	}
+
+	public function testDeleteDialogPreselectsNoLikeCardPhp(): void
+	{
+		$target = $this->disposable('Target');
+
+		$vm = $this->controller()->show($this->request('GET', ['confirm' => 'delete'], [], $target->id), $target->id);
+
+		$dialog = (string) $vm->data['confirmDialogHtml'];
+		self::assertStringContainsString('action="/user/'.$target->id.'/delete"', $dialog);
+		self::assertStringContainsString('value="confirm_delete"', $dialog);
+		// card.php l.1717: formconfirm(..., '', 0, 1), an empty $selectedchoice preselects "no"
+		$this->assertNoIsPreselected($dialog);
 	}
 
 	public function testShowWithoutConfirmHasNoDialog(): void
@@ -376,17 +444,23 @@ final class UserActionsTest extends TestCase
 		return (new LegacyTranslator($this->ctx->langs))->trans($key, ...$args);
 	}
 
+	private function assertNoIsPreselected(string $dialog): void
+	{
+		self::assertMatchesRegularExpression('/<option value="no" selected>/', $dialog);
+		self::assertDoesNotMatchRegularExpression('/<option value="yes" selected>/', $dialog);
+	}
+
 	private function assertRedirectsToCard(mixed $response, int $id): void
 	{
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('/user/'.$id, $response->headers()['Location']);
 	}
 
-	private function disposable(string $lastname, bool $admin = false): User
+	private function disposable(string $lastname, bool $admin = false, ?string $email = null): User
 	{
 		$service = new UserService($this->repo(), $this->writer(), new EventDispatcher(), $this->connection, $this->legacyMe());
 
-		return $service->create(new User(0, 1, 'mvc_test_'.uniqid(), admin: $admin, lastname: $lastname), self::PASSWORD, []);
+		return $service->create(new User(0, 1, 'mvc_test_'.uniqid(), admin: $admin, lastname: $lastname, email: $email), self::PASSWORD, []);
 	}
 
 	private function group(): int
@@ -453,7 +527,7 @@ final class UserActionsTest extends TestCase
 		return new LegacyCurrentUser($legacyUser);
 	}
 
-	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null, ?Config $config = null): UserController
+	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null, ?Config $config = null, ?UserWriter $writer = null): UserController
 	{
 		$ctx = $this->ctx;
 		$me ??= $this->legacyMe();
@@ -477,7 +551,7 @@ final class UserActionsTest extends TestCase
 			$translator,
 			new UserCardChrome($ctx, $urls),
 			new FlashBag(),
-			new UserService($this->repo(), new LegacyUserWriter($ctx, $loader, $this->connection), new EventDispatcher(), $this->connection, $me),
+			new UserService($this->repo(), $writer ?? new LegacyUserWriter($ctx, $loader, $this->connection), new EventDispatcher(), $this->connection, $me),
 			new UserValidator($translator, $config),
 			new UserFormChrome($ctx, $urls),
 			$config,

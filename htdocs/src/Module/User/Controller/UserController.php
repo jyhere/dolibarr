@@ -221,13 +221,7 @@ final class UserController
 	 */
 	private function card(Request $r, int $id, string $dialog): ViewModel
 	{
-		$user = $this->repo->find($id);
-		if ($user === null) {
-			throw new NotFoundException('User '.$id.' not found');
-		}
-		if (!$this->perms->canRead($user)) {
-			throw new AccessDeniedException();
-		}
+		$user = $this->findReadable($id);
 
 		// card.php l.79
 		foreach (self::DOMAINS as $domain) {
@@ -296,8 +290,9 @@ final class UserController
 
 		$confirmDialog = '';
 		if ($dialog !== '') {
+			// card.php l.1697-1719 pass $selectedchoice = 0: "No" is preselected
 			[$route, $title, $question, $confirmAction] = self::DIALOGS[$dialog];
-			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->htmlTrans($question, $user->login), $confirmAction);
+			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->htmlTrans($question, $user->login), $confirmAction, [], 'no');
 		}
 
 		return (new ViewModel('user:user_show', [
@@ -520,6 +515,23 @@ final class UserController
 	 */
 	private function prepareAction(int $id): User
 	{
+		$user = $this->findReadable($id);
+		foreach ([...self::DOMAINS, 'errors'] as $domain) {
+			$this->t->load($domain);
+		}
+		$this->hooks->init(self::HOOK_CONTEXTS);
+
+		return $user;
+	}
+
+	/**
+	 * card.php l.152-154: the user, readable by the current one (a user always reads his own card, l.147).
+	 *
+	 * @throws NotFoundException     When the user does not exist in the entity
+	 * @throws AccessDeniedException When the current user may not read it
+	 */
+	private function findReadable(int $id): User
+	{
 		$user = $this->repo->find($id);
 		if ($user === null) {
 			throw new NotFoundException('User '.$id.' not found');
@@ -527,10 +539,6 @@ final class UserController
 		if (!$this->perms->canRead($user)) {
 			throw new AccessDeniedException();
 		}
-		foreach ([...self::DOMAINS, 'errors'] as $domain) {
-			$this->t->load($domain);
-		}
-		$this->hooks->init(self::HOOK_CONTEXTS);
 
 		return $user;
 	}
@@ -593,11 +601,8 @@ final class UserController
 	 */
 	private function prepareEdit(int $id): User
 	{
-		$user = $this->repo->find($id);
-		if ($user === null) {
-			throw new NotFoundException('User '.$id.' not found');
-		}
-		if (!$this->perms->canRead($user) || (!$this->perms->canEdit($user) && !$this->perms->canSetPassword($user))) {
+		$user = $this->findReadable($id);
+		if (!$this->perms->canEdit($user) && !$this->perms->canSetPassword($user)) {
 			throw new AccessDeniedException();
 		}
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
