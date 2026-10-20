@@ -31,6 +31,7 @@ use Dolibarr\Module\User\Service\UserValidator;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Module\User\View\UserFormChrome;
 use Dolibarr\Tests\Integration\Fixture\OverridesLegacyConf;
+use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
 use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
 use PHPUnit\Framework\TestCase;
 
@@ -234,6 +235,50 @@ final class UserCreateTest extends TestCase
 		self::assertArrayNotHasKey('errors', $_SESSION['dol_events'] ?? []);
 	}
 
+	public function testDoActionsReceivesAnEmptyActionOnInvalidTokenAndAddOtherwise(): void
+	{
+		$hooks = new ScriptedHooks([]);
+		$this->controller(null, $hooks)->create($this->request('POST', ['errorcode' => 'InvalidToken', 'action' => 'add'], []));
+		self::assertSame('', $hooks->actions['doActions']);
+
+		$hooks = new ScriptedHooks([]);
+		$login = 'mvc_test_'.uniqid();
+		$response = $this->controller(null, $hooks)->create($this->request('POST', [], ['lastname' => 'Hooked', 'login' => $login, 'action' => 'add']));
+		self::assertSame('add', $hooks->actions['doActions']);
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertNotNull($this->repo()->findByLogin($login));
+	}
+
+	public function testFailingDoActionsVetoesCreation(): void
+	{
+		$before = $this->countUsers();
+		$hooks = new ScriptedHooks(['doActions' => ['code' => -1, 'errors' => ['Hook says no']]]);
+		$login = 'mvc_test_'.uniqid();
+
+		$response = $this->controller(null, $hooks)->create($this->request('POST', [], ['lastname' => 'Vetoed', 'login' => $login]));
+
+		self::assertInstanceOf(ViewModel::class, $response);
+		self::assertSame('user:user_form', $response->template);
+		$values = $response->data['values'];
+		self::assertInstanceOf(User::class, $values);
+		self::assertSame('Vetoed', $values->lastname);
+		self::assertNull($this->repo()->findByLogin($login));
+		self::assertSame($before, $this->countUsers());
+		self::assertSame(['Hook says no'], $_SESSION['dol_events']['errors'] ?? []);
+	}
+
+	public function testReplacingDoActionsVetoesCreationWithoutError(): void
+	{
+		$hooks = new ScriptedHooks(['doActions' => ['code' => 1]]);
+		$login = 'mvc_test_'.uniqid();
+
+		$response = $this->controller(null, $hooks)->create($this->request('POST', [], ['lastname' => 'Replaced', 'login' => $login]));
+
+		self::assertInstanceOf(ViewModel::class, $response);
+		self::assertNull($this->repo()->findByLogin($login));
+		self::assertArrayNotHasKey('errors', $_SESSION['dol_events'] ?? []);
+	}
+
 	/**
 	 * @param array<string, mixed> $get
 	 * @param array<string, mixed> $post
@@ -248,7 +293,7 @@ final class UserCreateTest extends TestCase
 		return Request::fromGlobals('')->withInputFilter(new LegacyInputFilter());
 	}
 
-	private function controller(?CurrentUser $me = null): UserController
+	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null): UserController
 	{
 		$ctx = $this->ctx;
 		$legacyUser = $ctx->user;
@@ -259,12 +304,17 @@ final class UserCreateTest extends TestCase
 		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
 		$loader = new LegacyObjectLoader($this->connection);
 		$translator = new LegacyTranslator($ctx->langs);
+		$hm = $ctx->hookmanager;
+		if ($scripted !== null) {
+			$hm = new \HookManager($ctx->db);
+			ScriptedHooks::register($hm, 'usercard', $scripted);
+		}
 
 		return new UserController(
 			$this->repo(),
 			$perms,
 			$me,
-			new LegacyHooks($ctx->hookmanager),
+			new LegacyHooks($hm),
 			$loader,
 			$translator,
 			new UserCardChrome($ctx, $urls),

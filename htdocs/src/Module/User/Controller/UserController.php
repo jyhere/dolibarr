@@ -176,11 +176,21 @@ final class UserController
 		$backtopageforcancel = $this->param($r, 'backtopageforcancel');
 		$urlRoot = $this->config->urlRoot();
 
-		// card.php l.185: doActions first; a hook returning > 0 replaces the standard action
+		// main.inc.php refused the CSRF token (l.456-478): $_POST is emptied, $_GET['action'] unset and its warning
+		// set. card.php then runs doActions with an empty action and no standard action: the same here, nothing
+		// is written and the form is redisplayed.
 		$blank = new User(0, $this->config->entity(), '', employee: true);
+		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return $this->form($r, $blank, null, false, $this->doActions($blank, ''));
+		}
+
+		// card.php l.185-191: doActions first; the standard actions (cancel included) only run when it returns 0.
+		// A hook that fails (< 0, its errors flashed) or replaces the action (> 0) vetoes the creation.
 		$doActions = $this->doActions($blank, 'add');
-		if ($doActions->code > 0) {
-			return $this->form($r, $blank, null, false, $doActions);
+		if ($doActions->code !== 0) {
+			$in = UserInput::fromRequest($r, $this->perms, null, $this->config);
+
+			return $this->form($r, $in->toEntity(null, $this->entityFor($in)), $in->password, $in->forcePasswordChange, $doActions);
 		}
 
 		// card.php l.192-212: cancel goes to backtopageforcancel, else backtopage, else the list
@@ -191,11 +201,6 @@ final class UserController
 				: ($backtopage !== '' && !str_contains($backtopage, '__ID__') ? $backtopage : null);
 
 			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $urlRoot.'/user/list.php');
-		}
-
-		// main.inc.php refused the CSRF token: $_POST is empty and its warning is set; nothing is written
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
-			return $this->form($r, $blank, null, false, $doActions);
 		}
 
 		$in = UserInput::fromRequest($r, $this->perms, null, $this->config);

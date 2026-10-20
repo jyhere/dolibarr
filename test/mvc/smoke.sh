@@ -7,8 +7,19 @@ BASE="${1:?usage: smoke.sh <base_url> [login] [password]}"
 BASE="${BASE%/}"
 LOGIN="${2:-admin}"
 PASS_="${3:-admin}"
-# SQL client used to remove the users created by the smoke test (default: the docker database of the dev setup)
-SMOKE_MYSQL="${SMOKE_MYSQL:-mysql -h127.0.0.1 -P33306 -udolibarr_user -pdolibarr_password dolibarr}"
+# SQL client used to remove the users created by the smoke test. SMOKE_MYSQL (a full client command) overrides;
+# otherwise the host mysql client on the dev docker port, then `docker compose exec mysql` from the compose dir.
+SMOKE_MYSQL="${SMOKE_MYSQL:-}"
+COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# env_value <key> <default>: a value of the compose .env file
+env_value() {
+	local v
+	v="$(grep -E "^$1=" "$COMPOSE_DIR/.env" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+	printf '%s' "${v:-$2}"
+}
+DB_USER="$(env_value MYSQL_USER dolibarr_user)"
+DB_PASS="$(env_value MYSQL_PASSWORD dolibarr_password)"
+DB_NAME="$(env_value MYSQL_DATABASE dolibarr)"
 # A password the default policy accepts (12 characters at least)
 SMOKE_PASSWORD="${SMOKE_PASSWORD:-Smoke1234!Smoke1234!}"
 
@@ -46,11 +57,26 @@ expect_location_suffix() {
 	case "$loc" in *"$suffix") ok "$label";; *) fail "$label" "location $loc, expected suffix $suffix";; esac
 }
 
-# smoke_sql <sql>: runs a statement with SMOKE_MYSQL, prints the result without header
+# smoke_sql <sql>: runs a statement, prints the result without header; on failure prints the client errors
 smoke_sql() {
-	local cmd
-	read -r -a cmd <<< "$SMOKE_MYSQL"
-	"${cmd[@]}" -N -B -e "$1" 2>/dev/null
+	local cmd err out
+	err="$(mktemp)"; JARS+=("$err")
+	if [ -n "$SMOKE_MYSQL" ]; then
+		read -r -a cmd <<< "$SMOKE_MYSQL"
+		"${cmd[@]}" -N -B -e "$1" 2>"$err" && return 0
+		echo "SQL error (SMOKE_MYSQL): $(cat "$err")" >&2
+		return 1
+	fi
+	if command -v mysql > /dev/null 2>&1; then
+		if out="$(MYSQL_PWD="$DB_PASS" mysql -h127.0.0.1 -P33306 -u"$DB_USER" "$DB_NAME" -N -B -e "$1" 2>"$err")"; then
+			printf '%s\n' "$out"
+			return 0
+		fi
+		echo "host mysql client failed, trying docker compose: $(cat "$err")" >&2
+	fi
+	(cd "$COMPOSE_DIR" && docker compose exec -T -e MYSQL_PWD="$DB_PASS" mysql mysql -u"$DB_USER" "$DB_NAME" -N -B -e "$1") 2>"$err" && return 0
+	echo "SQL error (docker compose): $(cat "$err")" >&2
+	return 1
 }
 
 # Removes the users created by the smoke test (login smoke_*) and what their creation wrote.
@@ -140,7 +166,7 @@ expect_code "user/999999 404" 404 -b "$J1" "$BASE/user/999999"
 expect_code "login while logged in 302" 302 -b "$J1" "$BASE/login"
 
 echo "== User creation (/user/new)"
-smoke_sql "SELECT 1" > /dev/null || fail "SQL client for the smoke users cleanup" "SMOKE_MYSQL=$SMOKE_MYSQL"
+smoke_sql "SELECT 1" > /dev/null || fail "SQL client for the smoke users cleanup" "no working client (set SMOKE_MYSQL)"
 trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 expect_code "user/new 200" 200 -b "$J1" "$BASE/user/new"
 expect_grep "user/new create form" 'name="createuser"' 1 -b "$J1" "$BASE/user/new"

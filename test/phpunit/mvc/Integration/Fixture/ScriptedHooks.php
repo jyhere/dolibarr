@@ -29,6 +29,9 @@ final class ScriptedHooks
 	/** @var array<string, array<string,mixed>> */
 	public array $parameters = [];
 
+	/** @var array<string, string> The $action each hook received, by hook name */
+	public array $actions = [];
+
 	/**
 	 * @param array<string, array{echo?: string, print?: string, code?: int, errors?: list<string>, error?: string}> $script
 	 */
@@ -47,6 +50,8 @@ final class ScriptedHooks
 	 */
 	public function doActions(array $parameters, mixed &$object, string &$action, \HookManager $hm): int
 	{
+		$this->actions[__FUNCTION__] = $action;
+
 		return $this->run(__FUNCTION__, $parameters);
 	}
 
