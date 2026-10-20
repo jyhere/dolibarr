@@ -6,8 +6,10 @@ namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
+use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Logger;
 use Dolibarr\Module\User\Event\UserLoggedIn;
@@ -136,6 +138,6 @@ final class SessionAuthenticatorTest extends TestCase
 	{
 		$ctx = LegacyContext::fromGlobals();
 
-		return new SessionAuthenticator($ctx, $dispatcher ?? new EventDispatcher(), new LegacyHooks($ctx->hookmanager), new Connection($ctx->db), new Logger());
+		return new SessionAuthenticator($ctx, new LegacySession(), new LegacyConfig($ctx), $dispatcher ?? new EventDispatcher(), new LegacyHooks($ctx->hookmanager), new Connection($ctx->db), new Logger());
 	}
 }

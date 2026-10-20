@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Controller;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\HtmlResponse;
 use Dolibarr\Core\Http\RedirectResponse;
@@ -11,10 +12,11 @@ use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Http\SafeRedirect;
 use Dolibarr\Core\Legacy\HookResult;
-use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Logger;
 use Dolibarr\Core\Routing\Route;
+use Dolibarr\Core\Session;
+use Dolibarr\Core\Translator;
 use Dolibarr\Module\User\Event\UserLoginFailed;
 use Dolibarr\Module\User\Security\AuthenticationException;
 use Dolibarr\Module\User\Security\AuthenticationResult;
@@ -25,6 +27,7 @@ use Dolibarr\Module\User\View\LegacyLoginPage;
 /**
  * Login form and its submission, the login branch of main.inc.php l.537-1192.
  * The route is public: main.inc.php has started the session and checked the CSRF token.
+ * Fields are read with the GETPOST() filters of main.inc.php.
  */
 final class LoginController
 {
@@ -34,15 +37,20 @@ final class LoginController
 		'dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile', 'dol_openinpopup',
 	];
 
+	/**
+	 * @param ?\User $hookObject The global $user, object main.inc.php gives to the login hooks
+	 */
 	public function __construct(
-		private readonly LegacyContext $ctx,
+		private readonly Session $session,
+		private readonly Config $config,
+		private readonly Translator $translator,
 		private readonly Authenticator $authenticator,
-		private readonly SessionAuthenticator $session,
+		private readonly SessionAuthenticator $sessionAuthenticator,
 		private readonly EventDispatcher $dispatcher,
 		private readonly LegacyHooks $hooks,
 		private readonly LegacyLoginPage $page,
 		private readonly Logger $log,
-		private readonly string $urlRoot
+		private readonly ?\User $hookObject
 	) {
 	}
 
@@ -52,8 +60,8 @@ final class LoginController
 	#[Route('/login', methods: ['GET'], name: 'login', public: true)]
 	public function form(Request $r): Response
 	{
-		if (!empty($_SESSION['dol_login'])) {
-			return new RedirectResponse($this->urlRoot.'/index.php');
+		if (!empty($this->session->get('dol_login'))) {
+			return new RedirectResponse($this->config->urlRoot().'/index.php');
 		}
 
 		return new HtmlResponse($this->page->render());
@@ -62,18 +70,20 @@ final class LoginController
 	#[Route('/login', methods: ['POST'], name: 'login_post', public: true)]
 	public function authenticate(Request $r): Response
 	{
+		$urlRoot = $this->config->urlRoot();
+
 		// main.inc.php l.569: an already authenticated session ignores the login fields
-		if (!empty($_SESSION['dol_login'])) {
-			return new RedirectResponse($this->urlRoot.'/index.php');
+		if (!empty($this->session->get('dol_login'))) {
+			return new RedirectResponse($urlRoot.'/index.php');
 		}
 
-		$langs = $this->ctx->langs;
-		$langs->loadLangs(['main', 'errors']);
+		$this->translator->load('main');
+		$this->translator->load('errors');
 
-		$username = sanitizeVal(self::posted($r, 'username'), 'alpha');	// GETPOST('username', 'alpha'), main.inc.php l.707
-		$username = is_string($username) ? $username : '';
-		$entity = (int) $r->post('entity', '0');
-		$backToPage = SafeRedirect::relativePath($r->post('backtopage') ?? $r->query('backtopage'), $this->urlRoot);
+		$username = self::text($r->get('username', 'alpha'));	// main.inc.php l.706-712: an array-shaped username is ''
+		$entity = $r->getInt('entity');
+		$backToPage = SafeRedirect::relativePath(self::text($r->get('backtopage')), $urlRoot);
+		$actionLogin = $r->get('actionlogin', 'aZ09');
 
 		// main.inc.php l.610-617: hooks for security access
 		$this->hooks->init(['login']);
@@ -82,35 +92,36 @@ final class LoginController
 		}
 
 		// l.621-700: captcha
-		if ($r->post('actionlogin') === 'login' && $this->authenticator->captchaRequired($username) && !$this->authenticator->checkCaptcha()) {
+		if ($actionLogin === 'login' && $this->authenticator->captchaRequired($username) && !$this->authenticator->checkCaptcha()) {
 			$this->log->warning('--- Security warning: Bad value for code, connection refused');
 
 			return $this->failed($username, $entity, 'ErrorBadValueForCode - login='.$username, $backToPage);
 		}
 
-		// l.759-764: a password in the query string ends up in access logs, history and Referer headers
+		// l.759-764: a password in the query string ends up in access logs, history and Referer headers.
+		// The query string itself is checked: raw reads, as GETPOST(..., 1).
 		if ((string) $r->query('password', '') !== '' && (string) $r->query('afteroauthloginreturn', '') === '') {
-			$this->log->warning('--- Login submission with credentials in the query string refused for '.$this->urlRoot.'/login');
-			$_SESSION['dol_loginmesg'] = $langs->transnoentitiesnoconv('ErrorLoginMustBePostMethod');
+			$this->log->warning('--- Login submission with credentials in the query string refused for '.$urlRoot.'/login');
+			$this->session->set('dol_loginmesg', $this->translator->transnoentities('ErrorLoginMustBePostMethod'));
 
 			return $this->toLoginPage($backToPage);
 		}
 
-		if ($r->post('actionlogin') !== 'login') {
+		if ($actionLogin !== 'login') {
 			return $this->toLoginPage($backToPage);
 		}
 
 		// l.787-808: second step of a two-factor authentication, or login and password
-		$secondStep = !empty($_SESSION['dol_totp_pending']) && $r->post('totpcode') !== null;
+		$secondStep = !empty($this->session->get('dol_totp_pending')) && $r->isSet('totpcode');
 		$result = $secondStep
-			? $this->authenticator->attemptTotp((string) $r->post('totpcode'))
-			: $this->authenticator->attempt($username, self::posted($r, 'password'), $entity);
+			? $this->authenticator->attemptTotp(self::text($r->get('totpcode', 'alphanohtml')))
+			: $this->authenticator->attempt($username, self::text($r->get('password', 'password')), $entity);
 		if ($result->needsTotp()) {
 			return $this->toLoginPage($backToPage);
 		}
 		if (!$result->ok()) {
 			$this->log->info('Bad password, connection refused (see a previous notice message for more info)');
-			$audit = $secondStep ? $langs->trans('TOTPCodeRefused').' - login='.$username : null;
+			$audit = $secondStep ? $this->translator->trans('TOTPCodeRefused').' - login='.$username : null;
 
 			return $this->failed($username, $entity, $audit, $backToPage);
 		}
@@ -123,43 +134,25 @@ final class LoginController
 	 */
 	private function openSession(Request $r, AuthenticationResult $result, ?string $backToPage): Response
 	{
-		$langs = $this->ctx->langs;
-		$login = $result->login();
-		$entity = $result->entity();
+		$urlRoot = $this->config->urlRoot();
 
-		$user = new \User($this->ctx->db);
-		$fetched = $user->fetch(0, $login, '', 1, $entity > 0 ? $entity : -1);
-		if ($fetched <= 0 || $user->isNotIntoValidityDateRange()) {
+		$user = $this->authenticator->loadUser($result);
+		if (is_string($user)) {
 			$this->log->info('User not found or not valid, connection refused');
-			if ($fetched == 0) {
-				$_SESSION['dol_loginmesg'] = $langs->transnoentitiesnoconv('ErrorCantLoadUserFromDolibarrDatabase', $login);
-				$audit = 'ErrorCantLoadUserFromDolibarrDatabase - login='.$login;
-			} elseif ($fetched < 0) {
-				$_SESSION['dol_loginmesg'] = (string) $user->error;
-				$audit = (string) $user->error;
-			} else {
-				$_SESSION['dol_loginmesg'] = $langs->transnoentitiesnoconv('ErrorLoginDateValidity');
-				$audit = $langs->trans('ErrorLoginDateValidity').' - login='.$login;
-			}
 
-			return $this->failed($login, $entity, $audit, $backToPage, $result->authMode());
-		}
-
-		// l.954-957: the login was forced to another entity than the current one, and succeeded
-		if ($entity > 0 && (int) $this->ctx->conf->entity !== $entity) {
-			$this->ctx->conf->entity = $entity;
+			return $this->failed($result->login(), $result->entity(), $user, $backToPage, $result->authMode());
 		}
 
 		$clientInfo = [];
 		foreach (self::CLIENT_INFO_FIELDS as $field) {
-			$value = $r->post($field);
-			if ($value !== null) {
+			$value = $r->get($field, 'alphanohtml');
+			if (is_string($value)) {
 				$clientInfo[$field] = $value;
 			}
 		}
 
 		try {
-			$this->session->login($user, $result->authMode(), $clientInfo);
+			$this->sessionAuthenticator->login($user, $result->authMode(), $clientInfo);
 		} catch (AuthenticationException) {
 			return new HtmlResponse(dol_escape_htmltag('Error in some triggers USER_LOGIN or in some hooks afterLogin'), 500);
 		}
@@ -168,10 +161,10 @@ final class LoginController
 		// main.inc.php checks it on the login request only, so the next page must be that one. Legacy runs the
 		// MAIN_LANDING_PAGE redirection first, which skips this check: here the forced change always wins.
 		if (!empty($user->force_pass_change) && $result->authMode() === 'dolibarr') {
-			return new RedirectResponse($this->urlRoot.'/user/changepassword.php');
+			return new RedirectResponse($urlRoot.'/user/changepassword.php');
 		}
 
-		return new RedirectResponse($backToPage ?? $this->landingPage($user) ?? $this->urlRoot.'/index.php');
+		return new RedirectResponse($backToPage ?? $this->landingPage($user) ?? $urlRoot.'/index.php');
 	}
 
 	/**
@@ -179,12 +172,12 @@ final class LoginController
 	 */
 	private function landingPage(\User $user): ?string
 	{
-		$landingPage = getDolUserString('MAIN_LANDING_PAGE', getDolGlobalString('MAIN_LANDING_PAGE'), $user);
+		$landingPage = $this->sessionAuthenticator->landingPage($user);
 		if ($landingPage === '') {
 			return null;
 		}
 
-		return SafeRedirect::relativePath(dol_buildpath($landingPage, 1), $this->urlRoot);
+		return SafeRedirect::relativePath(dol_buildpath($landingPage, 1), $this->config->urlRoot());
 	}
 
 	/**
@@ -192,14 +185,14 @@ final class LoginController
 	 */
 	private function failed(string $username, int $entity, ?string $audit, ?string $backToPage, string $authMode = ''): Response
 	{
-		if (empty($_SESSION['dol_loginmesg'])) {
-			$_SESSION['dol_loginmesg'] = $this->ctx->langs->transnoentitiesnoconv('ErrorBadLoginPassword');
+		if (empty($this->session->get('dol_loginmesg'))) {
+			$this->session->set('dol_loginmesg', $this->translator->transnoentities('ErrorBadLoginPassword'));
 		}
 
 		$this->dispatcher->dispatch(new UserLoginFailed($username, $entity, $audit));
 
 		$this->hooks->init(['login']);
-		$this->executeHook('afterLoginFailed', ['dol_authmode' => $authMode, 'dol_loginmesg' => $_SESSION['dol_loginmesg']]);
+		$this->executeHook('afterLoginFailed', ['dol_authmode' => $authMode, 'dol_loginmesg' => $this->session->get('dol_loginmesg')]);
 
 		return $this->toLoginPage($backToPage);
 	}
@@ -210,18 +203,21 @@ final class LoginController
 	private function executeHook(string $name, array $parameters): HookResult
 	{
 		$action = '';
-		$object = $this->ctx->user;
+		$object = $this->hookObject;
 
 		return $this->hooks->execute($name, $parameters, $object, $action);
 	}
 
 	private function toLoginPage(?string $backToPage): RedirectResponse
 	{
-		return new RedirectResponse($this->urlRoot.'/login'.($backToPage === null ? '' : '?backtopage='.rawurlencode($backToPage)));
+		return new RedirectResponse($this->config->urlRoot().'/login'.($backToPage === null ? '' : '?backtopage='.rawurlencode($backToPage)));
 	}
 
-	private static function posted(Request $r, string $key): string
+	/**
+	 * A filtered value as a string: '' when absent or not a string (an array-shaped parameter).
+	 */
+	private static function text(mixed $value): string
 	{
-		return $r->post($key) ?? '';
+		return is_string($value) ? $value : '';
 	}
 }

@@ -7,13 +7,17 @@ namespace Dolibarr\Core;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Legacy\FlashBag;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
 use Dolibarr\Core\Legacy\LegacyHooks;
+use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Legacy\LegacyLayout;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
+use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Core\Legacy\LegacyTranslator;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Module\ModuleInterface;
@@ -44,6 +48,9 @@ final class CoreServices
 	): void {
 		$c->instance(Request::class, $request);
 		$c->instance(LegacyContext::class, $ctx);
+		$c->set(InputFilter::class, static fn (): InputFilter => new LegacyInputFilter());
+		$c->set(Session::class, static fn (): Session => new LegacySession());
+		$c->set(Config::class, static fn (): Config => new LegacyConfig($ctx));
 		$c->set(Connection::class, static fn (): Connection => new Connection($ctx->db));
 		$c->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;

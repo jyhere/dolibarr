@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Database\Connection;
-use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
@@ -22,6 +21,7 @@ use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Module\User\View\UserCardHtml;
+use Dolibarr\Tests\Integration\Fixture\GlobalsRequest;
 use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
 use PHPUnit\Framework\TestCase;
 
@@ -32,8 +32,16 @@ final class UserControllerShowTest extends TestCase
 	/** @var array<mixed> */
 	private array $session = [];
 
+	/** @var array<mixed> */
+	private array $get = [];
+
+	/** @var array<mixed> */
+	private array $post = [];
+
 	protected function setUp(): void
 	{
+		$this->get = $_GET;
+		$this->post = $_POST;
 		// Browser detection is done by main.inc.php, not by master.inc.php used here: the banner reads it.
 		$this->session = $_SESSION ?? [];
 		$conf = $GLOBALS['conf'];
@@ -48,11 +56,13 @@ final class UserControllerShowTest extends TestCase
 	{
 		$GLOBALS['conf']->browser = $this->browser;
 		$_SESSION = $this->session;
+		$_GET = $this->get;
+		$_POST = $this->post;
 	}
 
 	public function testShowBuildsViewModelWithEntityAndTabs(): void
 	{
-		$vm = $this->controller()->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		$vm = $this->controller()->show(GlobalsRequest::create('GET', '/user/1', [], []), 1);
 
 		self::assertSame('user:user_show', $vm->template);
 		$user = $vm->exposed['user'];
@@ -71,7 +81,7 @@ final class UserControllerShowTest extends TestCase
 
 	public function testAdminViewingSelfGetsModifyAndCannotDisableHimself(): void
 	{
-		$vm = $this->controller()->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		$vm = $this->controller()->show(GlobalsRequest::create('GET', '/user/1', [], []), 1);
 		$card = $vm->data['card'];
 		self::assertInstanceOf(UserCardHtml::class, $card);
 		$langs = $GLOBALS['langs'];
@@ -88,7 +98,7 @@ final class UserControllerShowTest extends TestCase
 	public function testShowUnknownThrowsNotFound(): void
 	{
 		$this->expectException(NotFoundException::class);
-		$this->controller()->show(new Request('GET', '/user/999999', [], [], [], []), 999999);
+		$this->controller()->show(GlobalsRequest::create('GET', '/user/999999', [], []), 999999);
 	}
 
 	public function testHookOutputIsComposedAsCardPhpPrintsIt(): void
@@ -101,7 +111,7 @@ final class UserControllerShowTest extends TestCase
 		]);
 
 		ob_start();
-		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		$vm = $this->controller($hooks)->show(GlobalsRequest::create('GET', '/user/1', [], []), 1);
 		self::assertSame('', ob_get_clean());
 
 		self::assertSame(['doActions', 'formObjectOptions', 'addMoreObjectBlock', 'addMoreActionsButtons'], $hooks->calls);
@@ -119,7 +129,7 @@ final class UserControllerShowTest extends TestCase
 			'addMoreActionsButtons' => ['echo' => '[echo buttons]', 'print' => '[print buttons]', 'code' => 1],
 		]);
 
-		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		$vm = $this->controller($hooks)->show(GlobalsRequest::create('GET', '/user/1', [], []), 1);
 
 		self::assertSame('[echo block][print block]', $vm->data['hookMoreObjectBlock']);
 		self::assertSame('[echo buttons]', $vm->data['hookMoreActionsButtons']);
@@ -131,7 +141,7 @@ final class UserControllerShowTest extends TestCase
 		$_SESSION = [];
 		$hooks = new ScriptedHooks(['doActions' => ['code' => -1, 'error' => 'Hook failed', 'errors' => ['First error', 'Second error']]]);
 
-		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', ['group' => '3'], [], [], []), 1);
+		$vm = $this->controller($hooks)->show(GlobalsRequest::create('GET', '/user/1', ['group' => '3'], []), 1);
 
 		self::assertSame('user:user_show', $vm->template);
 		self::assertSame(['Hook failed', 'First error', 'Second error'], $_SESSION['dol_events']['errors']);

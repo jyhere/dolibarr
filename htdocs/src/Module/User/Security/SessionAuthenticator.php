@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Security;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Logger;
+use Dolibarr\Core\Session;
 use Dolibarr\Module\User\Event\UserLoggedIn;
 
 /**
  * Opens the legacy session of an authenticated user, exactly as main.inc.php
  * l.1098-1178 does, so that the legacy pages and the MVC routes share it.
+ *
+ * @internal legacy adapter: works on the legacy globals (LegacyContext) by design
  */
 final class SessionAuthenticator
 {
 	public function __construct(
 		private readonly LegacyContext $ctx,
+		private readonly Session $session,
+		private readonly Config $config,
 		private readonly EventDispatcher $dispatcher,
 		private readonly LegacyHooks $hooks,
 		private readonly Connection $connection,
@@ -59,39 +65,41 @@ final class SessionAuthenticator
 		$inPopup = self::text($clientInfo, 'dol_openinpopup') !== '';
 
 		// A fresh session id: an id fixed before the login is worth nothing (the data, CSRF token included, is kept)
-		if (session_status() === PHP_SESSION_ACTIVE && !session_regenerate_id(true)) {
+		try {
+			$this->session->regenerate();
+		} catch (\RuntimeException) {
 			$this->log->warning('SessionAuthenticator: session id could not be regenerated');
 		}
 
 		// main.inc.php l.1102-1114: values always stored
-		$_SESSION['dol_login'] = $user->login;
-		$_SESSION['dol_logindate'] = dol_now('gmt');
-		$_SESSION['dol_authmode'] = $authMode;
-		$_SESSION['dol_tz'] = $tz;
-		$_SESSION['dol_tz_string'] = $tzString;
-		$_SESSION['dol_dst'] = $dst;
-		$_SESSION['dol_dst_observed'] = self::int($clientInfo, 'dst_observed');
-		$_SESSION['dol_dst_first'] = $dstFirst;
-		$_SESSION['dol_dst_second'] = $dstSecond;
-		$_SESSION['dol_screenwidth'] = $screenWidth;
-		$_SESSION['dol_screenheight'] = $screenHeight;
-		$_SESSION['dol_company'] = getDolGlobalString('MAIN_INFO_SOCIETE_NOM');
-		$_SESSION['dol_entity'] = $conf->entity;
+		$this->session->set('dol_login', $user->login);
+		$this->session->set('dol_logindate', dol_now('gmt'));
+		$this->session->set('dol_authmode', $authMode);
+		$this->session->set('dol_tz', $tz);
+		$this->session->set('dol_tz_string', $tzString);
+		$this->session->set('dol_dst', $dst);
+		$this->session->set('dol_dst_observed', self::int($clientInfo, 'dst_observed'));
+		$this->session->set('dol_dst_first', $dstFirst);
+		$this->session->set('dol_dst_second', $dstSecond);
+		$this->session->set('dol_screenwidth', $screenWidth);
+		$this->session->set('dol_screenheight', $screenHeight);
+		$this->session->set('dol_company', $this->config->string('MAIN_INFO_SOCIETE_NOM'));
+		$this->session->set('dol_entity', $conf->entity);
 		// l.1115-1134: values stored only if defined, the hide-menu flags never from inside a dialog popup
 		foreach (['dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile'] as $key) {
 			$value = self::int($clientInfo, $key);
 			if ($value !== 0 && !($inPopup && in_array($key, ['dol_hide_topmenu', 'dol_hide_leftmenu'], true))) {
-				$_SESSION[$key] = $value;
+				$this->session->set($key, $value);
 			}
 		}
 
-		$this->log->info("This is a new started user session. _SESSION['dol_login']=".$user->login.' Session id='.session_id());
+		$this->log->info("This is a new started user session. _SESSION['dol_login']=".$user->login.' Session id='.$this->session->id());
 
 		// l.1142-1146: max number of concurrent sessions per user. The function is loaded by
 		// main.inc.php l.115-116 only when the sessions are stored in database.
 		$limit = (int) ($conf->file->main_limit_sessions_per_user ?? 0);
 		if ($limit > 0 && function_exists('dolSessionsLimitForUser')) {
-			dolSessionsLimitForUser($user->id, $limit, session_id());
+			dolSessionsLimitForUser($user->id, $limit, $this->session->id());
 		}
 
 		$this->connection->begin();
@@ -117,16 +125,22 @@ final class SessionAuthenticator
 			}
 		} catch (\Throwable $e) {
 			$this->connection->rollback();
-			if (session_status() === PHP_SESSION_ACTIVE) {
-				session_destroy();
-			}
-			// session_destroy() leaves $_SESSION filled for the rest of the request: nothing may see a logged user
-			$_SESSION = [];
+			// Its data is emptied too: nothing may see a logged user for the rest of the request
+			$this->session->destroy();
 			$this->log->error('Error in some triggers USER_LOGIN or in some hooks afterLogin: '.$e->getMessage());
 
 			throw $e instanceof AuthenticationException ? $e : new AuthenticationException('Error in some triggers USER_LOGIN or in some hooks afterLogin', 0, $e);
 		}
 		$this->connection->commit();
+	}
+
+	/**
+	 * The landing page of a user just logged in (main.inc.php l.1180-1192): his MAIN_LANDING_PAGE,
+	 * else the one of the instance, '' when none.
+	 */
+	public function landingPage(\User $user): string
+	{
+		return getDolUserString('MAIN_LANDING_PAGE', $this->config->string('MAIN_LANDING_PAGE'), $user);
 	}
 
 	/**

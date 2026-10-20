@@ -73,6 +73,8 @@ final class LegacyContext
 
 	/**
 	 * Authentication mode of the current session ($_SESSION['dol_authmode']), '' when none.
+	 * Kept for the legacy view UserCardChrome, which receives the LegacyContext; controllers and
+	 * services read the session through Session.
 	 */
 	public function authMode(): string
 	{

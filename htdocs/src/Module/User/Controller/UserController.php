@@ -81,7 +81,7 @@ final class UserController
 			$parameters = [
 				'id' => $id,
 				'socid' => $this->me->companyId(),
-				'group' => (int) $r->query('group', '0'),
+				'group' => $r->getInt('group'),
 				'caneditgroup' => $this->perms->canEditGroups($user),
 			];
 

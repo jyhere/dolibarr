@@ -12,6 +12,7 @@ use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Http\TextResponse;
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\ArgumentResolver;
 use Dolibarr\Core\Routing\MatchedRoute;
@@ -227,11 +228,12 @@ final class Kernel
 	}
 
 	/**
-	 * Request rebuilt from the superglobals as left by main.inc.php.
+	 * Request rebuilt from the superglobals as left by main.inc.php, reading its parameters through
+	 * GETPOST() (the legacy functions are loaded by then).
 	 */
 	public function requestForRun(): Request
 	{
-		return Request::fromGlobals($this->urlRoot);
+		return Request::fromGlobals($this->urlRoot)->withInputFilter(new LegacyInputFilter());
 	}
 
 	/**

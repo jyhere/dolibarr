@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Controller;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\HtmlResponse;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Http\SafeRedirect;
-use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyInput;
 use Dolibarr\Core\Routing\Route;
+use Dolibarr\Core\Session;
 use Dolibarr\Module\User\Event\UserLoggedOut;
 
 /**
@@ -26,12 +27,15 @@ final class LogoutController
 	/** Display flags kept across the disconnection (logout.php l.88-107). */
 	private const MENU_FLAGS = ['dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile'];
 
+	/**
+	 * @param ?\User $user The global $user: USER_LOGOUT trigger and afterLogout hooks object
+	 */
 	public function __construct(
-		private readonly LegacyContext $ctx,
+		private readonly Session $session,
+		private readonly Config $config,
 		private readonly EventDispatcher $dispatcher,
 		private readonly LegacyHooks $hooks,
-		private readonly string $urlRoot,
-		private readonly string $mainUrlRoot
+		private readonly ?\User $user
 	) {
 	}
 
@@ -41,22 +45,25 @@ final class LogoutController
 	#[Route('/logout', methods: ['GET', 'POST'], name: 'logout')]
 	public function logout(Request $r): Response
 	{
+		$urlRoot = $this->config->urlRoot();
+
 		// A present but invalid CSRF token: main.inc.php has emptied $_POST, set a warning message and
 		// errorcode=InvalidToken. The disconnection is cancelled (spec §8; legacy logout.php disconnects anyway).
 		// A GET without token, the legacy menu link, still disconnects.
-		if ($r->query('errorcode') === 'InvalidToken') {
-			return new RedirectResponse($this->urlRoot.'/index.php');
+		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return new RedirectResponse($urlRoot.'/index.php');
 		}
 
 		// l.50-56: forced authentication modes, only the session keys are cleared
-		if ($this->ctx->authMode() === 'forceuser' || $this->ctx->authMode() === 'http') {
-			unset($_SESSION['dol_login'], $_SESSION['dol_entity'], $_SESSION['urlfrom']);
+		$authMode = $this->session->get('dol_authmode', '');
+		if ($authMode === 'forceuser' || $authMode === 'http') {
+			$this->clearLogin();
 
 			return new HtmlResponse('');
 		}
 
 		// l.68-73: trigger USER_LOGOUT (through the LegacyTriggerBridge)
-		$user = $this->ctx->user;
+		$user = $this->user;
 		if ($user !== null) {
 			$this->dispatcher->dispatch(new UserLoggedOut($user));
 		}
@@ -67,51 +74,55 @@ final class LogoutController
 		$this->hooks->init(['logout']);
 		$this->hooks->execute('afterLogout', [], $object, $action);
 
-		// l.84-100: url to go after the disconnection
-		$sessionUrlfrom = $_SESSION['urlfrom'] ?? '';
-		$urlfrom = LegacyInput::urlParameter(is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? $sessionUrlfrom : self::param($r, 'urlfrom'));
-		$url = $this->urlRoot.'/index.php';
+		// l.84-100: url to go after the disconnection. GETPOST('urlfrom') applies its URL cleaning to the
+		// request value; the session value gets the same one through LegacyInput::urlParameter().
+		$sessionUrlfrom = $this->session->get('urlfrom', '');
+		$urlfrom = is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? LegacyInput::urlParameter($sessionUrlfrom) : self::text($r->get('urlfrom'));
+		$url = $urlRoot.'/index.php';
 		if ($urlfrom !== '') {
-			$url = SafeRedirect::relativePath($this->urlRoot.$urlfrom, $this->urlRoot) ?? $url;
+			$url = SafeRedirect::relativePath($urlRoot.$urlfrom, $urlRoot) ?? $url;
 		}
-		$gotoUrl = getDolGlobalString('MAIN_LOGOUT_GOTO_URL');
+		$gotoUrl = $this->config->string('MAIN_LOGOUT_GOTO_URL');
 		if ($gotoUrl !== '') {
 			$url = $gotoUrl;
 		}
 		foreach (self::MENU_FLAGS as $flag) {
-			if (self::param($r, $flag) !== '') {
+			if (!empty($r->get($flag))) {
 				$url .= (str_contains($url, '?') ? '&' : '?').$flag.'=1';
 			}
 		}
 
 		// l.109-116: OpenID Connect sessions go through the OIDC logout url
-		if (getDolGlobalInt('MAIN_AUTHENTICATION_OIDC_ON', 0) > 0 && !empty($_SESSION['OPENID_CONNECT']) && getDolGlobalString('MAIN_AUTHENTICATION_OIDC_LOGOUT_URL') !== '') {
+		$oidcLogoutUrl = $this->config->string('MAIN_AUTHENTICATION_OIDC_LOGOUT_URL');
+		if ($this->config->int('MAIN_AUTHENTICATION_OIDC_ON') > 0 && !empty($this->session->get('OPENID_CONNECT')) && $oidcLogoutUrl !== '') {
 			if (str_starts_with($url, '/')) {
-				$url = $this->mainUrlRoot.$url;
+				$url = $this->config->mainUrlRoot().$url;
 			}
-			$url = getDolGlobalString('MAIN_AUTHENTICATION_OIDC_LOGOUT_URL').'?client_id='.getDolGlobalString('MAIN_AUTHENTICATION_OIDC_CLIENT_ID').'&returnTo='.urlencode($url);
+			$url = $oidcLogoutUrl.'?client_id='.$this->config->string('MAIN_AUTHENTICATION_OIDC_CLIENT_ID').'&returnTo='.urlencode($url);
 		}
 
 		// l.118-122: destroy the session
-		if (session_status() === PHP_SESSION_ACTIVE) {
-			session_destroy();
-		}
-		unset($_SESSION['dol_login'], $_SESSION['dol_entity'], $_SESSION['urlfrom']);
+		$this->session->destroy();
 
-		if (self::param($r, 'noredirect') !== '') {
+		if (!empty($r->get('noredirect'))) {
 			return new HtmlResponse('');
 		}
 
 		return new RedirectResponse($url);
 	}
 
-	/**
-	 * GETPOST($key): posted value, else query value; '' when absent or '0' like an empty GETPOST.
-	 */
-	private static function param(Request $r, string $key): string
+	private function clearLogin(): void
 	{
-		$value = $r->post($key) ?? $r->query($key) ?? '';
+		foreach (['dol_login', 'dol_entity', 'urlfrom'] as $key) {
+			$this->session->remove($key);
+		}
+	}
 
-		return $value === '0' ? '' : $value;
+	/**
+	 * A filtered value as a string: '' when absent or not a string.
+	 */
+	private static function text(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
 	}
 }

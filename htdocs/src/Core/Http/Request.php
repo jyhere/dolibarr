@@ -6,6 +6,10 @@ namespace Dolibarr\Core\Http;
 
 /**
  * Immutable HTTP request value object.
+ *
+ * get(), getInt() and isSet() are the typed reads of the controllers: they go through the injected
+ * InputFilter (GETPOST() once the Kernel has injected it). query(), post() and has() give the raw
+ * values of the arrays the request was built with, for the routing level.
  */
 final class Request
 {
@@ -15,6 +19,9 @@ final class Request
 
 	/** @var array<string,string> header values indexed by lower-case name */
 	private readonly array $headers;
+
+	/** Not readonly: withInputFilter() sets it on a clone */
+	private ?InputFilter $inputFilter = null;
 
 	/**
 	 * @param string               $method  HTTP method
@@ -104,6 +111,49 @@ final class Request
 		);
 	}
 
+	/**
+	 * A copy of the request reading its parameters through $f.
+	 */
+	public function withInputFilter(InputFilter $f): self
+	{
+		$clone = clone $this;
+		$clone->inputFilter = $f;
+
+		return $clone;
+	}
+
+	/**
+	 * The parameter $key filtered by $filter (a GETPOST() check), $default when absent.
+	 *
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	public function get(string $key, string $filter = 'alphanohtml', mixed $default = null): mixed
+	{
+		return $this->inputFilter()->filter($key, $filter, $default);
+	}
+
+	/**
+	 * The parameter $key as GETPOSTINT() reads it, $default when absent.
+	 *
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	public function getInt(string $key, int $default = 0): int
+	{
+		$value = $this->inputFilter()->filter($key, 'int', $default);
+
+		return is_int($value) ? $value : (is_numeric($value) ? (int) $value : $default);
+	}
+
+	/**
+	 * Whether the parameter $key is sent, even empty (GETPOSTISSET()).
+	 *
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	public function isSet(string $key): bool
+	{
+		return $this->inputFilter()->isSet($key);
+	}
+
 	public function method(): string
 	{
 		return $this->method;
@@ -162,5 +212,17 @@ final class Request
 	public function has(string $key): bool
 	{
 		return array_key_exists($key, $this->query) || array_key_exists($key, $this->post);
+	}
+
+	/**
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	private function inputFilter(): InputFilter
+	{
+		if ($this->inputFilter === null) {
+			throw new \LogicException('No InputFilter injected');
+		}
+
+		return $this->inputFilter;
 	}
 }

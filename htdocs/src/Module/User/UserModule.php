@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
@@ -16,6 +17,7 @@ use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Logger;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\UrlGenerator;
+use Dolibarr\Core\Session;
 use Dolibarr\Core\Translator;
 use Dolibarr\Module\User\Controller\LoginController;
 use Dolibarr\Module\User\Controller\LogoutController;
@@ -53,11 +55,11 @@ final class UserModule implements ModuleInterface
 			self::get($c, LegacyContext::class)
 		));
 		$c->set(UserRepository::class, static function (Container $c): UserRepository {
-			return new UserRepository(self::get($c, Connection::class), (int) self::get($c, LegacyContext::class)->conf->entity);
+			return new UserRepository(self::get($c, Connection::class), self::get($c, Config::class)->entity());
 		});
-		// The single legacy touch point of the wiring: configuration read through the legacy
-		// functions, called when the service is built (after main.inc.php).
+		// Configuration read when the service is built (after main.inc.php); the hierarchy from the legacy user.
 		$c->set(UserPermissionChecker::class, static function (Container $c): UserPermissionChecker {
+			$config = self::get($c, Config::class);
 			$legacyUser = self::get($c, LegacyContext::class)->user;
 			$subordinates = [];
 			foreach ($legacyUser === null ? [] : $legacyUser->getAllChildIds(1) as $id) {
@@ -66,13 +68,13 @@ final class UserModule implements ModuleInterface
 
 			return new UserPermissionChecker(
 				self::get($c, CurrentUser::class),
-				getDolGlobalInt('MAIN_USE_ADVANCED_PERMS') > 0,
-				isModEnabled('salaries'),
-				isModEnabled('hrm'),
+				$config->int('MAIN_USE_ADVANCED_PERMS') > 0,
+				$config->isModuleEnabled('salaries'),
+				$config->isModuleEnabled('hrm'),
 				$subordinates,
-				isModEnabled('multicompany'),
-				getDolGlobalString('MULTICOMPANY_TRANSVERSE_MODE') !== '',
-				(int) self::get($c, LegacyContext::class)->conf->entity
+				$config->isModuleEnabled('multicompany'),
+				$config->string('MULTICOMPANY_TRANSVERSE_MODE') !== '',
+				$config->entity()
 			);
 		});
 		$c->set(UserCardChrome::class, static fn (Container $c): UserCardChrome => new UserCardChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
@@ -81,32 +83,42 @@ final class UserModule implements ModuleInterface
 			// main.inc.php l.541-554: the constant MAIN_AUTHENTICATION_MODE overrides $dolibarr_main_authentication
 			$modes = defined('MAIN_AUTHENTICATION_MODE') ? constant('MAIN_AUTHENTICATION_MODE') : ($ctx->conf->file->main_authentication ?? 'dolibarr');
 
-			return new Authenticator($ctx, explode(',', is_string($modes) && $modes !== '' ? $modes : 'dolibarr'));
+			return new Authenticator(
+				$ctx,
+				self::get($c, Session::class),
+				self::get($c, Config::class),
+				explode(',', is_string($modes) && $modes !== '' ? $modes : 'dolibarr')
+			);
 		});
 		$c->set(SessionAuthenticator::class, static fn (Container $c): SessionAuthenticator => new SessionAuthenticator(
 			self::get($c, LegacyContext::class),
+			self::get($c, Session::class),
+			self::get($c, Config::class),
 			self::get($c, EventDispatcher::class),
 			self::get($c, LegacyHooks::class),
 			self::get($c, Connection::class),
 			self::get($c, Logger::class)
 		));
 		$c->set(LegacyLoginPage::class, static fn (Container $c): LegacyLoginPage => new LegacyLoginPage(self::get($c, LegacyContext::class)));
+		// The global $user goes to the controllers as the legacy object of their hooks and events
 		$c->set(LoginController::class, static fn (Container $c): LoginController => new LoginController(
-			self::get($c, LegacyContext::class),
+			self::get($c, Session::class),
+			self::get($c, Config::class),
+			self::get($c, Translator::class),
 			self::get($c, Authenticator::class),
 			self::get($c, SessionAuthenticator::class),
 			self::get($c, EventDispatcher::class),
 			self::get($c, LegacyHooks::class),
 			self::get($c, LegacyLoginPage::class),
 			self::get($c, Logger::class),
-			DOL_URL_ROOT
+			self::get($c, LegacyContext::class)->user
 		));
 		$c->set(LogoutController::class, static fn (Container $c): LogoutController => new LogoutController(
-			self::get($c, LegacyContext::class),
+			self::get($c, Session::class),
+			self::get($c, Config::class),
 			self::get($c, EventDispatcher::class),
 			self::get($c, LegacyHooks::class),
-			DOL_URL_ROOT,
-			DOL_MAIN_URL_ROOT
+			self::get($c, LegacyContext::class)->user
 		));
 		$c->set(UserController::class, static fn (Container $c): UserController => new UserController(
 			self::get($c, UserRepository::class),

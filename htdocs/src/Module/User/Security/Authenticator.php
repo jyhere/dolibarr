@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Security;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Session;
 
 /**
  * Credentials check of the login form, through the legacy functions of
  * core/lib/security2.lib.php, as main.inc.php l.769-809 does.
+ *
+ * @internal legacy adapter: works on the legacy globals (LegacyContext) by design
  */
 final class Authenticator
 {
@@ -21,7 +25,12 @@ final class Authenticator
 	/**
 	 * @param list<string> $authModes $dolibarr_main_authentication exploded on ','
 	 */
-	public function __construct(private readonly LegacyContext $ctx, array $authModes)
+	public function __construct(
+		private readonly LegacyContext $ctx,
+		private readonly Session $session,
+		private readonly Config $config,
+		array $authModes
+	)
 	{
 		$modes = [];
 		foreach ($authModes as $mode) {
@@ -43,7 +52,7 @@ final class Authenticator
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/security2.lib.php';
 
 		$entity = $this->entity($entity);
-		unset($_SESSION['dol_totp_pending']);	// A new password step cancels any pending second step (l.797)
+		$this->session->remove('dol_totp_pending');	// A new password step cancels any pending second step (l.797)
 
 		$modes = array_values(array_diff($this->authModes, self::OAUTH_MODES));
 		// main.inc.php l.870: some LDAP servers accept an anonymous bind, an empty password is always refused with ldap
@@ -79,7 +88,7 @@ final class Authenticator
 	{
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/security2.lib.php';
 
-		$pending = $_SESSION['dol_totp_pending'] ?? null;
+		$pending = $this->session->get('dol_totp_pending');
 		if (!is_array($pending) || empty($pending['login'])) {
 			return AuthenticationResult::failure();
 		}
@@ -98,16 +107,16 @@ final class Authenticator
 	 */
 	public function captchaRequired(string $username): bool
 	{
-		return $username !== '' && getDolGlobalString('MAIN_SECURITY_ENABLECAPTCHA') !== '' && !isset($_SESSION['dol_bypass_antispam']);
+		return $username !== '' && $this->config->string('MAIN_SECURITY_ENABLECAPTCHA') !== '' && !$this->session->has('dol_bypass_antispam');
 	}
 
 	/**
 	 * Validate the captcha of the login form with its handler (main.inc.php l.621-667).
-	 * On a refusal, the message is stored in $_SESSION['dol_loginmesg'].
+	 * On a refusal, the message is stored in the session key dol_loginmesg.
 	 */
 	public function checkCaptcha(): bool
 	{
-		$captcha = getDolGlobalString('MAIN_SECURITY_ENABLECAPTCHA_HANDLER', 'standard');
+		$captcha = $this->config->string('MAIN_SECURITY_ENABLECAPTCHA_HANDLER', 'standard');
 
 		$dirs = ['main' => '/core/modules/security/captcha/'];
 		$parts = $this->ctx->conf->modules_parts['captcha'] ?? [];
@@ -125,28 +134,67 @@ final class Authenticator
 		$ok = false;
 		$className = 'modCaptcha'.ucfirst($captcha);
 		if ($classFile === '') {
-			$_SESSION['dol_loginmesg'] = 'Error, the captcha handler '.$captcha.' has no class file found '.$className;
+			$this->session->set('dol_loginmesg', 'Error, the captcha handler '.$captcha.' has no class file found '.$className);
 		} else {
 			include_once $classFile;
 			if (!class_exists($className)) {
-				$_SESSION['dol_loginmesg'] = 'Error, the captcha handler class '.$className.' was not found after the include';
+				$this->session->set('dol_loginmesg', 'Error, the captcha handler class '.$className.' was not found after the include');
 			} else {
 				$handler = new $className($this->ctx->db, $this->ctx->conf, $this->ctx->langs, $this->ctx->user);
 				if (method_exists($handler, 'validateCodeAfterLoginSubmit')) {
 					$ok = (bool) $handler->validateCodeAfterLoginSubmit();
 				} else {
-					$_SESSION['dol_loginmesg'] = 'Error, the captcha handler '.get_class($handler).' does not have any method validateCodeAfterLoginSubmit()';
+					$this->session->set('dol_loginmesg', 'Error, the captcha handler '.get_class($handler).' does not have any method validateCodeAfterLoginSubmit()');
 				}
 			}
 		}
 
 		if (!$ok) {
 			$this->ctx->langs->loadLangs(['main', 'errors']);
-			$previous = $_SESSION['dol_loginmesg'] ?? '';
-			$_SESSION['dol_loginmesg'] = (empty($previous) || !is_string($previous) ? '' : $previous."<br>\n").$this->ctx->langs->transnoentitiesnoconv('ErrorBadValueForCode');
+			$previous = $this->session->get('dol_loginmesg', '');
+			$this->session->set('dol_loginmesg', (empty($previous) || !is_string($previous) ? '' : $previous."<br>\n").$this->ctx->langs->transnoentitiesnoconv('ErrorBadValueForCode'));
 		}
 
 		return $ok;
+	}
+
+	/**
+	 * The legacy user of validated credentials, loaded with its personal conf (main.inc.php l.880-958).
+	 * On success, the current entity becomes the one the credentials were validated on (l.954-957);
+	 * on a refusal, the message for the login page is stored in the session key dol_loginmesg.
+	 *
+	 * @return \User|string The user, or the audit text of the refusal
+	 */
+	public function loadUser(AuthenticationResult $result): \User|string
+	{
+		$langs = $this->ctx->langs;
+		$login = $result->login();
+		$entity = $result->entity();
+
+		$user = new \User($this->ctx->db);
+		$fetched = $user->fetch(0, $login, '', 1, $entity > 0 ? $entity : -1);
+		if ($fetched == 0) {
+			$this->session->set('dol_loginmesg', $langs->transnoentitiesnoconv('ErrorCantLoadUserFromDolibarrDatabase', $login));
+
+			return 'ErrorCantLoadUserFromDolibarrDatabase - login='.$login;
+		}
+		if ($fetched < 0) {
+			$this->session->set('dol_loginmesg', (string) $user->error);
+
+			return (string) $user->error;
+		}
+		if ($user->isNotIntoValidityDateRange()) {
+			$this->session->set('dol_loginmesg', $langs->transnoentitiesnoconv('ErrorLoginDateValidity'));
+
+			return $langs->trans('ErrorLoginDateValidity').' - login='.$login;
+		}
+
+		// l.954-957: the login was forced to another entity than the current one, and succeeded
+		if ($entity > 0 && (int) $this->ctx->conf->entity !== $entity) {
+			$this->ctx->conf->entity = $entity;
+		}
+
+		return $user;
 	}
 
 	/**

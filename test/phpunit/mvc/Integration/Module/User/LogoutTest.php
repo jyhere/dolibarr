@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Event\EventDispatcher;
-use Dolibarr\Core\Http\Request;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
+use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Event\UserLoggedOut;
+use Dolibarr\Tests\Integration\Fixture\GlobalsRequest;
+use Dolibarr\Tests\Integration\Fixture\UrlRootConfig;
 use PHPUnit\Framework\TestCase;
 
 final class LogoutTest extends TestCase
@@ -17,21 +20,31 @@ final class LogoutTest extends TestCase
 	/** @var array<mixed> */
 	private array $session = [];
 
+	/** @var array<mixed> */
+	private array $get = [];
+
+	/** @var array<mixed> */
+	private array $post = [];
+
 	protected function setUp(): void
 	{
 		$this->session = $_SESSION ?? [];
+		$this->get = $_GET;
+		$this->post = $_POST;
 	}
 
 	protected function tearDown(): void
 	{
 		$_SESSION = $this->session;
+		$_GET = $this->get;
+		$_POST = $this->post;
 	}
 
 	public function testLogoutDestroysSessionAndRedirectsToIndex(): void
 	{
 		$_SESSION = ['dol_login' => $GLOBALS['user']->login, 'dol_entity' => 1, 'urlfrom' => ''];
 
-		$response = $this->controller()->logout(new Request('POST', '/logout', [], [], [], []));
+		$response = $this->controller()->logout(GlobalsRequest::create('POST', '/logout', [], []));
 
 		self::assertSame(302, $response->status());
 		self::assertStringEndsWith('/index.php', $response->headers()['Location']);
@@ -49,7 +62,7 @@ final class LogoutTest extends TestCase
 			$received[] = $e;
 		});
 
-		$this->controller($dispatcher)->logout(new Request('POST', '/logout', [], [], [], []));
+		$this->controller($dispatcher)->logout(GlobalsRequest::create('POST', '/logout', [], []));
 
 		self::assertCount(1, $received);
 		self::assertSame($GLOBALS['user'], $received[0]->user);
@@ -65,7 +78,7 @@ final class LogoutTest extends TestCase
 			$received++;
 		});
 
-		$response = $this->controller($dispatcher)->logout(new Request('POST', '/logout', ['errorcode' => 'InvalidToken'], [], [], []));
+		$response = $this->controller($dispatcher)->logout(GlobalsRequest::create('POST', '/logout', ['errorcode' => 'InvalidToken'], []));
 
 		self::assertSame(302, $response->status());
 		self::assertSame('/index.php', $response->headers()['Location']);
@@ -77,7 +90,7 @@ final class LogoutTest extends TestCase
 	{
 		$_SESSION = ['dol_login' => $GLOBALS['user']->login];
 
-		$response = $this->controller()->logout(new Request('POST', '/logout', [], ['noredirect' => '1'], [], []));
+		$response = $this->controller()->logout(GlobalsRequest::create('POST', '/logout', [], ['noredirect' => '1']));
 
 		self::assertSame(200, $response->status());
 		self::assertArrayNotHasKey('Location', $response->headers());
@@ -93,7 +106,7 @@ final class LogoutTest extends TestCase
 			$received++;
 		});
 
-		$response = $this->controller($dispatcher)->logout(new Request('GET', '/logout', [], [], [], []));
+		$response = $this->controller($dispatcher)->logout(GlobalsRequest::create('GET', '/logout', [], []));
 
 		self::assertSame(200, $response->status());
 		self::assertSame(0, $received);
@@ -105,7 +118,7 @@ final class LogoutTest extends TestCase
 	{
 		$_SESSION = ['dol_login' => 'admin', 'urlfrom' => '/comm/index.php'];
 
-		$response = $this->controller(null, '/dolibarr')->logout(new Request('GET', '/logout', ['dol_hide_topmenu' => '1'], [], [], []));
+		$response = $this->controller(null, '/dolibarr')->logout(GlobalsRequest::create('GET', '/logout', ['dol_hide_topmenu' => '1'], []));
 
 		self::assertSame('/dolibarr/comm/index.php?dol_hide_topmenu=1', $response->headers()['Location']);
 	}
@@ -127,7 +140,7 @@ final class LogoutTest extends TestCase
 	{
 		$_SESSION = ['dol_login' => 'admin'];
 
-		$response = $this->controller()->logout(new Request('GET', '/logout', ['urlfrom' => $urlfrom], [], [], []));
+		$response = $this->controller()->logout(GlobalsRequest::create('GET', '/logout', ['urlfrom' => $urlfrom], []));
 
 		self::assertSame($expected, $response->headers()['Location']);
 	}
@@ -137,7 +150,7 @@ final class LogoutTest extends TestCase
 	{
 		$_SESSION = ['dol_login' => 'admin', 'urlfrom' => $urlfrom];
 
-		$response = $this->controller()->logout(new Request('GET', '/logout', [], [], [], []));
+		$response = $this->controller()->logout(GlobalsRequest::create('GET', '/logout', [], []));
 
 		self::assertSame($expected, $response->headers()['Location']);
 	}
@@ -146,19 +159,21 @@ final class LogoutTest extends TestCase
 	{
 		$_SESSION = ['dol_login' => 'admin'];
 
-		$response = $this->controller(null, '/dolibarr')->logout(new Request('GET', '/logout', ['urlfrom' => '//evil.example/x'], [], [], []));
+		$response = $this->controller(null, '/dolibarr')->logout(GlobalsRequest::create('GET', '/logout', ['urlfrom' => '//evil.example/x'], []));
 
 		self::assertSame('/dolibarr/index.php', $response->headers()['Location']);
 	}
 
 	private function controller(?EventDispatcher $dispatcher = null, string $urlRoot = ''): LogoutController
 	{
+		$ctx = LegacyContext::fromGlobals();
+
 		return new LogoutController(
-			LegacyContext::fromGlobals(),
+			new LegacySession(),
+			new UrlRootConfig(new LegacyConfig($ctx), $urlRoot, 'http://localhost'),
 			$dispatcher ?? new EventDispatcher(),
 			new LegacyHooks($GLOBALS['hookmanager']),
-			$urlRoot,
-			'http://localhost'
+			$ctx->user
 		);
 	}
 }

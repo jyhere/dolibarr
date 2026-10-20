@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Dolibarr\Tests\Integration\Module\User;
 
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Module\User\Security\Authenticator;
 use PHPUnit\Framework\TestCase;
 
@@ -54,7 +56,7 @@ final class AuthenticatorTest extends TestCase
 	{
 		$ctx = LegacyContext::fromGlobals();
 
-		return new Authenticator($ctx, explode(',', (string) $ctx->conf->file->main_authentication));
+		return new Authenticator($ctx, new LegacySession(), new LegacyConfig($ctx), explode(',', (string) $ctx->conf->file->main_authentication));
 	}
 
 	private static function env(string $name): string
