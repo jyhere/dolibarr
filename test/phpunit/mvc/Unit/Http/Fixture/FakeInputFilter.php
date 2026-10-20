@@ -36,4 +36,9 @@ final class FakeInputFilter implements InputFilter
 	{
 		return array_key_exists($key, $this->values);
 	}
+
+	public function optionals(string $element): array
+	{
+		return [];
+	}
 }

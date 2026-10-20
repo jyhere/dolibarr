@@ -20,4 +20,12 @@ interface InputFilter
 	 * Whether the parameter is sent, even empty.
 	 */
 	public function isSet(string $key): bool;
+
+	/**
+	 * The extrafields of $element ('user', 'societe'...) posted by a form, keyed 'options_<name>' as
+	 * ExtraFields::getOptionalsFromPost() does. Empty when the element has none or none is sent.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function optionals(string $element): array;
 }

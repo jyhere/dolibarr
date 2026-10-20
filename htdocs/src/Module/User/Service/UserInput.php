@@ -1,0 +1,295 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Dolibarr\Module\User\Service;
+
+use Dolibarr\Core\Config;
+use Dolibarr\Core\Http\Request;
+use Dolibarr\Module\User\Entity\User;
+use Dolibarr\Module\User\Security\UserPermissionChecker;
+
+/**
+ * What the user card form posts, read with the fields and filters of htdocs/user/card.php (action add
+ * l.287-452, action update l.478-773) and resolved against what the current user may edit: on an update a
+ * field he may not edit already carries the value of the existing user.
+ *
+ * Not read, on purpose: api_key and openid (secrets, no field on the entity: the legacy page keeps that job),
+ * ldap_sid and the social networks (no field on the entity), national_registration_number (idem), the photo
+ * upload and deletephoto (files are handled by the controller), and on an update note_public, note_private
+ * (card.php does not read them there, they have their own page).
+ *
+ * The raw values are kept as GETPOST() returns them: the validator checks them, the writer escapes them.
+ */
+final class UserInput
+{
+	/**
+	 * @param array<string, mixed> $extraFields 'options_<name>' => value
+	 * @param list<int>            $categoryIds
+	 */
+	public function __construct(
+		public readonly ?string $lastname = null,
+		public readonly string $login = '',
+		public readonly ?string $firstname = null,
+		public readonly ?string $gender = null,
+		public readonly ?string $civility = null,
+		public readonly ?string $lang = null,
+		public readonly ?string $email = null,
+		public readonly ?string $job = null,
+		public readonly ?string $officePhone = null,
+		public readonly ?string $officeFax = null,
+		public readonly ?string $userMobile = null,
+		public readonly ?string $address = null,
+		public readonly ?string $zip = null,
+		public readonly ?string $town = null,
+		public readonly ?int $countryId = null,
+		public readonly ?int $stateId = null,
+		public readonly ?string $signature = null,
+		public readonly ?string $notePublic = null,
+		public readonly ?string $notePrivate = null,
+		public readonly ?string $accountancyCode = null,
+		public readonly ?string $refEmployee = null,
+		public readonly ?string $color = null,
+		public readonly bool $admin = false,
+		public readonly bool $employee = false,
+		public readonly ?int $supervisorId = null,
+		public readonly ?int $expenseValidatorId = null,
+		public readonly ?int $holidayValidatorId = null,
+		public readonly ?int $warehouseId = null,
+		public readonly ?float $salary = null,
+		public readonly ?float $salaryExtra = null,
+		public readonly ?float $thm = null,
+		public readonly ?float $tjm = null,
+		public readonly ?float $weeklyHours = null,
+		public readonly ?\DateTimeImmutable $dateEmployment = null,
+		public readonly ?\DateTimeImmutable $dateEmploymentEnd = null,
+		public readonly ?\DateTimeImmutable $dateStartValidity = null,
+		public readonly ?\DateTimeImmutable $dateEndValidity = null,
+		public readonly ?\DateTimeImmutable $birth = null,
+		public readonly array $extraFields = [],
+		public readonly ?string $password = null,
+		public readonly array $categoryIds = [],
+		public readonly ?int $contactId = null,
+		public readonly ?int $companyId = null,
+		public readonly bool $forcePasswordChange = false,
+		public readonly bool $superadmin = false,
+		public readonly ?int $entity = null
+	) {
+	}
+
+	/**
+	 * @param User|null $existing The user being edited, null on a creation
+	 */
+	public static function fromRequest(Request $r, UserPermissionChecker $perms, ?User $existing, Config $config): self
+	{
+		$update = $existing !== null;
+		// A new user is asked to the checker as a user without id: it is not oneself, not external.
+		$target = $existing ?? new User(0, $config->entity(), '');
+
+		// The password: card.php l.463 (create) and l.511 (update, with the right to set it).
+		$password = null;
+		if (!$update || $perms->canSetPassword($target)) {
+			$password = self::text($r, 'password', 'password');
+		}
+
+		// l.311 and l.522: the ref employee is protected against deletion when it is not in the form.
+		$refEmployee = $update && !$r->isSet('ref_employee') ? $existing->refEmployee : self::text($r, 'ref_employee');
+
+		// l.392-414 and l.595-606: the superadmin flag and the entity are only meaningful to the controller.
+		$entity = $r->isSet('entity') ? (int) $r->getPost('entity', 'int', 0) : null;
+
+		// l.553-556 (update): the warehouse is only in the form when the stock module is enabled.
+		$warehouseId = $update && !$config->isModuleEnabled('stock')
+			? $existing->warehouseId
+			: self::id($r, 'fk_warehouse');
+
+		// l.531 (update): the contact and the company are only changed when the form carries them.
+		$contactId = $update ? $existing->contactId : null;
+		$companyId = $update ? $existing->companyId : null;
+		if ($update && $r->isSet('contactid')) {
+			$contactId = self::id($r, 'contactid');
+			$companyId = self::id($r, 'socid');
+		}
+
+		$salaryAllowed = $perms->canSeeSalary($target);
+		$money = static fn (string $name, ?float $current): ?float => $salaryAllowed ? self::money($r, $name) : $current;
+
+		$color = self::text($r, 'color');
+
+		$categories = $r->getPost('usercats', 'array:int', []);
+
+		return new self(
+			lastname: self::text($r, 'lastname') ?? '',
+			login: $perms->canEditLogin($target, false) ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
+			firstname: self::text($r, 'firstname'),
+			gender: self::text($r, 'gender', 'aZ09'),
+			civility: self::text($r, 'civility_code', 'aZ09'),
+			lang: self::text($r, 'default_lang', 'aZ09'),
+			email: self::email($r),
+			job: self::text($r, 'job'),
+			officePhone: self::text($r, 'office_phone'),
+			officeFax: self::text($r, 'office_fax'),
+			userMobile: self::text($r, 'user_mobile'),
+			address: self::text($r, 'address'),
+			zip: self::text($r, 'zipcode'),
+			town: self::text($r, 'town'),
+			countryId: (int) $r->getPost('country_id', 'int', 0),
+			stateId: (int) $r->getPost('state_id', 'int', 0),
+			signature: self::text($r, 'signature', 'restricthtml'),
+			notePublic: $update ? null : self::text($r, 'note_public', 'restricthtml'),
+			notePrivate: $update ? null : self::text($r, 'note_private', 'restricthtml'),
+			accountancyCode: self::text($r, 'accountancy_code'),
+			refEmployee: $refEmployee,
+			color: $color === null ? null : str_replace('#', '', $color),
+			admin: $perms->canEditAdminFlag($target) ? (bool) $r->getPost('admin', 'int', 0) : ($existing->admin ?? false),
+			employee: (bool) $r->getPost('employee', 'int', 0),
+			supervisorId: self::id($r, 'fk_user'),
+			expenseValidatorId: self::id($r, 'fk_user_expense_validator'),
+			holidayValidatorId: self::id($r, 'fk_user_holiday_validator'),
+			warehouseId: $warehouseId,
+			salary: $money('salary', $existing?->salary),
+			salaryExtra: $money('salaryextra', $existing?->salaryExtra),
+			thm: $money('thm', $existing?->thm),
+			tjm: $money('tjm', $existing?->tjm),
+			weeklyHours: $money('weeklyhours', $existing?->weeklyHours),
+			dateEmployment: self::dateFromParts($r, 'dateemployment'),
+			dateEmploymentEnd: self::dateFromParts($r, 'dateemploymentend'),
+			dateStartValidity: self::dateFromParts($r, 'datestartvalidity'),
+			dateEndValidity: self::dateFromParts($r, 'dateendvalidity'),
+			birth: self::dateFromParts($r, 'dateofbirth'),
+			extraFields: $r->optionals('user'),
+			password: $password,
+			categoryIds: is_array($categories) ? array_values(array_map('intval', $categories)) : [],
+			contactId: $contactId,
+			companyId: $companyId,
+			forcePasswordChange: (bool) $r->getPost('forcepasswordchange', 'int', 0),
+			superadmin: (bool) $r->getPost('superadmin', 'int', 0),
+			entity: $entity
+		);
+	}
+
+	/**
+	 * The user to write. $base is the existing user on an update (what the form does not carry is kept:
+	 * status, API key flag, photo, member, dates of creation and login, notes...), null on a creation.
+	 * $entity is the entity chosen by the caller, from $this->entity and $this->superadmin and the setup.
+	 */
+	public function toEntity(?User $base, int $entity): User
+	{
+		return new User(
+			id: $base->id ?? 0,
+			entity: $entity,
+			login: $this->login,
+			admin: $this->admin,
+			employee: $this->employee,
+			status: $base->status ?? 1,
+			lastname: $this->lastname,
+			firstname: $this->firstname,
+			gender: $this->gender,
+			civility: $this->civility,
+			job: $this->job,
+			email: $this->email,
+			officePhone: $this->officePhone,
+			userMobile: $this->userMobile,
+			photo: $base?->photo,
+			lang: $this->lang,
+			color: $this->color,
+			dateStartValidity: $this->dateStartValidity,
+			dateEndValidity: $this->dateEndValidity,
+			hasApiKey: $base->hasApiKey ?? false,
+			personalEmail: $base?->personalEmail,
+			personalMobile: $base?->personalMobile,
+			address: $this->address,
+			zip: $this->zip,
+			town: $this->town,
+			stateId: $this->stateId,
+			countryId: $this->countryId,
+			birth: $this->birth,
+			birthPlace: $base?->birthPlace,
+			signature: $this->signature,
+			dateLastLogin: $base?->dateLastLogin,
+			datePreviousLogin: $base?->datePreviousLogin,
+			notePublic: $base === null ? $this->notePublic : $base->notePublic,
+			notePrivate: $base === null ? $this->notePrivate : $base->notePrivate,
+			companyId: $this->companyId,
+			contactId: $this->contactId,
+			memberId: $base?->memberId,
+			supervisorId: $this->supervisorId,
+			expenseValidatorId: $this->expenseValidatorId,
+			holidayValidatorId: $this->holidayValidatorId,
+			refEmployee: $this->refEmployee,
+			refExt: $base?->refExt,
+			dateCreated: $base?->dateCreated,
+			dateModified: $base?->dateModified,
+			salary: $this->salary,
+			salaryExtra: $this->salaryExtra,
+			thm: $this->thm,
+			tjm: $this->tjm,
+			weeklyHours: $this->weeklyHours,
+			dateEmployment: $this->dateEmployment,
+			dateEmploymentEnd: $this->dateEmploymentEnd,
+			extraFields: $base === null ? $this->extraFields : array_merge($base->extraFields, $this->extraFields),
+			officeFax: $this->officeFax,
+			accountancyCode: $this->accountancyCode,
+			warehouseId: $this->warehouseId
+		);
+	}
+
+	/**
+	 * dol_mktime(0, 0, 0, <name>month, <name>day, <name>year) of a date selector, at midnight UTC;
+	 * null unless day, month and year are all given and make a real date.
+	 */
+	private static function dateFromParts(Request $r, string $name): ?\DateTimeImmutable
+	{
+		$day = $r->getInt($name.'day');
+		$month = $r->getInt($name.'month');
+		$year = $r->getInt($name.'year');
+		if ($day <= 0 || $month <= 0 || $year <= 0 || !checkdate($month, $day, $year)) {
+			return null;
+		}
+
+		return new \DateTimeImmutable(sprintf('%04d-%02d-%02d 00:00:00', $year, $month, $day), new \DateTimeZone('UTC'));
+	}
+
+	/**
+	 * A form text field, null when absent or empty.
+	 */
+	private static function text(Request $r, string $name, string $filter = 'alphanohtml'): ?string
+	{
+		$value = $r->getPost($name, $filter, '');
+
+		return is_string($value) && $value !== '' ? $value : null;
+	}
+
+	/**
+	 * The email without any whitespace (card.php l.348).
+	 */
+	private static function email(Request $r): ?string
+	{
+		$value = self::text($r, 'email');
+		$value = $value === null ? null : preg_replace('/\s+/', '', $value);
+
+		return $value === null || $value === '' ? null : $value;
+	}
+
+	/**
+	 * An id field: null unless positive (card.php l.362-364).
+	 */
+	private static function id(Request $r, string $name): ?int
+	{
+		$id = (int) $r->getPost($name, 'int', 0);
+
+		return $id > 0 ? $id : null;
+	}
+
+	/**
+	 * A money or hours field (GETPOSTFLOAT then price2num), null when empty (card.php l.371-380).
+	 */
+	private static function money(Request $r, string $name): ?float
+	{
+		if (self::text($r, $name) === null) {
+			return null;
+		}
+
+		return (float) $r->getPost($name, 'float', 0.0);
+	}
+}

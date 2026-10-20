@@ -55,4 +55,14 @@ final class LegacyConfig implements Config
 
 		return $user === null ? $default : getDolUserString($key, $default, $user);
 	}
+
+	public function limitUsers(): int
+	{
+		return (int) ($this->ctx->conf->file->main_limit_users ?? 0);
+	}
+
+	public function loginBadCharUnauthorized(): string
+	{
+		return getDolGlobalLoginBadCharUnauthorized();
+	}
 }

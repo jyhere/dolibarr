@@ -37,4 +37,14 @@ interface Config
 	 * A personal constant of the current user ($user->conf), $default when not set or without user.
 	 */
 	public function userString(string $key, string $default = ''): string;
+
+	/**
+	 * The users quota of conf.php ($dolibarr_main_limit_users), 0 when unlimited.
+	 */
+	public function limitUsers(): int;
+
+	/**
+	 * The characters a login may not contain (getDolGlobalLoginBadCharUnauthorized()), '' for none.
+	 */
+	public function loginBadCharUnauthorized(): string;
 }

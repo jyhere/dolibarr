@@ -57,4 +57,24 @@ final class LegacyInputFilter implements InputFilter
 	{
 		return GETPOSTISSET($key);
 	}
+
+	/**
+	 * Loads the extrafield definitions of $element, then reads the posted values with
+	 * ExtraFields::getOptionalsFromPost(). Unlike setOptionalsFromPost(), the enabled, visibility,
+	 * perms and mandatory checks of the definitions are not applied.
+	 */
+	public function optionals(string $element): array
+	{
+		global $db;
+
+		require_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
+		$extrafields = new \ExtraFields($db);
+		$extrafields->fetch_name_optionals_label($element);
+		$options = $extrafields->getOptionalsFromPost($element);
+
+		/** @var array<string, mixed> $result */
+		$result = is_array($options) ? $options : [];
+
+		return $result;
+	}
 }

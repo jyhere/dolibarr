@@ -49,4 +49,14 @@ final class UrlRootConfig implements Config
 	{
 		return $this->inner->userString($key, $default);
 	}
+
+	public function limitUsers(): int
+	{
+		return $this->inner->limitUsers();
+	}
+
+	public function loginBadCharUnauthorized(): string
+	{
+		return $this->inner->loginBadCharUnauthorized();
+	}
 }

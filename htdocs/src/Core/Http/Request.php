@@ -165,6 +165,18 @@ final class Request
 		return $this->inputFilter()->isSet($key);
 	}
 
+	/**
+	 * The extrafields of $element posted by a form ('options_<name>' keys), see InputFilter::optionals().
+	 *
+	 * @return array<string, mixed>
+	 *
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	public function optionals(string $element): array
+	{
+		return $this->inputFilter()->optionals($element);
+	}
+
 	public function method(): string
 	{
 		return $this->method;
