@@ -18,13 +18,19 @@ final class UserPermissionChecker
 	 * @param bool      $salariesEnabled Module salaries enabled
 	 * @param bool      $hrmEnabled      Module hrm enabled
 	 * @param list<int> $subordinateIds  Ids of the users under the current one in the hierarchy, himself included (\User::getAllChildIds(1))
+	 * @param bool      $multicompany    Module multicompany enabled
+	 * @param bool      $transverseMode  MULTICOMPANY_TRANSVERSE_MODE
+	 * @param int       $currentEntity   $conf->entity
 	 */
 	public function __construct(
 		private readonly CurrentUser $me,
 		private readonly bool $advancedPerms,
 		private readonly bool $salariesEnabled,
 		private readonly bool $hrmEnabled = false,
-		private readonly array $subordinateIds = []
+		private readonly array $subordinateIds = [],
+		private readonly bool $multicompany = false,
+		private readonly bool $transverseMode = false,
+		private readonly int $currentEntity = 1
 	) {
 	}
 
@@ -96,20 +102,145 @@ final class UserPermissionChecker
 	}
 
 	/**
-	 * card.php l.136-141 ($permissiontoreadgroup).
+	 * card.php l.137-141 ($permissiontoeditgroup, from the l.134 $permissiontoedit, before its l.155 override).
 	 */
-	public function canReadGroups(User $target): bool
+	public function canEditGroups(User $target): bool
 	{
-		if (!$this->advancedPerms) {
-			return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'read')) && $this->sameCompany($target);
-		}
+		$right = $this->advancedPerms ? $this->me->hasRight('user', 'group_advance', 'write') : $this->me->hasRight('user', 'user', 'write');
 
-		return ($this->me->isAdmin() || $this->me->hasRight('user', 'group_advance', 'read')) && $this->sameCompany($target);
+		return ($this->me->isAdmin() || $right) && $this->sameCompany($target);
+	}
+
+	/**
+	 * card.php l.132 ($permissiontoadd) for a new user (no company).
+	 */
+	public function canCreate(): bool
+	{
+		return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'write')) && $this->me->companyId() <= 0;
+	}
+
+	/**
+	 * card.php l.1690 and l.1750: back-to-list link and banner navigation.
+	 */
+	public function canList(): bool
+	{
+		return $this->me->hasRight('user', 'user', 'read') || $this->me->isAdmin();
+	}
+
+	/**
+	 * card.php l.2294 (empty($user->socid)): internal users only, e.g. the SendMail button.
+	 */
+	public function isInternal(): bool
+	{
+		return $this->me->companyId() <= 0;
+	}
+
+	/**
+	 * Clone button shown: card.php l.132, l.143-153 and l.2330.
+	 */
+	public function canClone(User $target): bool
+	{
+		if ($this->transverseMode && $this->currentEntity > 1) {
+			return false;
+		}
+		$add = ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'write')) && $this->sameCompany($target);
+
+		return ($target->entity === 0 && $add && $this->me->entity() === 0)
+			|| ($target->admin && $target->entity !== 0 && $add && $this->me->isAdmin())
+			|| ($add && !$target->admin && $target->entity !== 0);
+	}
+
+	/**
+	 * Clone button enabled: card.php l.2337.
+	 */
+	public function canWriteUsers(): bool
+	{
+		return $this->me->hasRight('user', 'user', 'write');
+	}
+
+	/**
+	 * Modify button through the edit right: card.php l.2307.
+	 */
+	public function canModify(User $target): bool
+	{
+		return $this->canEdit($target) && $this->inEditableEntity($target);
+	}
+
+	/**
+	 * Modify button through the password right, when canModify() is false: card.php l.2315.
+	 */
+	public function canModifyForPassword(User $target, bool $ldapManaged): bool
+	{
+		return $this->canSetPassword($target) && !$ldapManaged && $this->inEditableEntity($target);
+	}
+
+	/**
+	 * ReinitPassword button on an enabled user: card.php l.2344.
+	 */
+	public function canReinitPassword(User $target, bool $ldapManaged): bool
+	{
+		return !$this->isSelf($target) && $this->canSetPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target);
+	}
+
+	/**
+	 * SendNewPassword button on an enabled user: card.php l.2353.
+	 */
+	public function canSendNewPassword(User $target, bool $ldapManaged): bool
+	{
+		return !$this->isSelf($target) && $this->canSendPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target);
+	}
+
+	/**
+	 * Reactivate button: card.php l.2365.
+	 */
+	public function canReactivate(User $target): bool
+	{
+		return !$this->isSelf($target) && $this->canDisable($target) && $target->status === 0 && $this->inManageableEntity($target);
+	}
+
+	/**
+	 * DisableUser button: card.php l.2371 (oneself gets a disabled button, l.2376).
+	 */
+	public function canDeactivate(User $target): bool
+	{
+		return !$this->isSelf($target) && $this->canDisable($target) && $target->status === 1 && $this->inManageableEntity($target);
+	}
+
+	/**
+	 * DeleteUser button shown: card.php l.2382.
+	 */
+	public function canDelete(User $target): bool
+	{
+		return !$this->isSelf($target) && $this->canDisable($target) && $this->inManageableEntity($target);
+	}
+
+	/**
+	 * DeleteUser button enabled: card.php l.2384 (only an admin deletes an admin).
+	 */
+	public function canDeleteAdminTarget(User $target): bool
+	{
+		return $this->me->isAdmin() || !$target->admin;
 	}
 
 	public function isSelf(User $target): bool
 	{
 		return $this->me->id() === $target->id;
+	}
+
+	/**
+	 * Entity condition of the Modify button, card.php l.2307.
+	 */
+	private function inEditableEntity(User $target): bool
+	{
+		return !$this->multicompany || $this->me->entity() === 0 || $target->entity === $this->currentEntity || ($this->transverseMode && $target->entity === 1);
+	}
+
+	/**
+	 * Entity condition of the password, enable, disable and delete buttons, card.php l.2345.
+	 */
+	private function inManageableEntity(User $target): bool
+	{
+		return (!$this->multicompany && $target->entity === $this->me->entity()) || $this->me->entity() === 0 || $target->entity === $this->currentEntity || ($this->transverseMode && $target->entity === 1);
 	}
 
 	/**

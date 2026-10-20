@@ -53,7 +53,10 @@ final class UserModule implements ModuleInterface
 				getDolGlobalInt('MAIN_USE_ADVANCED_PERMS') > 0,
 				isModEnabled('salaries'),
 				isModEnabled('hrm'),
-				$subordinates
+				$subordinates,
+				isModEnabled('multicompany'),
+				getDolGlobalString('MULTICOMPANY_TRANSVERSE_MODE') !== '',
+				(int) self::get($c, LegacyContext::class)->conf->entity
 			);
 		});
 		$c->set(UserCardChrome::class, static fn (Container $c): UserCardChrome => new UserCardChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));

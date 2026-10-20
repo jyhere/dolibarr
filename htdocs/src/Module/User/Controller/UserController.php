@@ -63,18 +63,32 @@ final class UserController
 			throw new NotFoundException('User '.$id.' not found');
 		}
 
+		$canSeeSalary = $this->perms->canSeeSalary($user);
+		if ($canSeeSalary) {
+			$this->t->load('salaries');
+		}
+
 		$hookFormObjectOptions = $hookMoreObjectBlock = $hookMoreActionsButtons = '';
 		$showActions = true;
 		if ($this->hooks->hasListenersFor(self::HOOK_CONTEXTS)) {
 			$action = '';
 			$object = $legacyUser;
-			// card.php l.183 ($parameters, still current when extrafields_view.tpl.php runs formObjectOptions, l.2004)
-			$parameters = ['id' => $id, 'socid' => $this->me->companyId(), 'group' => null, 'caneditgroup' => false];
+			// card.php l.183 ($parameters, still current when extrafields_view.tpl.php runs formObjectOptions, l.2004);
+			// $socid is the one of the current user (l.124-127), $group is GETPOSTINT('group') (l.86).
+			$parameters = [
+				'id' => $id,
+				'socid' => $this->me->companyId(),
+				'group' => (int) $r->query('group', '0'),
+				'caneditgroup' => $this->perms->canEditGroups($user),
+			];
 			$hookFormObjectOptions = $this->hooks->execute('formObjectOptions', $parameters, $object, $action)->print;
-			// card.php l.2264-2268: printed only when the hook replaces
-			$block = $this->hooks->execute('addMoreObjectBlock', [], $object, $action);
+			// card.php l.2263-2268: printed only when the hook replaces
+			$block = $this->hooks->execute('addMoreObjectBlock', [
+				'caneditpasswordandsee' => $this->perms->canSetPassword($user),
+				'caneditpasswordandsend' => $this->perms->canSendPassword($user),
+			], $object, $action);
 			$hookMoreObjectBlock = $block->code > 0 ? $block->print : '';
-			// card.php l.2285-2286: standard buttons only when no hook replaces them
+			// card.php l.2284-2286: standard buttons only when no hook replaces them
 			$buttons = $this->hooks->execute('addMoreActionsButtons', [], $object, $action);
 			$hookMoreActionsButtons = $buttons->print;
 			$showActions = $buttons->code === 0;
@@ -85,10 +99,6 @@ final class UserController
 			$this->me->id() === $user->id => Visibility::SameUser,
 			default => Visibility::Public,
 		};
-		$canSeeSalary = $this->perms->canSeeSalary($user);
-		if ($canSeeSalary) {
-			$this->t->load('salaries');
-		}
 
 		$personName = $user->firstname !== null && $user->firstname !== '' ? $user->lastname.', '.$user->firstname : (string) $user->lastname;
 
@@ -97,7 +107,7 @@ final class UserController
 			'bodyCss' => 'mod-user page-card',
 			'user' => new UserView($user, $visibility, $canSeeSalary),
 			'canSeeSalary' => $canSeeSalary,
-			'card' => $this->chrome->build($legacyUser, $user, $this->perms, $this->repo->countInEntity()),
+			'card' => $this->chrome->build($legacyUser, $user, $this->perms, $canSeeSalary, $this->repo->countInEntity()),
 			'showActions' => $showActions,
 			'hookFormObjectOptions' => $hookFormObjectOptions,
 			'hookMoreObjectBlock' => $hookMoreObjectBlock,

@@ -76,11 +76,88 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertTrue($this->checker(me: 5, admin: true)->canDisable($this->user(id: 6)));
 	}
 
-	public function testGroupReadUsesAdvancedPermsWhenEnabled(): void
+	public function testGroupEditUsesAdvancedPermsWhenEnabled(): void
 	{
-		self::assertTrue($this->checker(me: 5, rights: ['user.user.read'])->canReadGroups($this->user(id: 6)));
-		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'], advanced: true)->canReadGroups($this->user(id: 6)));
-		self::assertTrue($this->checker(me: 5, rights: ['user.group_advance.read'], advanced: true)->canReadGroups($this->user(id: 6)));
+		$other = $this->user(id: 6);
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'])->canEditGroups($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.creer'])->canEditGroups($other));
+		self::assertTrue($this->checker(me: 5, admin: true)->canEditGroups($other));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'], advanced: true)->canEditGroups($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.group_advance.write'], advanced: true)->canEditGroups($other));
+		self::assertFalse($this->checker(me: 5, admin: true, companyId: 10)->canEditGroups($this->user(id: 6, companyId: 11)));
+	}
+
+	public function testCreateListAndInternal(): void
+	{
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canCreate());
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'], companyId: 10)->canCreate());
+		self::assertFalse($this->checker(me: 5)->canCreate());
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.lire'])->canList());
+		self::assertTrue($this->checker(me: 5, admin: true)->canList());
+		self::assertFalse($this->checker(me: 5)->canList());
+		self::assertTrue($this->checker(me: 5)->isInternal());
+		self::assertFalse($this->checker(me: 5, companyId: 10)->isInternal());
+	}
+
+	public function testCloneRules(): void
+	{
+		$superadmin = new User(id: 1, entity: 0, login: 'root', admin: true);
+		$admin = new User(id: 2, entity: 1, login: 'adm', admin: true);
+		$plain = $this->user(id: 6);
+		$writer = $this->checker(me: 5, rights: ['user.user.write']);
+		self::assertTrue($writer->canClone($plain));
+		self::assertFalse($writer->canClone($admin));
+		self::assertFalse($writer->canClone($superadmin));
+		self::assertTrue($this->checker(me: 5, admin: true)->canClone($admin));
+		self::assertFalse($this->checker(me: 5, admin: true)->canClone($superadmin));
+		self::assertTrue($this->checker(me: 5, admin: true, meEntity: 0)->canClone($superadmin));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'], transverse: true, currentEntity: 2)->canClone($plain));
+		self::assertFalse($this->checker(me: 5)->canClone($plain));
+		self::assertTrue($writer->canWriteUsers());
+		self::assertFalse($this->checker(me: 5, admin: true)->canWriteUsers());
+	}
+
+	public function testModifyButtons(): void
+	{
+		$other = $this->user(id: 6);
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canModify($other));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'], multicompany: true, currentEntity: 2)->canModify($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'], multicompany: true, meEntity: 0, currentEntity: 2)->canModify($other));
+		$pwd = $this->checker(me: 5, admin: true, rights: ['user.user.password']);
+		self::assertFalse($pwd->canModify($other));
+		self::assertTrue($pwd->canModifyForPassword($other, false));
+		self::assertFalse($pwd->canModifyForPassword($other, true));
+	}
+
+	public function testPasswordButtonsNeverForOneself(): void
+	{
+		$other = $this->user(id: 6);
+		$pwd = $this->checker(me: 5, admin: true, rights: ['user.user.password', 'user.self.password']);
+		self::assertTrue($pwd->canReinitPassword($other, false));
+		self::assertFalse($pwd->canReinitPassword($other, true));
+		self::assertFalse($pwd->canReinitPassword($this->user(id: 5), false));
+		self::assertTrue($pwd->canSendNewPassword($other, false));
+		self::assertFalse($pwd->canSendNewPassword($this->user(id: 5), false));
+		self::assertFalse($pwd->canSendNewPassword(new User(id: 7, entity: 2, login: 'x'), false));
+	}
+
+	public function testEnableDisableDeleteButtons(): void
+	{
+		$enabled = $this->user(id: 6);
+		$disabled = new User(id: 7, entity: 1, login: 'u7', status: 0);
+		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);
+		$deleter = $this->checker(me: 5, rights: ['user.user.delete']);
+		self::assertTrue($deleter->canDeactivate($enabled));
+		self::assertFalse($deleter->canDeactivate($disabled));
+		self::assertTrue($deleter->canReactivate($disabled));
+		self::assertFalse($deleter->canReactivate($enabled));
+		self::assertTrue($deleter->canDelete($enabled));
+		self::assertFalse($this->checker(me: 6, admin: true)->canDeactivate($enabled));
+		self::assertFalse($this->checker(me: 6, admin: true)->canDelete($enabled));
+		self::assertFalse($this->checker(me: 5)->canDelete($enabled));
+		self::assertFalse($deleter->canDeleteAdminTarget($admin));
+		self::assertTrue($this->checker(me: 5, admin: true)->canDeleteAdminTarget($admin));
+		self::assertTrue($deleter->canDeleteAdminTarget($enabled));
 	}
 
 	/**
@@ -95,9 +172,22 @@ final class UserPermissionCheckerTest extends TestCase
 		bool $advanced = false,
 		bool $salaries = false,
 		bool $hrm = false,
-		array $subordinates = []
+		array $subordinates = [],
+		bool $multicompany = false,
+		bool $transverse = false,
+		int $currentEntity = 1,
+		int $meEntity = 1
 	): UserPermissionChecker {
-		return new UserPermissionChecker(new RightsCurrentUser($me, $admin, $rights, $companyId), $advanced, $salaries, $hrm, $subordinates);
+		return new UserPermissionChecker(
+			new RightsCurrentUser($me, $admin, $rights, $companyId, $meEntity),
+			$advanced,
+			$salaries,
+			$hrm,
+			$subordinates,
+			$multicompany,
+			$transverse,
+			$currentEntity
+		);
 	}
 
 	private function user(int $id, ?int $companyId = null): User

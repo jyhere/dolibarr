@@ -20,7 +20,7 @@ final class UserCardChrome
 	{
 	}
 
-	public function build(\User $object, User $target, UserPermissionChecker $perms, int $nbOfUsers): UserCardHtml
+	public function build(\User $object, User $target, UserPermissionChecker $perms, bool $canSeeSalary, int $nbOfUsers): UserCardHtml
 	{
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/usergroups.lib.php';
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/emailsignature.lib.php';
@@ -28,7 +28,6 @@ final class UserCardChrome
 
 		$langs = $this->ctx->langs;
 		$conf = $this->ctx->conf;
-		$me = $this->me();
 		$form = $this->ctx->form();
 		$this->ctx->setPageObject($object);
 		// card.php l.1638-1643: rights of the displayed user (read by the "password to change" row)
@@ -39,7 +38,6 @@ final class UserCardChrome
 			}
 		}
 		$formother = new \FormOther($this->ctx->db);
-		$canSeeSalary = $perms->canSeeSalary($target);
 		$showHierarchy = $nbOfUsers > 1;
 
 		// card.php l.1755-1771: login, admin picto
@@ -96,7 +94,7 @@ final class UserCardChrome
 		// card.php l.2244-2259: last login, unless hidden by MAIN_ENABLE_LOGINS_PRIVACY
 		$lastLogin = null;
 		$privacy = getDolGlobalInt('MAIN_ENABLE_LOGINS_PRIVACY');
-		if ($privacy == 0 || ($privacy == 1 && (int) $object->id === (int) $me->id)) {
+		if ($privacy == 0 || ($privacy == 1 && $perms->isSelf($target))) {
 			$lastLogin = '';
 			if ($object->datepreviouslogin) {
 				$lastLogin .= $form->textwithpicto(dol_print_date($object->datepreviouslogin, 'dayhour', 'tzuserrel'), $langs->trans('Previous'));
@@ -112,7 +110,7 @@ final class UserCardChrome
 		return new UserCardHtml(
 			confirmHtml: $this->confirmClone($object, $form),
 			tabsHtml: $this->tabs($object),
-			bannerHtml: $this->banner($object),
+			bannerHtml: $this->banner($object, $perms->canList()),
 			tabsEndHtml: dol_get_fiche_end(),
 			loginHtml: showValueWithClipboardCPButton($object->login).$addadmin,
 			typeLabelHtml: $form->textwithpicto($langs->trans('Type'), $langs->trans('InternalExternalDesc')),
@@ -159,11 +157,9 @@ final class UserCardChrome
 	/**
 	 * card.php l.1712-1750. dol_banner_tab() prints its output and needs the global $form.
 	 */
-	private function banner(\User $object): string
+	private function banner(\User $object, bool $canList): string
 	{
 		$langs = $this->ctx->langs;
-		$me = $this->me();
-		$canList = $me->hasRight('user', 'user', 'read') || $me->admin;
 		$linkback = $canList ? '<a href="'.DOL_URL_ROOT.'/user/list.php?restore_lastsearch_values=1">'.$langs->trans('BackToList').'</a>' : '';
 
 		$morehtmlref = '<a href="'.dolBuildUrl(DOL_URL_ROOT.'/user/vcard.php', ['id' => $object->id, 'output' => 'file', 'file' => dol_sanitizeFileName($object->getFullName($langs).'.vcf')]).'" class="refid valignmiddle" tabindex="-1" rel="noopener">';
@@ -174,9 +170,13 @@ final class UserCardChrome
 
 		$this->ctx->form();
 		ob_start();
-		dol_banner_tab($object, 'id', $linkback, $canList ? 1 : 0, 'rowid', 'ref', $morehtmlref);
+		try {
+			dol_banner_tab($object, 'id', $linkback, $canList ? 1 : 0, 'rowid', 'ref', $morehtmlref);
+		} finally {
+			$html = (string) ob_get_clean();
+		}
 
-		return (string) ob_get_clean();
+		return $html;
 	}
 
 	/**
@@ -267,19 +267,12 @@ final class UserCardChrome
 	{
 		$langs = $this->ctx->langs;
 		$conf = $this->ctx->conf;
-		$me = $this->me();
-		$self = $perms->isSelf($target);
 		$card = DOL_URL_ROOT.'/user/card.php';
-		$mc = isModEnabled('multicompany');
-		$transverse = getDolGlobalString('MULTICOMPANY_TRANSVERSE_MODE');
-		$sameEntity = (!$mc && $object->entity == $me->entity) || !$me->entity || ($object->entity == $conf->entity) || ($transverse && $object->entity == 1);
-		$canEdit = $perms->canEdit($target);
-		$canSetPassword = $perms->canSetPassword($target);
-		$canDisable = $perms->canDisable($target);
+		$ldapManaged = !empty($object->ldap_sid);
 		$out = '';
 
 		$params = ['attr' => ['title' => '', 'class' => 'classfortooltip']];
-		if (empty($me->socid)) {
+		if ($perms->isInternal()) {
 			$langs->load('mails');
 			$canSendMail = !empty($object->email);
 			if ($canSendMail) {
@@ -290,8 +283,7 @@ final class UserCardChrome
 			$out .= dolGetButtonAction('', $langs->trans('SendMail'), 'email', dolBuildUrl($card, ['id' => $object->id, 'action' => 'presend', 'mode' => 'init']).'#formmailbeforetitle', '', $canSendMail, $params);
 		}
 
-		$editEntity = !$mc || !$me->entity || ($object->entity == $conf->entity) || ($transverse && $object->entity == 1);
-		if ($canEdit && $editEntity) {
+		if ($perms->canModify($target)) {
 			if (getDolGlobalString('MAIN_ONLY_LOGIN_ALLOWED')) {
 				$params['attr']['title'] = $langs->trans('DisabledInMonoUserMode');
 				$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card).'#', '', false, $params);
@@ -299,25 +291,22 @@ final class UserCardChrome
 				unset($params['attr']['title']);
 				$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'edit'], true), '', true, $params);
 			}
-		} elseif ($canSetPassword && !$object->ldap_sid && $editEntity) {
+		} elseif ($perms->canModifyForPassword($target, $ldapManaged)) {
 			unset($params['attr']['title']);
 			$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'edit'], true), '', true, $params);
 		}
 
 		$params = ['attr' => ['title' => '', 'class' => 'classfortooltip']];
-		// Clone (card.php l.132, 143-153, 2329-2339)
-		$canAdd = ($me->admin || $me->hasRight('user', 'user', 'write')) && (empty($me->socid) || $me->socid == $object->socid);
-		$cloneAllowed = !($transverse && $conf->entity > 1);
-		if ($cloneAllowed && ((empty($object->entity) && $canAdd && empty($me->entity)) || (!empty($object->admin) && !empty($object->entity) && $canAdd && !empty($me->admin)) || ($canAdd && empty($object->admin) && !empty($object->entity)))) {
+		if ($perms->canClone($target)) {
 			$cloneButtonId = (!empty($conf->use_javascript_ajax) && empty($conf->dol_use_jmobile)) ? 'action-clone' : '';
-			$out .= dolGetButtonAction($langs->trans('ToClone'), $langs->trans('ToClone'), 'clone', $card.'?id='.$object->id.'&action=clone&token='.newToken(), $cloneButtonId, $me->hasRight('user', 'user', 'write'), ['attr' => ['class' => 'reposition']]);
+			$out .= dolGetButtonAction($langs->trans('ToClone'), $langs->trans('ToClone'), 'clone', $card.'?id='.$object->id.'&action=clone&token='.newToken(), $cloneButtonId, $perms->canWriteUsers(), ['attr' => ['class' => 'reposition']]);
 		}
 
 		if (getDolGlobalString('USER_PASSWORD_GENERATED') != 'none') {
 			if ($object->status == \User::STATUS_DISABLED) {
 				$params['attr']['title'] = $langs->trans('UserDisabled');
 				$out .= dolGetButtonAction($langs->trans('ReinitPassword'), '', 'default', dolBuildUrl($card).'#', '', false, $params);
-			} elseif (!$self && $canSetPassword && $object->login && !$object->ldap_sid && $sameEntity) {
+			} elseif ($perms->canReinitPassword($target, $ldapManaged)) {
 				unset($params['attr']['title']);
 				$out .= dolGetButtonAction($langs->trans('ReinitPassword'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'password'], true), '', true, $params);
 			}
@@ -325,7 +314,7 @@ final class UserCardChrome
 			if ($object->status == \User::STATUS_DISABLED) {
 				$params['attr']['title'] = $langs->trans('UserDisabled');
 				$out .= dolGetButtonAction($langs->trans('SendNewPassword'), '', 'default', $card.'#', '', false, $params);
-			} elseif (!$self && $perms->canSendPassword($target) && $object->login && !$object->ldap_sid && $sameEntity) {
+			} elseif ($perms->canSendNewPassword($target, $ldapManaged)) {
 				if ($object->email) {
 					unset($params['attr']['title']);
 					$out .= dolGetButtonAction($langs->trans('SendNewPassword'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'passwordsend'], true), '', true, $params);
@@ -336,38 +325,22 @@ final class UserCardChrome
 			}
 		}
 
-		if (!$self && $canDisable && $object->status == \User::STATUS_DISABLED && $sameEntity) {
+		if ($perms->canReactivate($target)) {
 			unset($params['attr']['title']);
 			$out .= dolGetButtonAction($langs->trans('Reactivate'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'enable'], true), '', true, $params);
 		}
-		if (!$self && $canDisable && $object->status == \User::STATUS_ENABLED && $sameEntity) {
+		if ($perms->canDeactivate($target)) {
 			unset($params['attr']['title']);
 			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'disable'], true), '', true, $params);
-		} elseif ($self) {
+		} elseif ($perms->isSelf($target)) {
 			$params['attr']['title'] = $langs->trans('CantDisableYourself');
 			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', $card.'#', '', false, $params);
 		}
-		if (!$self && $canDisable && $sameEntity) {
-			if ($me->admin || !$object->admin) {
-				$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', dolBuildUrl($card, ['action' => 'delete', 'id' => $object->id], true), '', true, ['attr' => ['class' => 'reposition']]);
-			} else {
-				$params['attr']['title'] = $langs->trans('MustBeAdminToDeleteOtherAdmin');
-				$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', dolBuildUrl($card, ['action' => 'delete', 'id' => $object->id], true), '', false, ['attr' => ['class' => 'reposition']]);
-			}
+		if ($perms->canDelete($target)) {
+			$enabled = $perms->canDeleteAdminTarget($target);
+			$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', dolBuildUrl($card, ['action' => 'delete', 'id' => $object->id], true), '', $enabled, ['attr' => ['class' => 'reposition']]);
 		}
 
 		return $out;
-	}
-
-	/**
-	 * @throws \LogicException When nobody is logged in
-	 */
-	private function me(): \User
-	{
-		if ($this->ctx->user === null) {
-			throw new \LogicException('The user card needs a logged user');
-		}
-
-		return $this->ctx->user;
 	}
 }

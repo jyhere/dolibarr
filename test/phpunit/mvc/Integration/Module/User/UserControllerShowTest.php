@@ -25,13 +25,22 @@ use PHPUnit\Framework\TestCase;
 
 final class UserControllerShowTest extends TestCase
 {
+	private ?\stdClass $browser = null;
+
 	protected function setUp(): void
 	{
 		// Browser detection is done by main.inc.php, not by master.inc.php used here: the banner reads it.
 		$conf = $GLOBALS['conf'];
+		$this->browser = $conf->browser;
+		$conf->browser = clone $conf->browser;
 		if (!isset($conf->browser->layout)) {
 			$conf->browser->layout = 'classic';
 		}
+	}
+
+	protected function tearDown(): void
+	{
+		$GLOBALS['conf']->browser = $this->browser;
 	}
 
 	public function testShowBuildsViewModelWithEntityAndTabs(): void
@@ -51,6 +60,22 @@ final class UserControllerShowTest extends TestCase
 		self::assertSame('', $vm->data['hookFormObjectOptions']);
 	}
 
+	public function testAdminViewingSelfGetsModifyAndCannotDisableHimself(): void
+	{
+		$vm = $this->controller()->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		$card = $vm->data['card'];
+		self::assertInstanceOf(UserCardHtml::class, $card);
+		$langs = $GLOBALS['langs'];
+		self::assertStringContainsString('action=edit', $card->actionsHtml);
+		self::assertStringContainsString('>'.$langs->trans('Modify').'<', $card->actionsHtml);
+		self::assertMatchesRegularExpression(
+			'/<span[^>]*butActionRefused[^>]*title="'.preg_quote(dol_escape_htmltag($langs->trans('CantDisableYourself')), '/').'"[^>]*><span class="textbutton">'.preg_quote($langs->trans('DisableUser'), '/').'</',
+			$card->actionsHtml
+		);
+		self::assertStringNotContainsString('action=disable', $card->actionsHtml);
+		self::assertStringNotContainsString('action=delete', $card->actionsHtml);
+	}
+
 	public function testShowUnknownThrowsNotFound(): void
 	{
 		$this->expectException(NotFoundException::class);
@@ -62,7 +87,7 @@ final class UserControllerShowTest extends TestCase
 		$ctx = LegacyContext::fromGlobals();
 		$connection = new Connection($ctx->db);
 		$me = new LegacyCurrentUser($GLOBALS['user']);
-		$perms = new UserPermissionChecker($me, false, false);
+		$perms = new UserPermissionChecker($me, false, false, false, [1], false, false, (int) $ctx->conf->entity);
 		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
 
 		return new UserController(

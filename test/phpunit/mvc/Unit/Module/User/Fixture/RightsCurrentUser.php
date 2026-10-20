@@ -19,7 +19,8 @@ final class RightsCurrentUser implements CurrentUser
 		private readonly int $id,
 		private readonly bool $admin = false,
 		private readonly array $rights = [],
-		private readonly int $companyId = 0
+		private readonly int $companyId = 0,
+		private readonly int $entity = 1
 	) {
 	}
 
@@ -45,7 +46,7 @@ final class RightsCurrentUser implements CurrentUser
 
 	public function entity(): int
 	{
-		return 1;
+		return $this->entity;
 	}
 
 	public function hasRight(string $module, string $perm, string $subperm = ''): bool
