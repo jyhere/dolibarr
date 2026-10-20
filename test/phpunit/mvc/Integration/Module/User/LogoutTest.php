@@ -7,6 +7,7 @@ namespace Dolibarr\Tests\Integration\Module\User;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Legacy\LegacyCurrentUser;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Module\User\Controller\LogoutController;
@@ -65,7 +66,8 @@ final class LogoutTest extends TestCase
 		$this->controller($dispatcher)->logout(GlobalsRequest::create('POST', '/logout', [], []));
 
 		self::assertCount(1, $received);
-		self::assertSame($GLOBALS['user'], $received[0]->user);
+		self::assertSame((int) $GLOBALS['user']->id, $received[0]->userId);
+		self::assertSame($GLOBALS['user']->login, $received[0]->login);
 	}
 
 	public function testInvalidTokenCancelsTheLogout(): void
@@ -173,6 +175,7 @@ final class LogoutTest extends TestCase
 			new UrlRootConfig(new LegacyConfig($ctx), $urlRoot, 'http://localhost'),
 			$dispatcher ?? new EventDispatcher(),
 			new LegacyHooks($GLOBALS['hookmanager']),
+			$ctx->user === null ? null : new LegacyCurrentUser($ctx->user),
 			$ctx->user
 		);
 	}

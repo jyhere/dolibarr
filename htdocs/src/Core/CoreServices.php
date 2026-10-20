@@ -6,6 +6,7 @@ namespace Dolibarr\Core;
 
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Entity\EntityRegistry;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
@@ -84,6 +85,14 @@ final class CoreServices
 				$legacyHook
 			);
 		});
+
+		$registry = new EntityRegistry();
+		foreach ($modules as $module) {
+			foreach ($module->entities() as $definition) {
+				$registry->register($definition);
+			}
+		}
+		$c->instance(EntityRegistry::class, $registry);
 
 		$templateDirs = ['core' => __DIR__.'/templates'];
 		foreach ($modules as $module) {

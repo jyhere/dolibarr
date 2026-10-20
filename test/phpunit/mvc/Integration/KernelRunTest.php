@@ -108,7 +108,7 @@ final class KernelRunTest extends TestCase
 		} else {
 			unset($_SERVER['HTTP_ACCEPT']);
 		}
-		$kernel = new Kernel(DOL_DOCUMENT_ROOT, $this->dataRoot, '', false, [new ThrowingModule($templateDirs)]);
+		$kernel = new Kernel(DOL_DOCUMENT_ROOT, $this->dataRoot, '', false, DOL_VERSION, [new ThrowingModule($templateDirs)]);
 
 		return $kernel->run($kernel->match(), 1);
 	}

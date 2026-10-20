@@ -6,7 +6,9 @@ namespace Dolibarr\Module\User\Listener;
 
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Legacy\LegacyTriggers;
+use Dolibarr\Core\Logger;
 use Dolibarr\Module\User\Event\UserLoggedIn;
 use Dolibarr\Module\User\Event\UserLoggedOut;
 use Dolibarr\Module\User\Event\UserLoginFailed;
@@ -17,8 +19,12 @@ use Dolibarr\Module\User\Security\AuthenticationException;
  */
 final class LegacyTriggerBridge
 {
-	public function __construct(private readonly LegacyTriggers $triggers, private readonly LegacyContext $ctx)
-	{
+	public function __construct(
+		private readonly LegacyTriggers $triggers,
+		private readonly LegacyContext $ctx,
+		private readonly LegacyObjectLoader $loader,
+		private readonly Logger $log
+	) {
 	}
 
 	public function register(EventDispatcher $d): void
@@ -35,7 +41,15 @@ final class LegacyTriggerBridge
 	 */
 	public function onLoggedIn(UserLoggedIn $e): void
 	{
-		if ($this->triggers->run('USER_LOGIN', $e->user, $e->user) < 0) {
+		$user = $this->loader->user($e->userId);
+		if ($user === null) {
+			$this->log->warning('LegacyTriggerBridge: user '.$e->userId.' not found, USER_LOGIN trigger skipped');
+
+			return;
+		}
+		$user->context['audit'] = $e->loginInfo;
+		$user->context['authentication_method'] = $e->authMode;
+		if ($this->triggers->run('USER_LOGIN', $user, $user) < 0) {
 			throw new AuthenticationException('Error in some triggers USER_LOGIN: '.implode(', ', $this->triggers->errors()));
 		}
 	}
@@ -61,6 +75,12 @@ final class LegacyTriggerBridge
 	 */
 	public function onLoggedOut(UserLoggedOut $e): void
 	{
-		$this->triggers->run('USER_LOGOUT', $e->user, $e->user);
+		$user = $this->loader->user($e->userId);
+		if ($user === null) {
+			$this->log->warning('LegacyTriggerBridge: user '.$e->userId.' not found, USER_LOGOUT trigger skipped');
+
+			return;
+		}
+		$this->triggers->run('USER_LOGOUT', $user, $user);
 	}
 }

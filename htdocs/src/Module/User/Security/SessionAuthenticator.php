@@ -113,7 +113,7 @@ final class SessionAuthenticator
 			$user->context['authentication_method'] = $authMode;
 
 			// USER_LOGIN trigger: run by LegacyTriggerBridge, which throws on failure
-			$this->dispatcher->dispatch(new UserLoggedIn($user, $authMode, $loginfo));
+			$this->dispatcher->dispatch(new UserLoggedIn((int) $user->id, (string) $user->login, $authMode, $loginfo));
 
 			// l.1166-1173: hooks on successful login
 			$action = '';

@@ -102,7 +102,7 @@ final class KernelMatchTest extends TestCase
 		$_GET = ['action' => 'delete', 'id' => '5'];
 		$_SERVER['REQUEST_METHOD'] = 'POST';
 		$_SERVER['REQUEST_URI'] = '/d/fixture/public';
-		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, '1.0', [new FixtureModule()]);
 		$result = $kernel->match();
 		self::assertSame('1', $result['request']->post('x'));
 
@@ -138,7 +138,7 @@ final class KernelMatchTest extends TestCase
 
 	public function testPhpSelfIsTheMatchedPathUnderTheUrlRoot(): void
 	{
-		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, '1.0', [new FixtureModule()]);
 
 		self::assertSame('/d/fixture/42', $kernel->phpSelfFor($this->match('GET', '/d/fixture/42?x=1')));
 		self::assertSame('/d/fixture/public', $kernel->phpSelfFor($this->match('GET', '/d/fixture/public/')));
@@ -146,7 +146,7 @@ final class KernelMatchTest extends TestCase
 
 	public function testPhpSelfIsNullWhenNothingMatched(): void
 	{
-		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, '1.0', [new FixtureModule()]);
 
 		self::assertNull($kernel->phpSelfFor($this->match('GET', '/d/nexistepas')));
 		self::assertNull($kernel->phpSelfFor($this->match('POST', '/d/fixture/42')));
@@ -158,6 +158,25 @@ final class KernelMatchTest extends TestCase
 		self::assertSame(['NOREDIRECTBYMAINTOLOGIN'], BootstrapMode::constantsFor(BootstrapMode::PROTECTED));
 	}
 
+	public function testJsonSuffixIsNotStatic(): void
+	{
+		self::assertFalse(Kernel::isStaticAssetPath('/user/abc.json'));
+		self::assertTrue(Kernel::isStaticAssetPath('/x.png'));
+	}
+
+	public function testStaleStampRecompilesTheCache(): void
+	{
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_SERVER['REQUEST_URI'] = '/d/fixture/public';
+		(new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', true, '1.0', [new FixtureModule()]))->match();
+		$file = $this->dataRoot.'/cache/routes.php';
+		self::assertStringContainsString("'stamp' => '1.0|", (string) file_get_contents($file));
+
+		(new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', true, '2.0', [new FixtureModule()]))->match();
+
+		self::assertStringContainsString("'stamp' => '2.0|", (string) file_get_contents($file));
+	}
+
 	/**
 	 * @return array{mode: string, matched: ?\Dolibarr\Core\Routing\MatchedRoute, request: \Dolibarr\Core\Http\Request, error: ?\Throwable}
 	 */
@@ -165,7 +184,7 @@ final class KernelMatchTest extends TestCase
 	{
 		$_SERVER['REQUEST_METHOD'] = $method;
 		$_SERVER['REQUEST_URI'] = $uri;
-		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, '1.0', [new FixtureModule()]);
 
 		return $kernel->match();
 	}
@@ -180,7 +199,9 @@ final class KernelMatchTest extends TestCase
 		yield 'jpeg' => ['/x.jpeg', true];
 		yield 'woff2' => ['/fonts/x.woff2', true];
 		yield 'js map' => ['/includes/x.min.js.map', true];
-		yield 'json' => ['/nexistepas.json', true];
+		yield 'json is not static' => ['/user/abc.json', false];
+		yield 'xml is not static' => ['/x.xml', false];
+		yield 'txt is not static' => ['/x.txt', false];
 		yield 'encoded dot' => ['/x%2Ecss', true];
 		yield 'route' => ['/user/1', false];
 		yield 'php' => ['/theme/eldy/style.css.php', false];

@@ -16,20 +16,24 @@ final class RouteCache
 	}
 
 	/**
-	 * @return list<RouteDefinition>|null Null when there is no usable cache
+	 * @param string $expectedStamp Stamp the cache must have been stored with
+	 * @return list<RouteDefinition>|null Null when there is no usable cache: missing, malformed or stored with another stamp
 	 */
-	public function load(): ?array
+	public function load(string $expectedStamp): ?array
 	{
 		if (!is_file($this->file)) {
 			return null;
 		}
 		$data = include $this->file;
-		if (!is_array($data)) {
+		if (!is_array($data) || ($data['stamp'] ?? null) !== $expectedStamp || !isset($data['routes']) || !is_array($data['routes'])) {
 			return null;
 		}
 
 		$definitions = [];
-		foreach ($data as $row) {
+		foreach ($data['routes'] as $row) {
+			if (!is_array($row)) {
+				return null;
+			}
 			/** @var RouteArray $row */
 			$definitions[] = RouteDefinition::fromArray($row);
 		}
@@ -39,12 +43,13 @@ final class RouteCache
 
 	/**
 	 * @param list<RouteDefinition> $definitions
+	 * @param string                $stamp       Version and module list the definitions were compiled for
 	 * @throws \RuntimeException When the cache cannot be written
 	 */
-	public function store(array $definitions): void
+	public function store(array $definitions, string $stamp): void
 	{
 		$rows = array_map(static fn(RouteDefinition $d): array => $d->toArray(), $definitions);
-		$content = '<?php return '.var_export($rows, true).';'."\n";
+		$content = '<?php return '.var_export(['stamp' => $stamp, 'routes' => $rows], true).';'."\n";
 
 		$dir = dirname($this->file);
 		if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {

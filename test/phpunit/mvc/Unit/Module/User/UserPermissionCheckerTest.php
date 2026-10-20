@@ -31,6 +31,20 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertTrue($checker->canRead($this->user(id: 6, companyId: 10)));
 	}
 
+	public function testCanEditNotesSelfVsOther(): void
+	{
+		self::assertTrue($this->checker(me: 5, rights: ['user.self.creer'])->canEditNotes($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5, rights: ['user.self.creer'])->canEditNotes($this->user(id: 6)));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.creer'])->canEditNotes($this->user(id: 6)));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.creer'])->canEditNotes($this->user(id: 5)));
+	}
+
+	public function testRejectsForeignEntities(): void
+	{
+		$this->expectException(\InvalidArgumentException::class);
+		$this->checker(me: 5)->canRead(new \stdClass());
+	}
+
 	public function testSalaryHiddenWithoutRight(): void
 	{
 		$target = $this->user(id: 6);

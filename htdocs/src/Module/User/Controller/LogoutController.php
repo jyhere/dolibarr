@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Controller;
 
 use Dolibarr\Core\Config;
+use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Http\HtmlResponse;
 use Dolibarr\Core\Http\RedirectResponse;
@@ -28,13 +29,15 @@ final class LogoutController
 	private const MENU_FLAGS = ['dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile'];
 
 	/**
-	 * @param ?\User $user The global $user: USER_LOGOUT trigger and afterLogout hooks object
+	 * @param ?CurrentUser $me   The logged user, carried by the UserLoggedOut event
+	 * @param ?\User       $user The global $user: afterLogout hooks object
 	 */
 	public function __construct(
 		private readonly Session $session,
 		private readonly Config $config,
 		private readonly EventDispatcher $dispatcher,
 		private readonly LegacyHooks $hooks,
+		private readonly ?CurrentUser $me,
 		private readonly ?\User $user
 	) {
 	}
@@ -63,10 +66,10 @@ final class LogoutController
 		}
 
 		// l.68-73: trigger USER_LOGOUT (through the LegacyTriggerBridge)
-		$user = $this->user;
-		if ($user !== null) {
-			$this->dispatcher->dispatch(new UserLoggedOut($user));
+		if ($this->me !== null) {
+			$this->dispatcher->dispatch(new UserLoggedOut($this->me->id(), $this->me->login()));
 		}
+		$user = $this->user;
 
 		// l.75-82: hooks on logout
 		$action = '';

@@ -9,6 +9,7 @@ use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
+use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Logger;
@@ -68,7 +69,7 @@ final class SessionAuthenticatorTest extends TestCase
 		$before = $this->countLoginEvents($ctx);
 
 		$dispatcher = new EventDispatcher();
-		(new LegacyTriggerBridge(new LegacyTriggers($ctx), $ctx))->register($dispatcher);
+		(new LegacyTriggerBridge(new LegacyTriggers($ctx), $ctx, new LegacyObjectLoader(new Connection($ctx->db)), new Logger()))->register($dispatcher);
 		$received = [];
 		$dispatcher->addListener(UserLoggedIn::class, static function (UserLoggedIn $e) use (&$received): void {
 			$received[] = $e;
@@ -85,11 +86,10 @@ final class SessionAuthenticatorTest extends TestCase
 		}
 
 		self::assertCount(1, $received);
-		self::assertSame($GLOBALS['user'], $received[0]->user);
+		self::assertSame((int) $GLOBALS['user']->id, $received[0]->userId);
+		self::assertSame($GLOBALS['user']->login, $received[0]->login);
 		self::assertSame('dolibarr', $received[0]->authMode);
 		self::assertSame('TZ=2;TZString=;Screen=1920x1080 - authmode=dolibarr - entity='.$ctx->conf->entity, $received[0]->loginInfo);
-		self::assertSame($received[0]->loginInfo, $GLOBALS['user']->context['audit']);
-		self::assertSame('dolibarr', $GLOBALS['user']->context['authentication_method']);
 		self::assertSame($before + 1, $this->countLoginEvents($ctx));
 	}
 

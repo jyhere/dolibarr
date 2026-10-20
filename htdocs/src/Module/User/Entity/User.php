@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Entity;
 
+use Dolibarr\Core\Entity\HasNotes;
 use Dolibarr\Core\View\Exposable;
 
 /**
  * Read model of a Dolibarr user (llx_user). Secrets (password hashes, API key,
  * OpenID, LDAP SID) are never part of this entity.
  */
-final class User implements Exposable
+final class User implements Exposable, HasNotes
 {
 	/**
 	 * @param array<string, mixed> $extraFields
@@ -69,6 +70,16 @@ final class User implements Exposable
 		public readonly ?\DateTimeImmutable $dateEmploymentEnd = null,
 		public readonly array $extraFields = []
 	) {
+	}
+
+	public function getPublicNote(): ?string
+	{
+		return $this->notePublic;
+	}
+
+	public function getPrivateNote(): ?string
+	{
+		return $this->notePrivate;
 	}
 
 	public function fullName(): string

@@ -46,6 +46,7 @@ final class Kernel
 	private ?array $definitions = null;
 
 	/**
+	 * @param string                     $version Application version (DOL_VERSION), part of the route cache stamp
 	 * @param list<ModuleInterface>|null $modules Modules, loaded from src/modules.php when null
 	 */
 	public function __construct(
@@ -53,6 +54,7 @@ final class Kernel
 		private readonly string $dataRoot,
 		private readonly string $urlRoot,
 		private readonly bool $prod,
+		private readonly string $version,
 		?array $modules = null
 	) {
 		$this->modules = $modules;
@@ -84,13 +86,13 @@ final class Kernel
 	/**
 	 * True when $uri (request URI or path, query string ignored) names a static file: app.php
 	 * answers such an unmatched URL with a bare 404, without main.inc.php (no session, no database).
-	 * '.json' is in the list: app.php asks only when no route matched, so a JSON route is never concerned.
+	 * Data formats (json, xml, txt) are not static: an unknown '.json' URL goes through the kernel and gets its JSON 404.
 	 */
 	public static function isStaticAssetPath(string $uri): bool
 	{
 		$path = rawurldecode(explode('#', explode('?', $uri, 2)[0], 2)[0]);
 
-		return preg_match('#\.(png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|eot|txt|xml|json)$#i', $path) === 1;
+		return preg_match('#\.(png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|eot)$#i', $path) === 1;
 	}
 
 	/**
@@ -302,10 +304,11 @@ final class Kernel
 			}
 		}
 
+		$stamp = $this->version.'|'.sha1(implode(',', array_map(static fn (ModuleInterface $m): string => $m::class, $this->modules())));
 		$cache = new RouteCache($this->dataRoot.'/cache/routes.php');
 		$definitions = null;
 		if ($this->prod) {
-			$definitions = $cache->load();
+			$definitions = $cache->load($stamp);
 		} else {
 			$files = $modulesFromFile ? [$this->modulesFile()] : [];
 			foreach ($controllers as $controller) {
@@ -315,14 +318,14 @@ final class Kernel
 				}
 			}
 			if ($cache->isFresh($files)) {
-				$definitions = $cache->load();
+				$definitions = $cache->load($stamp);
 			}
 		}
 
 		if ($definitions === null) {
 			$definitions = (new RouteCompiler())->compile($controllers);
 			try {
-				$cache->store($definitions);
+				$cache->store($definitions, $stamp);
 			} catch (\RuntimeException $e) {
 				// The Logger service needs main.inc.php, not loaded yet: use the PHP error log.
 				error_log('Dolibarr MVC: route cache not written, routes compiled for this request only: '.$e->getMessage());

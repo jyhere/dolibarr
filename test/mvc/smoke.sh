@@ -70,7 +70,8 @@ case "$LOC" in "$BASE/login?"*) ok "logout open redirect anonymous goes to login
 # A missing static file: 404 from nginx (or app.php before main.inc.php), never a session
 expect_code "missing asset 404" 404 "$BASE/theme/eldy/img/nothere.png"
 GREP_OPTS=-i expect_grep "missing asset sets no cookie" '^set-cookie' 0 -D - -o /dev/null "$BASE/theme/eldy/img/nothere.png"
-GREP_OPTS=-i expect_grep "unmatched .json sets no cookie" '^set-cookie' 0 -D - -o /dev/null "$BASE/nexistepas.json"
+expect_code "unmatched .json is a 404" 404 "$BASE/nexistepas.json"
+expect_grep "unmatched .json body" '{"error":"not_found"}' 1 "$BASE/nexistepas.json"
 expect_code "login page 200" 200 "$BASE/login"
 LOGINACTION="$(curl -s "$BASE/login" | grep -o 'action="[^"]*"' | head -1)"
 case "$LOGINACTION" in 'action="/login'*) ok "login form action";; *) fail "login form action" "$LOGINACTION";; esac

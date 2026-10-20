@@ -9,7 +9,7 @@ namespace Dolibarr\Module\User\Event;
  */
 final class UserLoggedOut
 {
-	public function __construct(public readonly \User $user)
+	public function __construct(public readonly int $userId, public readonly string $login)
 	{
 	}
 }

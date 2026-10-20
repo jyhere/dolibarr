@@ -8,6 +8,7 @@ use Dolibarr\Core\Config;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
@@ -23,6 +24,7 @@ use Dolibarr\Module\User\Controller\LoginController;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
+use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\Authenticator;
 use Dolibarr\Module\User\Security\SessionAuthenticator;
@@ -47,12 +49,22 @@ final class UserModule implements ModuleInterface
 		return [UserController::class, LoginController::class, LogoutController::class];
 	}
 
+	/**
+	 * @return list<EntityDefinition>
+	 */
+	public function entities(): array
+	{
+		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show')];
+	}
+
 	public function services(Container $c): void
 	{
 		$this->container = $c;
 		$c->set(LegacyTriggerBridge::class, static fn (Container $c): LegacyTriggerBridge => new LegacyTriggerBridge(
 			self::get($c, LegacyTriggers::class),
-			self::get($c, LegacyContext::class)
+			self::get($c, LegacyContext::class),
+			self::get($c, LegacyObjectLoader::class),
+			self::get($c, Logger::class)
 		));
 		$c->set(UserRepository::class, static function (Container $c): UserRepository {
 			return new UserRepository(self::get($c, Connection::class), self::get($c, Config::class)->entity());
@@ -118,6 +130,7 @@ final class UserModule implements ModuleInterface
 			self::get($c, Config::class),
 			self::get($c, EventDispatcher::class),
 			self::get($c, LegacyHooks::class),
+			$c->has(CurrentUser::class) ? self::get($c, CurrentUser::class) : null,
 			self::get($c, LegacyContext::class)->user
 		));
 		$c->set(UserController::class, static fn (Container $c): UserController => new UserController(

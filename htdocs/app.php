@@ -12,7 +12,7 @@ if (!defined('CSRFCHECK_WITH_TOKEN')) {
 require __DIR__.'/filefunc.inc.php';          // DOL_* constants and conf.php, no session
 require __DIR__.'/src/autoload.php';
 
-$kernel = new \Dolibarr\Core\Kernel(DOL_DOCUMENT_ROOT, DOL_DATA_ROOT, DOL_URL_ROOT, !empty($dolibarr_main_prod));
+$kernel = new \Dolibarr\Core\Kernel(DOL_DOCUMENT_ROOT, DOL_DATA_ROOT, DOL_URL_ROOT, !empty($dolibarr_main_prod), DOL_VERSION);
 try {
 	$matchResult = $kernel->match();
 } catch (\Throwable $e) {

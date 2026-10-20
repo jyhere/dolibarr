@@ -19,10 +19,10 @@ final class RouteCacheTest extends TestCase
 		$controller = $base.'_controller.php';
 		$cache = new RouteCache($file);
 		try {
-			self::assertNull($cache->load());
+			self::assertNull($cache->load('s'));
 			self::assertFalse($cache->isFresh([]));
-			$cache->store($defs);
-			self::assertEquals($defs, $cache->load());
+			$cache->store($defs, 's');
+			self::assertEquals($defs, $cache->load('s'));
 
 			$t = time() - 1000;
 			file_put_contents($controller, '<?php');
@@ -48,7 +48,7 @@ final class RouteCacheTest extends TestCase
 		self::assertIsString($notADir);
 		try {
 			$this->expectException(\RuntimeException::class);
-			(new RouteCache($notADir.'/cache/routes.php'))->store([]);
+			(new RouteCache($notADir.'/cache/routes.php'))->store([], 's');
 		} finally {
 			unlink($notADir);
 		}

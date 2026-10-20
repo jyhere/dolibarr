@@ -10,12 +10,14 @@ namespace Dolibarr\Module\User\Event;
 final class UserLoggedIn
 {
 	/**
-	 * @param \User  $user      Legacy user that logged in, its context['audit'] and ['authentication_method'] already set
+	 * @param int    $userId    Id of the user that logged in
+	 * @param string $login     His login
 	 * @param string $authMode  Authentication mode that validated the credentials (dolibarr, ldap...)
 	 * @param string $loginInfo The $loginfo string of main.inc.php l.1151-1152
 	 */
 	public function __construct(
-		public readonly \User $user,
+		public readonly int $userId,
+		public readonly string $login,
 		public readonly string $authMode,
 		public readonly string $loginInfo
 	) {

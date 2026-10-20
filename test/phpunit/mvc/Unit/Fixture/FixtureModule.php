@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Unit\Fixture;
 
 use Dolibarr\Core\Container\Container;
+use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Module\ModuleInterface;
 
@@ -21,6 +22,14 @@ final class FixtureModule implements ModuleInterface
 	public function controllers(): array
 	{
 		return [FixtureController::class];
+	}
+
+	/**
+	 * @return list<EntityDefinition>
+	 */
+	public function entities(): array
+	{
+		return [];
 	}
 
 	public function services(Container $c): void

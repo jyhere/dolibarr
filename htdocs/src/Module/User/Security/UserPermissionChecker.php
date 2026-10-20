@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Security;
 
 use Dolibarr\Core\CurrentUser;
+use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Module\User\Entity\User;
 
 /**
  * What the current user may do on a user card. Mirrors htdocs/user/card.php
  * (line numbers of the mirrored rules are given on each method).
  */
-final class UserPermissionChecker
+final class UserPermissionChecker implements EntityPermissions
 {
 	/**
 	 * @param bool      $advancedPerms   MAIN_USE_ADVANCED_PERMS
@@ -37,13 +38,24 @@ final class UserPermissionChecker
 	/**
 	 * card.php l.133 ($permissiontoread) and l.147 (a user always reads his own card).
 	 */
-	public function canRead(User $target): bool
+	public function canRead(object $target): bool
 	{
+		$target = self::asUser($target);
 		if ($this->isSelf($target)) {
 			return true;
 		}
 
 		return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'read')) && $this->sameCompany($target);
+	}
+
+	/**
+	 * user/note.php l.63-67: $permissiontoeditnote is user->self->write on one's own card, else user->user->write.
+	 */
+	public function canEditNotes(object $target): bool
+	{
+		$target = self::asUser($target);
+
+		return $this->isSelf($target) ? $this->me->hasRight('user', 'self', 'write') : $this->me->hasRight('user', 'user', 'write');
 	}
 
 	/**
@@ -225,6 +237,18 @@ final class UserPermissionChecker
 	public function isSelf(User $target): bool
 	{
 		return $this->me->id() === $target->id;
+	}
+
+	/**
+	 * @throws \InvalidArgumentException When $entity is not a user
+	 */
+	private static function asUser(object $entity): User
+	{
+		if (!$entity instanceof User) {
+			throw new \InvalidArgumentException('UserPermissionChecker only handles '.User::class.', got '.$entity::class);
+		}
+
+		return $entity;
 	}
 
 	/**

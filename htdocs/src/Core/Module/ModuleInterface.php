@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Core\Module;
 
 use Dolibarr\Core\Container\Container;
+use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
 
 /**
@@ -22,6 +23,11 @@ interface ModuleInterface
 	public function services(Container $c): void;
 
 	public function listeners(EventDispatcher $d): void;
+
+	/**
+	 * @return list<EntityDefinition>
+	 */
+	public function entities(): array;
 
 	/**
 	 * @return array<string, string> slug => template dir

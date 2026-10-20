@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Fixture;
 
 use Dolibarr\Core\Container\Container;
+use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Module\ModuleInterface;
 
@@ -28,6 +29,14 @@ final class ThrowingModule implements ModuleInterface
 	public function controllers(): array
 	{
 		return [ThrowingController::class];
+	}
+
+	/**
+	 * @return list<EntityDefinition>
+	 */
+	public function entities(): array
+	{
+		return [];
 	}
 
 	public function services(Container $c): void
