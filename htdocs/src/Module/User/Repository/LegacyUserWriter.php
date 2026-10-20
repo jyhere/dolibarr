@@ -235,6 +235,7 @@ final class LegacyUserWriter implements UserWriter
 		$o->email = $u->email ?? '';
 		$o->personal_email = $u->personalEmail ?? '';
 		$o->office_phone = $u->officePhone ?? '';
+		$o->office_fax = $u->officeFax ?? '';
 		$o->user_mobile = $u->userMobile ?? '';
 		$o->personal_mobile = $u->personalMobile ?? '';
 		$o->address = $u->address ?? '';
@@ -267,6 +268,8 @@ final class LegacyUserWriter implements UserWriter
 		$o->weeklyhours = self::decimal($u->weeklyHours);
 		$o->dateemployment = self::timestamp($u->dateEmployment);
 		$o->dateemploymentend = self::timestamp($u->dateEmploymentEnd);
+		$o->accountancy_code = $u->accountancyCode ?? '';
+		$o->fk_warehouse = $u->warehouseId ?? 0;
 	}
 
 	/**
@@ -286,16 +289,16 @@ final class LegacyUserWriter implements UserWriter
 	/**
 	 * The legacy user making the change: the logged one when it is him, else loaded by id.
 	 *
-	 * @throws \LogicException When no legacy user is available
+	 * @throws \LogicException When no user has this id
 	 */
 	private function actor(int $id): \User
 	{
 		if ($this->ctx->user !== null && (int) $this->ctx->user->id === $id) {
 			return $this->ctx->user;
 		}
-		$actor = $this->loader->user($id) ?? $this->ctx->user;
+		$actor = $this->loader->user($id);
 		if ($actor === null) {
-			throw new \LogicException('No legacy user to act as (id '.$id.')');
+			throw new \LogicException('Unknown actor id '.$id);
 		}
 
 		return $actor;

@@ -20,6 +20,10 @@ interface UserWriter
 	public function insert(User $u, int $creatorId): int;
 
 	/**
+	 * The admin flag and the login are copied as given: callers must apply
+	 * UserPermissionChecker::canEditAdminFlag() and canEditLogin() when building $u.
+	 * (The legacy update() ignores admin for a non-admin actor but writes login unconditionally.)
+	 *
 	 * @throws ValidationException
 	 */
 	public function update(User $u, int $actorId): void;

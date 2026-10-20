@@ -296,6 +296,8 @@ final class UserPermissionChecker implements EntityPermissions
 
 	/**
 	 * perms.php l.69 ($caneditperms) and l.73-74 (user->self_advance->writeperms on oneself with advanced permissions).
+	 * The sameCompany() condition is an addition over perms.php (stricter, kept deliberately so
+	 * that an external user never edits the rights of a user of another company).
 	 */
 	public function canEditRights(User $target): bool
 	{

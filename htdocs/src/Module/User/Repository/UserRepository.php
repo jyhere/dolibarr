@@ -28,6 +28,7 @@ final class UserRepository
 		'ref_employee', 'ref_ext', 'datec', 'tms',
 		'salary', 'salaryextra', 'thm', 'tjm', 'weeklyhours',
 		'dateemployment', 'dateemploymentend',
+		'office_fax', 'accountancy_code', 'fk_warehouse',
 	];
 
 	public function __construct(private readonly Connection $c, private readonly int $entity)
@@ -121,7 +122,10 @@ final class UserRepository
 			tjm: self::float($r['tjm'] ?? null),
 			weeklyHours: self::float($r['weeklyhours'] ?? null),
 			dateEmployment: self::date($r['dateemployment'] ?? null),
-			dateEmploymentEnd: self::date($r['dateemploymentend'] ?? null)
+			dateEmploymentEnd: self::date($r['dateemploymentend'] ?? null),
+			officeFax: self::str($r['office_fax'] ?? null),
+			accountancyCode: self::str($r['accountancy_code'] ?? null),
+			warehouseId: self::nint($r['fk_warehouse'] ?? null)
 		);
 	}
 

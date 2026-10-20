@@ -74,7 +74,9 @@ final class LegacyUserWriterTest extends TestCase
 	public function testUpdateWritesMappedFieldsAndKeepsTheOthers(): void
 	{
 		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET office_fax = '0102' WHERE rowid = ".$id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET openid = 'mvc-openid' WHERE rowid = ".$id);
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."entrepot (ref, entity, datec, statut) VALUES ('MVC-WH-".uniqid()."', 1, NOW(), 1)");
+		$warehouseId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'entrepot');
 		$before = $this->repo()->find($id);
 		self::assertNotNull($before);
 
@@ -87,7 +89,10 @@ final class LegacyUserWriterTest extends TestCase
 			job: null,
 			birth: new \DateTimeImmutable('1990-05-04', new \DateTimeZone('UTC')),
 			salary: 1234.5,
-			dateStartValidity: $before->dateStartValidity
+			dateStartValidity: $before->dateStartValidity,
+			officeFax: '0102',
+			accountancyCode: '421MVC',
+			warehouseId: $warehouseId
 		), 1);
 
 		$after = $this->repo()->find($id);
@@ -98,9 +103,12 @@ final class LegacyUserWriterTest extends TestCase
 		self::assertSame('1990-05-04', $after->birth?->format('Y-m-d'));
 		self::assertSame(1234.5, $after->salary);
 		self::assertSame($before->dateStartValidity?->format('Y-m-d'), $after->dateStartValidity?->format('Y-m-d'));
-		$fax = $this->connection->fetchOne('SELECT office_fax FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
-		self::assertNotNull($fax);
-		self::assertSame('0102', $fax->office_fax, 'A field the entity does not carry keeps its value');
+		self::assertSame('0102', $after->officeFax);
+		self::assertSame('421MVC', $after->accountancyCode);
+		self::assertSame($warehouseId, $after->warehouseId);
+		$row = $this->connection->fetchOne('SELECT openid FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		self::assertNotNull($row);
+		self::assertSame('mvc-openid', $row->openid, 'A field the entity does not carry keeps its value');
 	}
 
 	public function testUpdateUnknownUserThrows(): void

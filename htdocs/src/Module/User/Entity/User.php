@@ -68,7 +68,10 @@ final class User implements Exposable, HasNotes
 		public readonly ?float $weeklyHours = null,
 		public readonly ?\DateTimeImmutable $dateEmployment = null,
 		public readonly ?\DateTimeImmutable $dateEmploymentEnd = null,
-		public readonly array $extraFields = []
+		public readonly array $extraFields = [],
+		public readonly ?string $officeFax = null,
+		public readonly ?string $accountancyCode = null,
+		public readonly ?int $warehouseId = null
 	) {
 	}
 
@@ -132,6 +135,7 @@ final class User implements Exposable, HasNotes
 			'job' => $this->job,
 			'email' => $this->email,
 			'officePhone' => $this->officePhone,
+			'officeFax' => $this->officeFax,
 			'userMobile' => $this->userMobile,
 			'photo' => $this->photo,
 			'lang' => $this->lang,
@@ -182,6 +186,8 @@ final class User implements Exposable, HasNotes
 			'weeklyHours' => $this->weeklyHours,
 			'dateEmployment' => self::iso($this->dateEmployment),
 			'dateEmploymentEnd' => self::iso($this->dateEmploymentEnd),
+			'accountancyCode' => $this->accountancyCode,
+			'warehouseId' => $this->warehouseId,
 		];
 	}
 

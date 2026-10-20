@@ -116,21 +116,25 @@ final class UserService
 
 	/**
 	 * user/card.php l.776-797: a new generated password, sent by email when $send.
+	 * The email goes after the commit, so a rolled back password is never sent; a send failure
+	 * then throws ValidationException without reverting the password (as card.php l.788-791).
 	 *
 	 * @return string The new clear password (shown by the caller when not sent, as PasswordChangedTo)
 	 * @throws ValidationException
 	 */
 	public function resetPassword(int $id, bool $send): string
 	{
-		return $this->transactional(function () use ($id, $send): string {
+		$clear = $this->transactional(function () use ($id, $send): string {
 			$clear = $this->writer->setPassword($id, '', false, $this->me->id());
-			if ($send) {
-				$this->writer->sendPassword($id, $clear);
-			}
 			$this->events->dispatch(new UserPasswordChanged($id, $send));
 
 			return $clear;
 		});
+		if ($send) {
+			$this->writer->sendPassword($id, $clear);
+		}
+
+		return $clear;
 	}
 
 	/**
