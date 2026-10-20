@@ -59,7 +59,7 @@ final class LoginControllerTest extends TestCase
 				'username' => self::env('DOLIBARR_ADMIN_LOGIN'),
 				'password' => self::env('DOLIBARR_ADMIN_PASSWORD'),
 				'backtopage' => '/user/1',
-			], [], []));
+			]));
 		} finally {
 			$ctx->db->query('UPDATE '.MAIN_DB_PREFIX.'user SET force_pass_change = '.$previous.' WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
 		}
@@ -80,6 +80,49 @@ final class LoginControllerTest extends TestCase
 		]));
 
 		self::assertSame('/user/1', $response->headers()['Location']);
+	}
+
+	public function testQueryUsernameDoesNotShadowPostUsername(): void
+	{
+		$ctx = LegacyContext::fromGlobals();
+		$response = $this->controller($ctx)->authenticate(GlobalsRequest::create('POST', '/login', ['username' => 'nobody'], [
+			'actionlogin' => 'login',
+			'username' => self::env('DOLIBARR_ADMIN_LOGIN'),
+			'password' => self::env('DOLIBARR_ADMIN_PASSWORD'),
+			'backtopage' => '/user/1',
+		]));
+
+		self::assertSame('/user/1', $response->headers()['Location']);
+		self::assertSame(self::env('DOLIBARR_ADMIN_LOGIN'), $_SESSION['dol_login']);
+	}
+
+	public function testEmptyQueryPasswordDoesNotShadowPostPassword(): void
+	{
+		$ctx = LegacyContext::fromGlobals();
+		$response = $this->controller($ctx)->authenticate(GlobalsRequest::create('POST', '/login', ['password' => ''], [
+			'actionlogin' => 'login',
+			'username' => self::env('DOLIBARR_ADMIN_LOGIN'),
+			'password' => self::env('DOLIBARR_ADMIN_PASSWORD'),
+			'backtopage' => '/user/1',
+		]));
+
+		self::assertSame('/user/1', $response->headers()['Location']);
+	}
+
+	public function testPasswordInQueryIsRefusedEvenWithOauthReturnFlag(): void
+	{
+		$ctx = LegacyContext::fromGlobals();
+		$response = $this->controller($ctx)->authenticate(GlobalsRequest::create('POST', '/login', [
+			'password' => self::env('DOLIBARR_ADMIN_PASSWORD'),
+			'afteroauthloginreturn' => '1',
+		], [
+			'actionlogin' => 'login',
+			'username' => self::env('DOLIBARR_ADMIN_LOGIN'),
+		]));
+
+		self::assertSame('/login', $response->headers()['Location']);
+		self::assertArrayNotHasKey('dol_login', $_SESSION);
+		self::assertSame($ctx->langs->transnoentitiesnoconv('ErrorLoginMustBePostMethod'), $_SESSION['dol_loginmesg']);
 	}
 
 	private function controller(LegacyContext $ctx): LoginController

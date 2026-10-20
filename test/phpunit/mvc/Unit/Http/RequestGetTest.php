@@ -35,6 +35,30 @@ final class RequestGetTest extends TestCase
 		self::assertSame(['login', 'alphanohtml'], $f->lastCall);
 	}
 
+	public function testGetReadsGetFirst(): void
+	{
+		$f = new FakeInputFilter(['x' => 'v']);
+		(new Request('GET', '/', [], [], [], []))->withInputFilter($f)->get('x');
+		self::assertSame(0, $f->lastMethod);
+	}
+
+	public function testGetPostUsesPostFirst(): void
+	{
+		$f = new FakeInputFilter(['username' => 'admin']);
+		$r = (new Request('POST', '/login', [], [], [], []))->withInputFilter($f);
+		self::assertSame('admin', $r->getPost('username', 'alpha'));
+		self::assertSame(['username', 'alpha'], $f->lastCall);
+		self::assertSame(3, $f->lastMethod);
+		self::assertSame('none', $r->getPost('absent', default: 'none'));
+		self::assertSame(['absent', 'alphanohtml'], $f->lastCall);
+	}
+
+	public function testGetPostWithoutFilterThrows(): void
+	{
+		$this->expectException(\LogicException::class);
+		(new Request('POST', '/', [], [], [], []))->getPost('x');
+	}
+
 	public function testGetDefaultsToAlphanohtmlAndReturnsTheDefaultWhenMissing(): void
 	{
 		$f = new FakeInputFilter([]);

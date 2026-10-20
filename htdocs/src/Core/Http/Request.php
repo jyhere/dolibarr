@@ -133,6 +133,17 @@ final class Request
 	}
 
 	/**
+	 * The parameter $key filtered by $filter, read from the body first, then the query string
+	 * (GETPOST(..., 3), as main.inc.php reads the credentials). $default when absent.
+	 *
+	 * @throws \LogicException When no InputFilter was injected
+	 */
+	public function getPost(string $key, string $filter = 'alphanohtml', mixed $default = null): mixed
+	{
+		return $this->inputFilter()->filter($key, $filter, $default, 3);
+	}
+
+	/**
 	 * The parameter $key as GETPOSTINT() reads it, $default when absent.
 	 *
 	 * @throws \LogicException When no InputFilter was injected

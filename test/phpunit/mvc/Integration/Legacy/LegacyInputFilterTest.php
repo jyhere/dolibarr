@@ -69,6 +69,27 @@ final class LegacyInputFilterTest extends TestCase
 		self::assertSame('fromget', $this->filter()->filter('k', 'alphanohtml'));
 	}
 
+	public function testMethod3ReadsPostBeforeGet(): void
+	{
+		$_GET['u'] = 'g';
+		$_POST['u'] = 'p';
+		self::assertSame('p', $this->filter()->filter('u', 'alphanohtml', null, 3));
+		unset($_POST['u']);
+		self::assertSame('g', $this->filter()->filter('u', 'alphanohtml', null, 3));
+	}
+
+	public function testMethod3KeepsTheIntAndFloatCasts(): void
+	{
+		$_GET['n'] = '1';
+		$_POST['n'] = '12';
+		self::assertSame(12, $this->filter()->filter('n', 'int', null, 3));
+		$_POST['n'] = '12abc';
+		self::assertSame(0, $this->filter()->filter('n', 'int', null, 3));
+		$_POST['n'] = '12.5';
+		self::assertSame(12.5, $this->filter()->filter('n', 'float', null, 3));
+		self::assertSame(4, $this->filter()->filter('absent', 'int', 4, 3));
+	}
+
 	public function testFloatFilter(): void
 	{
 		$_POST['amount'] = '12.5';

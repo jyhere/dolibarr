@@ -80,7 +80,8 @@ final class LoginController
 		$this->translator->load('main');
 		$this->translator->load('errors');
 
-		$username = self::text($r->get('username', 'alpha'));	// main.inc.php l.706-712: an array-shaped username is ''
+		// main.inc.php l.700-713: credentials read POST first (method 3); an array-shaped username is ''
+		$username = self::text($r->getPost('username', 'alpha'));
 		$entity = $r->getInt('entity');
 		$backToPage = SafeRedirect::relativePath(self::text($r->get('backtopage')), $urlRoot);
 		$actionLogin = $r->get('actionlogin', 'aZ09');
@@ -99,8 +100,9 @@ final class LoginController
 		}
 
 		// l.759-764: a password in the query string ends up in access logs, history and Referer headers.
-		// The query string itself is checked: raw reads, as GETPOST(..., 1).
-		if ((string) $r->query('password', '') !== '' && (string) $r->query('afteroauthloginreturn', '') === '') {
+		// The query string itself is checked (raw read, as GETPOST(..., 1)). Unlike main.inc.php, the
+		// afteroauthloginreturn flag does not exempt it: an OAuth return never carries a password.
+		if ((string) $r->query('password', '') !== '') {
 			$this->log->warning('--- Login submission with credentials in the query string refused for '.$urlRoot.'/login');
 			$this->session->set('dol_loginmesg', $this->translator->transnoentities('ErrorLoginMustBePostMethod'));
 
@@ -115,7 +117,7 @@ final class LoginController
 		$secondStep = !empty($this->session->get('dol_totp_pending')) && $r->isSet('totpcode');
 		$result = $secondStep
 			? $this->authenticator->attemptTotp(self::text($r->get('totpcode', 'alphanohtml')))
-			: $this->authenticator->attempt($username, self::text($r->get('password', 'password')), $entity);
+			: $this->authenticator->attempt($username, self::text($r->getPost('password', 'password')), $entity);
 		if ($result->needsTotp()) {
 			return $this->toLoginPage($backToPage);
 		}
