@@ -17,6 +17,7 @@ use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Translator;
 use Dolibarr\Module\User\Controller\LoginController;
+use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Repository\UserRepository;
@@ -40,7 +41,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function controllers(): array
 	{
-		return [UserController::class, LoginController::class];
+		return [UserController::class, LoginController::class, LogoutController::class];
 	}
 
 	public function services(Container $c): void
@@ -98,6 +99,13 @@ final class UserModule implements ModuleInterface
 			self::get($c, LegacyLoginPage::class),
 			self::get($c, Logger::class),
 			DOL_URL_ROOT
+		));
+		$c->set(LogoutController::class, static fn (Container $c): LogoutController => new LogoutController(
+			self::get($c, LegacyContext::class),
+			self::get($c, EventDispatcher::class),
+			self::get($c, LegacyHooks::class),
+			DOL_URL_ROOT,
+			DOL_MAIN_URL_ROOT
 		));
 		$c->set(UserController::class, static fn (Container $c): UserController => new UserController(
 			self::get($c, UserRepository::class),
