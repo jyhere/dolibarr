@@ -1,0 +1,8 @@
+includes:
+	- phpstan.neon.dist
+parameters:
+	paths!:
+		- htdocs/src
+	level: 10
+	scanDirectories:
+		- htdocs/includes/latte
