@@ -30,4 +30,17 @@ final class LegacyObjectLoader
 
 		return $this->users[$id] = $user->fetch($id) > 0 ? $user : null;
 	}
+
+	/**
+	 * The legacy object of the element $element (CommonObject::$element), for the generic components.
+	 *
+	 * @throws \LogicException When the element is not supported yet (only 'user' today)
+	 */
+	public function byElement(string $element, int $id): ?\CommonObject
+	{
+		return match ($element) {
+			'user' => $this->user($id),
+			default => throw new \LogicException('No legacy object loader for the element '.$element),
+		};
+	}
 }

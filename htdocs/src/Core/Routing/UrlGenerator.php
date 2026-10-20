@@ -23,6 +23,14 @@ final class UrlGenerator
 	}
 
 	/**
+	 * Whether a route named $name exists (a route of an optional module).
+	 */
+	public function has(string $name): bool
+	{
+		return isset($this->byName[$name]);
+	}
+
+	/**
 	 * @param array<string,scalar> $params Path variables, remaining ones go to the query string
 	 * @throws \InvalidArgumentException
 	 */

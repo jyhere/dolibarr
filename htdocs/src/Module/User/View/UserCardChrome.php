@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\View;
 
+use Dolibarr\Core\Entity\EntityTabs;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Routing\UrlGenerator;
@@ -13,9 +14,10 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
 /**
  * Legacy chrome and legacy-rendered fragments of the read-only user card
  * (htdocs/user/card.php, view mode, l.1700-2400). The only place of the module
- * calling these legacy helpers; they read their own globals.
+ * calling these legacy helpers; they read their own globals. Also the tabs and banner of the generic
+ * tabs of the core (EntityTabs), such as the notes of htdocs/user/note.php.
  */
-final class UserCardChrome
+final class UserCardChrome implements EntityTabs
 {
 	public function __construct(private readonly LegacyContext $ctx, private readonly UrlGenerator $urls)
 	{
@@ -110,8 +112,8 @@ final class UserCardChrome
 
 		return new UserCardHtml(
 			confirmHtml: $this->confirmClone($object, $form),
-			tabsHtml: $this->tabs($object),
-			bannerHtml: $this->banner($object, $perms->canList()),
+			tabsHtml: $this->tabs($object, 'user'),
+			bannerHtml: $this->banner($object, $perms->canList(), $this->cardMoreHtmlRef($object)),
 			tabsEndHtml: dol_get_fiche_end(),
 			loginHtml: showValueWithClipboardCPButton($object->login).$addadmin,
 			typeLabelHtml: $form->textwithpicto($langs->trans('Type'), $langs->trans('InternalExternalDesc')),
@@ -282,33 +284,91 @@ final class UserCardChrome
 	}
 
 	/**
-	 * card.php l.1741, the "user" tab pointing to the new route.
+	 * The chrome of a tab page of the user as htdocs/user/<tab>.php prints it; only the note tab
+	 * (user/note.php l.103-155) today.
+	 *
+	 * @return array{tabsHtml: string, bannerHtml: string, tabsEndHtml: string, headerRowsHtml: string}
+	 *
+	 * @throws \InvalidArgumentException When $legacyObject is not a legacy user, or the tab is not supported
 	 */
-	private function tabs(\User $object): string
+	public function chrome(object $legacyObject, object $entity, string $activeTab): array
+	{
+		if (!$legacyObject instanceof \User) {
+			throw new \InvalidArgumentException('UserCardChrome only handles \\User, got '.$legacyObject::class);
+		}
+		if ($activeTab !== 'note') {
+			throw new \InvalidArgumentException('No chrome for the user tab '.$activeTab);
+		}
+		require_once DOL_DOCUMENT_ROOT.'/core/lib/usergroups.lib.php';
+		$langs = $this->ctx->langs;
+		$this->ctx->setPageObject($legacyObject);
+		// note.php l.58
+		$legacyObject->loadRights();
+
+		// note.php l.112-120: the back link and the navigation, from the legacy user's rights
+		$me = $this->ctx->user;
+		$canList = $me !== null && ($me->hasRight('user', 'user', 'read') || $me->admin);
+		$morehtmlref = '<a href="'.DOL_URL_ROOT.'/user/vcard.php?id='.$legacyObject->id.'&output=file&file='.urlencode(dol_sanitizeFileName($legacyObject->getFullName($langs).'.vcf')).'" class="refid valignmiddle" tabindex="-1" rel="noopener">';
+		$morehtmlref .= img_picto($langs->trans('Download').' '.$langs->trans('VCard'), 'vcard', 'class="valignmiddle marginleftonly paddingrightonly"');
+		$morehtmlref .= '</a>';
+		$morehtmlref .= $this->virtualCardButton($legacyObject);
+
+		return [
+			'tabsHtml' => $this->tabs($legacyObject, 'note'),
+			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref),
+			'tabsEndHtml' => dol_get_fiche_end(),
+			'headerRowsHtml' => $this->noteLoginRow($legacyObject),
+		];
+	}
+
+	/**
+	 * The tabs of user_prepare_head() with $active selected; the "user" tab (card.php l.1741) and the "note"
+	 * tab (when the notes component is registered) point to the new routes. The note badge is computed by user_prepare_head() from the legacy object.
+	 */
+	private function tabs(\User $object, string $active): string
 	{
 		$head = user_prepare_head($object);
 		foreach ($head as $i => $tab) {
 			if (($tab[2] ?? '') === 'user') {
 				$head[$i][0] = $this->urls->generate('user_show', ['id' => (int) $object->id]);
+			} elseif (($tab[2] ?? '') === 'note' && $this->urls->has('entity_note')) {
+				$head[$i][0] = $this->urls->generate('entity_note', ['entity' => 'user', 'id' => (int) $object->id]);
 			}
 		}
 
-		return dol_get_fiche_head($head, 'user', $this->ctx->langs->trans('User'), -1, 'user', 0, '', '', 0, '', 1);
+		// note.php l.106 passes the defaults after the picto; card.php l.1741 enables the drag and drop of files
+		return $active === 'user'
+			? dol_get_fiche_head($head, 'user', $this->ctx->langs->trans('User'), -1, 'user', 0, '', '', 0, '', 1)
+			: dol_get_fiche_head($head, $active, $this->ctx->langs->trans('User'), -1, 'user');
 	}
 
 	/**
-	 * card.php l.1712-1750. dol_banner_tab() prints its output and needs the global $form.
+	 * card.php l.1745-1748: the vcard and virtual card links of the banner.
 	 */
-	private function banner(\User $object, bool $canList): string
+	private function cardMoreHtmlRef(\User $object): string
 	{
 		$langs = $this->ctx->langs;
-		$linkback = $canList ? '<a href="'.DOL_URL_ROOT.'/user/list.php?restore_lastsearch_values=1">'.$langs->trans('BackToList').'</a>' : '';
-
 		$morehtmlref = '<a href="'.dolBuildUrl(DOL_URL_ROOT.'/user/vcard.php', ['id' => $object->id, 'output' => 'file', 'file' => dol_sanitizeFileName($object->getFullName($langs).'.vcf')]).'" class="refid valignmiddle" tabindex="-1" rel="noopener">';
 		$morehtmlref .= img_picto($langs->trans('Download').' '.$langs->trans('VCard').' ('.$langs->trans('AddToContacts').')', 'vcard', 'class="valignmiddle marginleftonly paddingrightonly"');
 		$morehtmlref .= '</a>';
+
+		return $morehtmlref.$this->virtualCardButton($object);
+	}
+
+	private function virtualCardButton(\User $object): string
+	{
+		$langs = $this->ctx->langs;
 		$urltovirtualcard = '/user/virtualcard.php?id='.((int) $object->id);
-		$morehtmlref .= dolButtonToOpenUrlInDialogPopup('publicvirtualcard', $langs->transnoentitiesnoconv('PublicVirtualCardUrl').' - '.$object->getFullName($langs), img_picto($langs->trans('PublicVirtualCardUrl'), 'card', 'class="valignmiddle marginleftonly paddingrightonly"'), $urltovirtualcard, '', 'refid valignmiddle nohover');
+
+		return dolButtonToOpenUrlInDialogPopup('publicvirtualcard', $langs->transnoentitiesnoconv('PublicVirtualCardUrl').' - '.$object->getFullName($langs), img_picto($langs->trans('PublicVirtualCardUrl'), 'card', 'class="valignmiddle marginleftonly paddingrightonly"'), $urltovirtualcard, '', 'refid valignmiddle nohover');
+	}
+
+	/**
+	 * card.php l.1712-1750 and note.php l.112-131. dol_banner_tab() prints its output and needs the global $form.
+	 */
+	private function banner(\User $object, bool $canList, string $morehtmlref): string
+	{
+		$linkback = $canList ? '<a href="'.DOL_URL_ROOT.'/user/list.php?restore_lastsearch_values=1">'.$this->ctx->langs->trans('BackToList').'</a>' : '';
 
 		$this->ctx->form();
 		ob_start();
@@ -319,6 +379,28 @@ final class UserCardChrome
 		}
 
 		return $html;
+	}
+
+	/**
+	 * note.php l.141-158: the Login row above the notes.
+	 */
+	private function noteLoginRow(\User $object): string
+	{
+		$langs = $this->ctx->langs;
+		$out = '<tr><td class="titlefield">'.$langs->trans('Login').'</td>';
+		if (!empty($object->ldap_sid) && $object->status == 0) {
+			$out .= '<td class="error">'.$langs->trans('LoginAccountDisableInDolibarr').'</td>';
+		} else {
+			$addadmin = '';
+			if (isModEnabled('multicompany') && !empty($object->admin) && empty($object->entity)) {
+				$addadmin .= img_picto($langs->trans('SuperAdministratorDesc'), 'superadmin', 'class="paddingleft valignmiddle"');
+			} elseif (!empty($object->admin)) {
+				$addadmin .= img_picto($langs->trans('AdministratorDesc'), 'admin', 'class="paddingleft valignmiddle"');
+			}
+			$out .= '<td>'.showValueWithClipboardCPButton($object->login).$addadmin.'</td>';
+		}
+
+		return $out.'</tr>';
 	}
 
 	/**

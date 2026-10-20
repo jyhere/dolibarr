@@ -9,4 +9,5 @@ declare(strict_types=1);
  */
 return [
 	new \Dolibarr\Module\User\UserModule(),
+	new \Dolibarr\Module\Notes\NotesModule(),
 ];

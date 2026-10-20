@@ -296,6 +296,45 @@ cleanup_smoke_users
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup WHERE nom LIKE 'smoke\\_%'")" = "0" ] && ok "smoke groups removed" || fail "smoke groups removed" "some left"
 CLEANUP_JAR=""
 
+echo "== Notes component (/{entity}/{id}/note)"
+# The note of user 1 and its modifier are restored at the end, and the agenda events USER_MODIFY written meanwhile removed
+NOTE_ORIG="$(smoke_sql "SELECT IFNULL(note_public, '<NULL>'), IFNULL(fk_user_modif, '<NULL>') FROM llx_user WHERE rowid = 1")"
+NOTE_PUB_ORIG="$(printf '%s' "$NOTE_ORIG" | cut -f1)"
+NOTE_MODIF_ORIG="$(printf '%s' "$NOTE_ORIG" | cut -f2)"
+MAX_AC="$(smoke_sql "SELECT IFNULL(MAX(id), 0) FROM llx_actioncomm")"
+sql_or_null() { [ "$1" = "<NULL>" ] && printf 'NULL' || printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+restore_note() {
+	smoke_sql "UPDATE llx_user SET note_public = $(sql_or_null "$NOTE_PUB_ORIG"), fk_user_modif = $(sql_or_null "$NOTE_MODIF_ORIG") WHERE rowid = 1;
+		DELETE r FROM llx_actioncomm_resources r JOIN llx_actioncomm a ON a.id = r.fk_actioncomm WHERE a.id > $MAX_AC AND a.elementtype = 'user' AND a.fk_element = 1;
+		DELETE FROM llx_actioncomm WHERE id > $MAX_AC AND elementtype = 'user' AND fk_element = 1;" > /dev/null
+}
+# A failing check exits: the note is restored on the way out
+trap 'restore_note; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+expect_code "GET /user/1/note 200" 200 -b "$J1" "$BASE/user/1/note"
+expect_grep "notes page has the NotePublic label" 'Note (publique)\|Public note' 1 -b "$J1" "$BASE/user/1/note"
+expect_grep "notes page has the legacy notes template structure" 'BEGIN PHP TEMPLATE NOTES' 1 -b "$J1" "$BASE/user/1/note"
+expect_grep "note tab of the card points to the route" 'id="note" class="tab inline-block valignmiddle" href="/user/1/note"' 1 -b "$J1" "$BASE/user/1"
+expect_code "GET /nothing/1/note 404" 404 -b "$J1" "$BASE/nothing/1/note"
+EDIT="$(curl -s -b "$J1" -c "$J1" "$BASE/user/1/note" | grep -o 'href="[^"]*/user/1/note?action=editnote_public[^"]*"' | head -1 | sed 's/^href="//;s/"$//;s/&amp;/\&/g')"
+[ -n "$EDIT" ] && ok "notes page has the edit link of the public note" || fail "edit link of the public note" "none"
+expect_grep "edit mode shows the textarea posting to the route" '<form method="post" action="/user/1/note">' 1 -b "$J1" "$BASE$EDIT"
+TN="$(token_from "$J1" /user/1/note)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" -d "action=setnote_public" --data-urlencode "note_public=<b>smoke</b>" "$BASE/user/1/note")"
+[ "$OUT" = "302 $BASE/user/1/note" ] || fail "POST /user/1/note setnote_public" "$OUT"
+ok "POST /user/1/note setnote_public 302"
+# editfieldval() (textarea type) prints the note as HTML, as user/note.php does
+expect_grep "the note is shown as HTML" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/1/note"
+expect_grep "legacy note.php shows the same note" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/note.php?id=1"
+expect_grep "json exposes the public note" '"notePublic":"<b>smoke</b>"' 1 "${JSON[@]}" -b "$J1" "$BASE/user/1/note"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=setnote_public&note_public=bogus" "$BASE/user/1/note")"
+[ "$OUT" = "302" ] && [ "$(smoke_sql "SELECT note_public FROM llx_user WHERE rowid = 1")" = "<b>smoke</b>" ] && ok "invalid token writes no note" || fail "invalid token writes no note" "$OUT"
+TN="$(token_from "$J1" /user/1/note)"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" -d "action=setnote_public&note_public=" "$BASE/user/1/note")"
+[ "$OUT" = "302" ] && [ "$(smoke_sql "SELECT IFNULL(note_public, '<NULL>') FROM llx_user WHERE rowid = 1")" = "<NULL>" ] && ok "empty note_public clears the note" || fail "empty note_public clears the note" "$OUT"
+restore_note
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$(smoke_sql "SELECT IFNULL(note_public, '<NULL>'), IFNULL(fk_user_modif, '<NULL>') FROM llx_user WHERE rowid = 1")" = "$NOTE_ORIG" ] && ok "note of user 1 restored" || fail "note of user 1 restored" "differs"
+
 echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
 expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
 expect_code "still logged in after the invalid token" 200 -b "$J1" "$BASE/user/1"

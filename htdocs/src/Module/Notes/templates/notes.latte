@@ -1,0 +1,42 @@
+{* The notes tab of an entity: htdocs/user/note.php l.103-160 around core/tpl/notes.tpl.php l.148-176 ($colwidth 25, no $cssclass). *}
+{layout 'core:@layout'}
+{block content}
+{var $editPublic = $action === 'editnote_public'}
+{var $editPrivate = $action === 'editnote_private'}
+{$chrome['tabsHtml']|noescape}
+{$chrome['bannerHtml']|noescape}
+<div class="underbanner clearboth"></div>
+<form method="POST" action="{$formAction}">
+<input type="hidden" name="token" value="{token()}">
+{if $chrome['headerRowsHtml'] !== ''}
+<div class="fichecenter">
+<table class="border centpercent tableforfield">
+{$chrome['headerRowsHtml']|noescape}
+</table>
+</div>
+{/if}
+<!-- BEGIN PHP TEMPLATE NOTES -->
+<div class="tagtable border table-border tableforfield centpercent">
+<div class="tagtr table-border-row">
+<div class="tagtd tagtdnote tdtop{if !$editPublic} sensiblehtmlcontent{/if} table-key-border-col" style="width: 25%">
+{$fragments['publicKey']|noescape}
+</div>
+<div class="tagtd wordbreak table-val-border-col{if !$editPublic} sensiblehtmlcontent{/if}">
+{$fragments['publicVal']|noescape}
+</div>
+</div>
+{if $fragments['privateKey'] !== null}
+<div class="tagtr table-border-row">
+<div class="tagtd tagtdnote tdtop{if !$editPrivate} sensiblehtmlcontent{/if} table-key-border-col" style="width: 25%">
+{$fragments['privateKey']|noescape}
+</div>
+<div class="tagtd wordbreak table-val-border-col{if !$editPrivate} sensiblehtmlcontent{/if}">
+{$fragments['privateVal']|noescape}
+</div>
+</div>
+{/if}
+</div>
+<!-- END PHP TEMPLATE NOTES-->
+</form>
+{$chrome['tabsEndHtml']|noescape}
+{/block}
