@@ -12,6 +12,7 @@ use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Logger;
 use Dolibarr\Module\User\Event\UserLoggedIn;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
+use Dolibarr\Module\User\Security\AuthenticationException;
 use Dolibarr\Module\User\Security\SessionAuthenticator;
 use PHPUnit\Framework\TestCase;
 
@@ -88,6 +89,39 @@ final class SessionAuthenticatorTest extends TestCase
 		self::assertSame($received[0]->loginInfo, $GLOBALS['user']->context['audit']);
 		self::assertSame('dolibarr', $GLOBALS['user']->context['authentication_method']);
 		self::assertSame($before + 1, $this->countLoginEvents($ctx));
+	}
+
+	public function testAFailingUserLoggedInListenerRollsBackAndClearsTheSession(): void
+	{
+		$_SESSION = ['token' => 'abc'];
+		$ctx = LegacyContext::fromGlobals();
+		$before = $this->lastLoginDates($ctx);
+		$dispatcher = new EventDispatcher();
+		$dispatcher->addListener(UserLoggedIn::class, static function (): void {
+			throw new \RuntimeException('USER_LOGIN trigger failed');
+		});
+
+		try {
+			$this->sessionAuthenticator($dispatcher)->login($GLOBALS['user'], 'dolibarr', ['tz' => '2']);
+			self::fail('AuthenticationException expected');
+		} catch (AuthenticationException $e) {
+			self::assertInstanceOf(\RuntimeException::class, $e->getPrevious());
+		}
+
+		self::assertSame($before, $this->lastLoginDates($ctx));
+		self::assertArrayNotHasKey('dol_login', $_SESSION);
+		self::assertArrayNotHasKey('dol_authmode', $_SESSION);
+	}
+
+	/**
+	 * @return array{0: mixed, 1: mixed}
+	 */
+	private function lastLoginDates(LegacyContext $ctx): array
+	{
+		$row = (new Connection($ctx->db))->fetchOne('SELECT datelastlogin, datepreviouslogin FROM '.MAIN_DB_PREFIX.'user WHERE rowid = 1');
+		self::assertNotNull($row);
+
+		return [$row->datelastlogin, $row->datepreviouslogin];
 	}
 
 	private function countLoginEvents(LegacyContext $ctx): int

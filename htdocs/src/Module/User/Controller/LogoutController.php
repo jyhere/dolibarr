@@ -41,6 +41,13 @@ final class LogoutController
 	#[Route('/logout', methods: ['GET', 'POST'], name: 'logout')]
 	public function logout(Request $r): Response
 	{
+		// A present but invalid CSRF token: main.inc.php has emptied $_POST, set a warning message and
+		// errorcode=InvalidToken. The disconnection is cancelled (spec §8; legacy logout.php disconnects anyway).
+		// A GET without token, the legacy menu link, still disconnects.
+		if ($r->query('errorcode') === 'InvalidToken') {
+			return new RedirectResponse($this->urlRoot.'/index.php');
+		}
+
 		// l.50-56: forced authentication modes, only the session keys are cleared
 		if ($this->ctx->authMode() === 'forceuser' || $this->ctx->authMode() === 'http') {
 			unset($_SESSION['dol_login'], $_SESSION['dol_entity'], $_SESSION['urlfrom']);

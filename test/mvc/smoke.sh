@@ -60,6 +60,12 @@ LOC="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/user/1")"
 case "$LOC" in "$BASE/login?backtopage="*) ok "user/1 redirects to login?backtopage";; *) fail "user/1 redirect target" "$LOC";; esac
 expect_code "user/1 anonymous json 401" 401 "${JSON[@]}" "$BASE/user/1"
 expect_grep "user/1 anonymous json body" '{"error":"not_logged"}' 1 "${JSON[@]}" "$BASE/user/1"
+LOC="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/logout?urlfrom=//evil.example/x")"
+case "$LOC" in "$BASE/login?"*) ok "logout open redirect anonymous goes to login";; *) fail "logout open redirect anonymous" "$LOC";; esac
+# A missing static file: 404 from nginx (or app.php before main.inc.php), never a session
+expect_code "missing asset 404" 404 "$BASE/theme/eldy/img/nothere.png"
+GREP_OPTS=-i expect_grep "missing asset sets no cookie" '^set-cookie' 0 -D - -o /dev/null "$BASE/theme/eldy/img/nothere.png"
+GREP_OPTS=-i expect_grep "unmatched .json sets no cookie" '^set-cookie' 0 -D - -o /dev/null "$BASE/nexistepas.json"
 expect_code "login page 200" 200 "$BASE/login"
 LOGINACTION="$(curl -s "$BASE/login" | grep -o 'action="[^"]*"' | head -1)"
 case "$LOGINACTION" in 'action="/login'*) ok "login form action";; *) fail "login form action" "$LOGINACTION";; esac
@@ -90,12 +96,23 @@ expect_grep "user/1 Accept */* is HTML" '<html' 1 -H 'Accept: */*' -b "$J1" "$BA
 expect_code "user/1 json 200" 200 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 expect_grep "user/1 json login" '"login":"admin"' 1 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 GREP_OPTS=-i expect_grep "user/1 json no pass" 'pass' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
+# Only the exposed data: {"user":{...}} with the flat UserView::toArray() keys, no presentation data
+expect_grep "user/1 json is only the exposed user" '^{"user":{[^{}]*}}$' 1 -b "$J1" "${JSON[@]}" "$BASE/user/1"
+expect_grep "user/1 json no title" '"title"' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
+expect_grep "user/1 json no hook html" 'hookFormObjectOptions' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
+expect_grep "user/1 json no presentation flags" '"showActions"\|"bodyCss"\|"canSeeSalary"' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 expect_grep "user/1.json login" '"login":"admin"' 1 -b "$J1" "$BASE/user/1.json"
 expect_grep "user/1?format=json login" '"login":"admin"' 1 -b "$J1" "$BASE/user/1?format=json"
 expect_code "user/abc 404" 404 -b "$J1" "$BASE/user/abc"
 expect_code "user 404 (list in plan 2)" 404 -b "$J1" "$BASE/user"
 expect_code "user/999999 404" 404 -b "$J1" "$BASE/user/999999"
 expect_code "login while logged in 302" 302 -b "$J1" "$BASE/login"
+
+echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
+expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
+expect_code "still logged in after the invalid token" 200 -b "$J1" "$BASE/user/1"
+curl -s -o /dev/null -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
+expect_grep "invalid token warning displayed" "type: 'warning'" 1 -b "$J1" "$BASE/user/1"
 
 echo "== New logout"
 TL="$(token_from "$J1" /user/1)"
@@ -105,6 +122,15 @@ else
 	expect_location_suffix "GET /logout 302 to index.php" "/index.php" -b "$J1" -c "$J1" "$BASE/logout"
 fi
 expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php?id=1"
+
+echo "== Logout open redirect (logged in)"
+newjar J3
+T3="$(token_from "$J3" /login)"
+curl -s -o /dev/null -b "$J3" -c "$J3" -X POST --data-urlencode "token=$T3" -d "actionlogin=login&loginfunction=loginfunction" \
+	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/login"
+expect_code "J3 logged in" 200 -b "$J3" "$BASE/user/1"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" "$BASE/logout?urlfrom=//evil.example/x")"
+case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the host";; *) fail "logout urlfrom=//evil" "$OUT";; esac
 
 echo "== Legacy login -> new world"
 newjar J2

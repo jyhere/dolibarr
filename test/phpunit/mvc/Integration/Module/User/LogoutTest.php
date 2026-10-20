@@ -55,6 +55,24 @@ final class LogoutTest extends TestCase
 		self::assertSame($GLOBALS['user'], $received[0]->user);
 	}
 
+	public function testInvalidTokenCancelsTheLogout(): void
+	{
+		// What main.inc.php leaves when the posted token is invalid: $_POST emptied, errorcode set
+		$_SESSION = ['dol_login' => 'admin', 'dol_entity' => 1];
+		$dispatcher = new EventDispatcher();
+		$received = 0;
+		$dispatcher->addListener(UserLoggedOut::class, static function () use (&$received): void {
+			$received++;
+		});
+
+		$response = $this->controller($dispatcher)->logout(new Request('POST', '/logout', ['errorcode' => 'InvalidToken'], [], [], []));
+
+		self::assertSame(302, $response->status());
+		self::assertSame('/index.php', $response->headers()['Location']);
+		self::assertSame(0, $received);
+		self::assertSame('admin', $_SESSION['dol_login']);
+	}
+
 	public function testNoRedirectReturnsAnEmptyResponse(): void
 	{
 		$_SESSION = ['dol_login' => $GLOBALS['user']->login];

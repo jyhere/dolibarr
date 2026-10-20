@@ -120,6 +120,8 @@ final class SessionAuthenticator
 			if (session_status() === PHP_SESSION_ACTIVE) {
 				session_destroy();
 			}
+			// session_destroy() leaves $_SESSION filled for the rest of the request: nothing may see a logged user
+			$_SESSION = [];
 			$this->log->error('Error in some triggers USER_LOGIN or in some hooks afterLogin: '.$e->getMessage());
 
 			throw $e instanceof AuthenticationException ? $e : new AuthenticationException('Error in some triggers USER_LOGIN or in some hooks afterLogin', 0, $e);
