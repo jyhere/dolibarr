@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Service;
 
 use Dolibarr\Core\Config;
+use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
@@ -14,10 +15,17 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
  * l.287-452, action update l.478-773) and resolved against what the current user may edit: on an update a
  * field he may not edit already carries the value of the existing user.
  *
- * Not read, on purpose: api_key and openid (secrets, no field on the entity: the legacy page keeps that job),
- * ldap_sid and the social networks (no field on the entity), national_registration_number (idem), the photo
- * upload and deletephoto (files are handled by the controller), and on an update note_public, note_private
- * (card.php does not read them there, they have their own page).
+ * Not read, on purpose: api_key and openid (secrets: the spec forbids loading them into the entity, the legacy
+ * page keeps that job, openid stays legacy-only), ldap_sid (computed as the isLdapManaged flag of the entity),
+ * the social networks (deferred: the new form does not render them), the photo upload and deletephoto (files
+ * are handled by the controller), and on an update note_public, note_private (card.php does not read them
+ * there, they have their own page).
+ *
+ * Hardening over card.php: the posted admin flag is ignored unless the checker's canEditAdminFlag() allows it,
+ * so a non-admin creator cannot make an admin, and an external target is never made admin.
+ *
+ * The extrafields come from ExtraFields::setOptionalsFromPost() (see InputFilter::optionals()): on an update
+ * only the keys the form carries are returned and toEntity() merges them over the existing ones.
  *
  * The raw values are kept as GETPOST() returns them: the validator checks them, the writer escapes them.
  */
@@ -73,7 +81,9 @@ final class UserInput
 		public readonly ?int $companyId = null,
 		public readonly bool $forcePasswordChange = false,
 		public readonly bool $superadmin = false,
-		public readonly ?int $entity = null
+		public readonly ?int $entity = null,
+		public readonly ?string $nationalRegistrationNumber = null,
+		public readonly ?string $extraFieldsError = null
 	) {
 	}
 
@@ -116,11 +126,20 @@ final class UserInput
 
 		$color = self::text($r, 'color');
 
+		// l.311-314 and l.522-525: the national registration number is protected like the ref employee.
+		$nationalNumber = $update && !$r->isSet('national_registration_number')
+			? $existing->nationalRegistrationNumber
+			: self::text($r, 'national_registration_number');
+
+		$extra = $r->optionals('user', $update);
+		$extraError = $extra[InputFilter::OPTIONALS_ERROR] ?? null;
+		unset($extra[InputFilter::OPTIONALS_ERROR]);
+
 		$categories = $r->getPost('usercats', 'array:int', []);
 
 		return new self(
 			lastname: self::text($r, 'lastname') ?? '',
-			login: $perms->canEditLogin($target, false) ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
+			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
 			firstname: self::text($r, 'firstname'),
 			gender: self::text($r, 'gender', 'aZ09'),
 			civility: self::text($r, 'civility_code', 'aZ09'),
@@ -157,14 +176,16 @@ final class UserInput
 			dateStartValidity: self::dateFromParts($r, 'datestartvalidity'),
 			dateEndValidity: self::dateFromParts($r, 'dateendvalidity'),
 			birth: self::dateFromParts($r, 'dateofbirth'),
-			extraFields: $r->optionals('user'),
+			extraFields: $extra,
 			password: $password,
 			categoryIds: is_array($categories) ? array_values(array_map('intval', $categories)) : [],
 			contactId: $contactId,
 			companyId: $companyId,
 			forcePasswordChange: (bool) $r->getPost('forcepasswordchange', 'int', 0),
 			superadmin: (bool) $r->getPost('superadmin', 'int', 0),
-			entity: $entity
+			entity: $entity,
+			nationalRegistrationNumber: $nationalNumber,
+			extraFieldsError: is_string($extraError) ? $extraError : null
 		);
 	}
 
@@ -230,20 +251,23 @@ final class UserInput
 			extraFields: $base === null ? $this->extraFields : array_merge($base->extraFields, $this->extraFields),
 			officeFax: $this->officeFax,
 			accountancyCode: $this->accountancyCode,
-			warehouseId: $this->warehouseId
+			warehouseId: $this->warehouseId,
+			nationalRegistrationNumber: $this->nationalRegistrationNumber,
+			isLdapManaged: $base->isLdapManaged ?? false
 		);
 	}
 
 	/**
 	 * dol_mktime(0, 0, 0, <name>month, <name>day, <name>year) of a date selector, at midnight UTC;
-	 * null unless day, month and year are all given and make a real date.
+	 * null unless day, month and year are all given and make a real date (year 1 to 9999). An impossible
+	 * date such as 30 February gives null, where legacy dol_mktime() normalises it; no message is raised.
 	 */
 	private static function dateFromParts(Request $r, string $name): ?\DateTimeImmutable
 	{
 		$day = $r->getInt($name.'day');
 		$month = $r->getInt($name.'month');
 		$year = $r->getInt($name.'year');
-		if ($day <= 0 || $month <= 0 || $year <= 0 || !checkdate($month, $day, $year)) {
+		if ($day <= 0 || $month <= 0 || $year <= 0 || $year > 9999 || !checkdate($month, $day, $year)) {
 			return null;
 		}
 

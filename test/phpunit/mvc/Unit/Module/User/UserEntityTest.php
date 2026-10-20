@@ -12,7 +12,7 @@ final class UserEntityTest extends TestCase
 {
 	private const PUBLIC_KEYS = ['id', 'entity', 'login', 'admin', 'employee', 'status', 'lastname', 'firstname', 'gender', 'civility', 'job', 'email', 'officePhone', 'officeFax', 'userMobile', 'photo', 'lang', 'color', 'dateStartValidity', 'dateEndValidity', 'hasApiKey'];
 	private const SAME_USER_EXTRA = ['personalEmail', 'personalMobile', 'address', 'zip', 'town', 'stateId', 'countryId', 'birth', 'birthPlace', 'signature', 'dateLastLogin', 'datePreviousLogin', 'notePublic', 'notePrivate'];
-	private const ADMIN_EXTRA = ['companyId', 'contactId', 'memberId', 'supervisorId', 'expenseValidatorId', 'holidayValidatorId', 'refEmployee', 'refExt', 'dateCreated', 'dateModified', 'salary', 'salaryExtra', 'thm', 'tjm', 'weeklyHours', 'dateEmployment', 'dateEmploymentEnd', 'accountancyCode', 'warehouseId'];
+	private const ADMIN_EXTRA = ['companyId', 'contactId', 'memberId', 'supervisorId', 'expenseValidatorId', 'holidayValidatorId', 'refEmployee', 'refExt', 'dateCreated', 'dateModified', 'salary', 'salaryExtra', 'thm', 'tjm', 'weeklyHours', 'dateEmployment', 'dateEmploymentEnd', 'accountancyCode', 'warehouseId', 'nationalRegistrationNumber', 'isLdapManaged'];
 
 	public function testToArrayPublicNeverExposesSecretsOrPrivateFields(): void
 	{

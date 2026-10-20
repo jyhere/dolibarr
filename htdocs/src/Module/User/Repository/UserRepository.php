@@ -15,6 +15,9 @@ final class UserRepository
 	/** Computed in SQL so the API key value itself is never loaded. */
 	public const HAS_API_KEY_SQL = "CASE WHEN u.api_key IS NOT NULL AND u.api_key <> '' THEN 1 ELSE 0 END AS has_api_key";
 
+	/** Computed in SQL so the LDAP SID itself is never loaded. */
+	public const IS_LDAP_MANAGED_SQL = "CASE WHEN u.ldap_sid IS NOT NULL AND u.ldap_sid <> '' THEN 1 ELSE 0 END AS is_ldap_managed";
+
 	public const COLUMNS = [
 		'rowid', 'entity', 'login', 'admin', 'employee', 'statut',
 		'lastname', 'firstname', 'gender', 'civility', 'job', 'email',
@@ -28,7 +31,7 @@ final class UserRepository
 		'ref_employee', 'ref_ext', 'datec', 'tms',
 		'salary', 'salaryextra', 'thm', 'tjm', 'weeklyhours',
 		'dateemployment', 'dateemploymentend',
-		'office_fax', 'accountancy_code', 'fk_warehouse',
+		'office_fax', 'accountancy_code', 'fk_warehouse', 'national_registration_number',
 	];
 
 	public function __construct(private readonly Connection $c, private readonly int $entity)
@@ -57,7 +60,7 @@ final class UserRepository
 
 	private function fetch(string $where, string $order = ''): ?User
 	{
-		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL
+		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL
 			.' FROM '.$this->c->prefix().'user as u'
 			.' WHERE '.$where.' AND u.entity IN (0, '.$this->entity.')'
 			.$order.' LIMIT 1';
@@ -125,7 +128,9 @@ final class UserRepository
 			dateEmploymentEnd: self::date($r['dateemploymentend'] ?? null),
 			officeFax: self::str($r['office_fax'] ?? null),
 			accountancyCode: self::str($r['accountancy_code'] ?? null),
-			warehouseId: self::nint($r['fk_warehouse'] ?? null)
+			warehouseId: self::nint($r['fk_warehouse'] ?? null),
+			nationalRegistrationNumber: self::str($r['national_registration_number'] ?? null),
+			isLdapManaged: self::int($r['is_ldap_managed'] ?? 0) === 1
 		);
 	}
 

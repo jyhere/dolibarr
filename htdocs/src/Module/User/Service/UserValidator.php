@@ -45,6 +45,10 @@ final class UserValidator
 			$errors[] = $this->t->trans('ErrorTooManyLinksIntoHTMLString');
 		}
 
+		if ($in->extraFieldsError !== null) {
+			$errors[] = $in->extraFieldsError;
+		}
+
 		$badChars = $this->config->loginBadCharUnauthorized();
 		if (!self::isEmpty($in->login) && $badChars !== '' && preg_match('/['.preg_quote($badChars, '/').']/', $in->login) === 1) {
 			$errors[] = $this->t->trans('ErrorBadCharIntoLoginName', $this->t->transnoentities('Login'));

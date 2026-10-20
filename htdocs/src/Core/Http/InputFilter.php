@@ -9,6 +9,9 @@ namespace Dolibarr\Core\Http;
  */
 interface InputFilter
 {
+	/** Key of the optionals() result carrying the error message of a required extrafield left empty */
+	public const OPTIONALS_ERROR = '@error';
+
 	/**
 	 * The value of $key filtered by $filter ('alphanohtml', 'int', 'restricthtml'...), $default when absent.
 	 *
@@ -22,10 +25,12 @@ interface InputFilter
 	public function isSet(string $key): bool;
 
 	/**
-	 * The extrafields of $element ('user', 'societe'...) posted by a form, keyed 'options_<name>' as
-	 * ExtraFields::getOptionalsFromPost() does. Empty when the element has none or none is sent.
+	 * The extrafields of $element ('user', 'societe'...) posted by a form, keyed 'options_<name>', as
+	 * ExtraFields::setOptionalsFromPost() sets them: disabled, hidden or non-editable fields are left out,
+	 * and with $update ('@GETPOSTISSET') so is any field the form does not carry. When a required field is
+	 * empty the array holds the message under the key OPTIONALS_ERROR.
 	 *
 	 * @return array<string, mixed>
 	 */
-	public function optionals(string $element): array;
+	public function optionals(string $element, bool $update = false): array;
 }

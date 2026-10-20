@@ -59,21 +59,35 @@ final class LegacyInputFilter implements InputFilter
 	}
 
 	/**
-	 * Loads the extrafield definitions of $element, then reads the posted values with
-	 * ExtraFields::getOptionalsFromPost(). Unlike setOptionalsFromPost(), the enabled, visibility,
-	 * perms and mandatory checks of the definitions are not applied.
+	 * Loads the extrafield definitions of $element and has ExtraFields::setOptionalsFromPost() fill a
+	 * stub object, as card.php does (null on a creation, '@GETPOSTISSET' on an update). A required field
+	 * left empty gives the message of the extrafields under OPTIONALS_ERROR.
 	 */
-	public function optionals(string $element): array
+	public function optionals(string $element, bool $update = false): array
 	{
 		global $db;
 
 		require_once DOL_DOCUMENT_ROOT.'/core/class/extrafields.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
 		$extrafields = new \ExtraFields($db);
 		$extrafields->fetch_name_optionals_label($element);
-		$options = $extrafields->getOptionalsFromPost($element);
+
+		$stub = new class ($db, $element) extends \CommonObject {
+			public function __construct(\DoliDB $db, string $element)
+			{
+				$this->db = $db;
+				$this->table_element = $element;
+			}
+		};
+		$stub->array_options = [];
+
+		$ret = $extrafields->setOptionalsFromPost(null, $stub, $update ? '@GETPOSTISSET' : '');
 
 		/** @var array<string, mixed> $result */
-		$result = is_array($options) ? $options : [];
+		$result = $stub->array_options;
+		if ($ret < 0) {
+			$result[self::OPTIONALS_ERROR] = $extrafields->error;
+		}
 
 		return $result;
 	}

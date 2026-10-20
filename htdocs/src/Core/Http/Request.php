@@ -172,9 +172,9 @@ final class Request
 	 *
 	 * @throws \LogicException When no InputFilter was injected
 	 */
-	public function optionals(string $element): array
+	public function optionals(string $element, bool $update = false): array
 	{
-		return $this->inputFilter()->optionals($element);
+		return $this->inputFilter()->optionals($element, $update);
 	}
 
 	public function method(): string

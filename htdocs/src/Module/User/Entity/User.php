@@ -71,7 +71,9 @@ final class User implements Exposable, HasNotes
 		public readonly array $extraFields = [],
 		public readonly ?string $officeFax = null,
 		public readonly ?string $accountancyCode = null,
-		public readonly ?int $warehouseId = null
+		public readonly ?int $warehouseId = null,
+		public readonly ?string $nationalRegistrationNumber = null,
+		public readonly bool $isLdapManaged = false
 	) {
 	}
 
@@ -188,6 +190,8 @@ final class User implements Exposable, HasNotes
 			'dateEmploymentEnd' => self::iso($this->dateEmploymentEnd),
 			'accountancyCode' => $this->accountancyCode,
 			'warehouseId' => $this->warehouseId,
+			'nationalRegistrationNumber' => $this->nationalRegistrationNumber,
+			'isLdapManaged' => $this->isLdapManaged,
 		];
 	}
 

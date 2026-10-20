@@ -270,6 +270,7 @@ final class LegacyUserWriter implements UserWriter
 		$o->dateemploymentend = self::timestamp($u->dateEmploymentEnd);
 		$o->accountancy_code = $u->accountancyCode ?? '';
 		$o->fk_warehouse = $u->warehouseId ?? 0;
+		$o->national_registration_number = $u->nationalRegistrationNumber ?? '';
 	}
 
 	/**
