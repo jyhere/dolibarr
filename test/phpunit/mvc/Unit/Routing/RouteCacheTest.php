@@ -14,20 +14,31 @@ final class RouteCacheTest extends TestCase
 	public function testCacheRoundTripAndFreshness(): void
 	{
 		$defs = (new RouteCompiler())->compile([FakeController::class]);
-		$file = sys_get_temp_dir().'/routes_'.uniqid().'.php';
+		$base = sys_get_temp_dir().'/routes_'.uniqid();
+		$file = $base.'.php';
+		$controller = $base.'_controller.php';
 		$cache = new RouteCache($file);
 		try {
 			self::assertNull($cache->load());
-			self::assertFalse($cache->isFresh([__FILE__]));
+			self::assertFalse($cache->isFresh([]));
 			$cache->store($defs);
-			$loaded = $cache->load();
-			self::assertNotNull($loaded);
-			self::assertEquals($defs, $loaded);
-			self::assertTrue($cache->isFresh([__FILE__]));
-			touch($file, time() - 100);
-			self::assertFalse($cache->isFresh([__FILE__]));
+			self::assertEquals($defs, $cache->load());
+
+			$t = time() - 1000;
+			file_put_contents($controller, '<?php');
+			touch($file, $t);
+
+			touch($controller, $t - 10);
+			self::assertTrue($cache->isFresh([$controller]));
+
+			touch($controller, $t + 10);
+			self::assertFalse($cache->isFresh([$controller]));
+
+			unlink($controller);
+			self::assertFalse($cache->isFresh([$controller]));
 		} finally {
 			@unlink($file);
+			@unlink($controller);
 		}
 	}
 }
