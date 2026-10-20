@@ -155,7 +155,7 @@ final class Kernel
 				$translator->load('errors');
 			}
 
-			return $responder->respond(new ViewModel('core:error404', ['error' => 'not_found'], 404));
+			return $responder->respond(new ViewModel('core:error404', [], 404, ['error' => 'not_found']));
 		} catch (AccessDeniedException $e) {
 			// accessforbidden() prints the standard Dolibarr page then exits: it cannot be captured into a Response.
 			http_response_code(403);

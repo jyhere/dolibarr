@@ -19,21 +19,31 @@ final class LegacyHooks
 	}
 
 	/**
+	 * Run executeHooks(). What the hooks echo is captured into HookResult::$output, never sent:
+	 * the caller places it where the legacy page would have printed it.
+	 *
 	 * @param array<string,mixed> $params
 	 */
 	public function execute(string $name, array $params, ?object &$object, string &$action): HookResult
 	{
-		$code = (int) $this->hm->executeHooks($name, $params, $object, $action);
+		ob_start();
+		try {
+			$code = (int) $this->hm->executeHooks($name, $params, $object, $action);
+		} finally {
+			$output = (string) ob_get_clean();
+		}
 
+		// Same messages, same order as setEventMessages($hookmanager->error, $hookmanager->errors)
 		$errors = [];
 		foreach ($this->hm->errors as $e) {
 			$errors[] = (string) $e;
 		}
-		if ($this->hm->error !== '' && $errors === []) {
-			$errors[] = (string) $this->hm->error;
+		$error = (string) $this->hm->error;
+		if ($error !== '' && !in_array($error, $errors, true)) {
+			array_unshift($errors, $error);
 		}
 
-		return new HookResult($code, (string) $this->hm->resPrint, $this->hm->resArray, $errors);
+		return new HookResult($code, (string) $this->hm->resPrint, $this->hm->resArray, $errors, $output);
 	}
 
 	/**

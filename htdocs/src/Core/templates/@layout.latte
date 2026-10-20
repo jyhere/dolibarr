@@ -1,3 +1,4 @@
-{$layout->header($title ?? '', $helpUrl ?? '', [], [], $bodyCss ?? '')|noescape}
+{* outputBeforeHeader: what legacy code printed before llxHeader() (e.g. echoed by a doActions hook), at the same place *}
+{($outputBeforeHeader ?? '')|noescape}{$layout->header($title ?? '', $helpUrl ?? '', [], [], $bodyCss ?? '')|noescape}
 {block content}{/block}
 {$layout->footer()|noescape}

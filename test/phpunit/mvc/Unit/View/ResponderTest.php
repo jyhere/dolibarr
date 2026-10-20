@@ -33,12 +33,51 @@ final class ResponderTest extends TestCase
 		return new Responder($renderer, $request);
 	}
 
-	public function testResponderReturnsJsonForJsonRequestsAndSkipsNonExposableObjects(): void
+	public function testJsonContainsOnlyTheExposedData(): void
 	{
-		$vm = new ViewModel('test:hello', ['user' => new ExposableStub(['id' => 1]), 'form' => new \stdClass(), 'total' => 3]);
+		$vm = (new ViewModel('test:hello', ['title' => 'T', 'form' => new \stdClass(), 'hookHtml' => '<b>x</b>']))
+			->expose('user', new ExposableStub(['id' => 1]))
+			->expose('total', 3);
 		$resp = $this->responder(true)->respond($vm);
 		self::assertInstanceOf(JsonResponse::class, $resp);
 		self::assertSame('{"user":{"id":1},"total":3}', $resp->body());
+	}
+
+	public function testJsonWithoutExposedDataIsAnEmptyObject(): void
+	{
+		$resp = $this->responder(true)->respond(new ViewModel('test:hello', ['title' => 'T']));
+		self::assertSame('{}', $resp->body());
+	}
+
+	public function testNestedExposablesAreConvertedRecursively(): void
+	{
+		$vm = (new ViewModel('test:hello'))->expose('items', [
+			new ExposableStub(['id' => 1, 'tags' => ['a', null, 2.5]]),
+			['inner' => new ExposableStub(['id' => 2, 'child' => new ExposableStub(['ok' => true])])],
+		]);
+		$resp = $this->responder(true)->respond($vm);
+		self::assertSame('{"items":[{"id":1,"tags":["a",null,2.5]},{"inner":{"id":2,"child":{"ok":true}}}]}', $resp->body());
+	}
+
+	public function testNestedPlainObjectThrows(): void
+	{
+		$vm = (new ViewModel('test:hello'))->expose('items', [['user' => new \stdClass()]]);
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessage('items.0.user');
+		$this->responder(true)->respond($vm);
+	}
+
+	public function testPlainObjectInsideAnExposableThrows(): void
+	{
+		$vm = (new ViewModel('test:hello'))->expose('user', new ExposableStub(['legacy' => new \stdClass()]));
+		$this->expectException(\LogicException::class);
+		$this->responder(true)->respond($vm);
+	}
+
+	public function testExposedDataIsAlsoAvailableToTheTemplate(): void
+	{
+		$resp = $this->responder(false)->respond((new ViewModel('test:hello'))->expose('name', 'a'));
+		self::assertStringContainsString('<b>TR:Hello</b>', $resp->body());
 	}
 
 	public function testResponderReturnsHtmlOtherwiseWithViewModelStatus(): void
@@ -55,5 +94,10 @@ final class ResponderTest extends TestCase
 		$b = $a->with('b', 2);
 		self::assertSame(['a' => 1], $a->data);
 		self::assertSame(['a' => 1, 'b' => 2], $b->data);
+		$c = $b->expose('e', 3);
+		self::assertSame([], $b->exposed);
+		self::assertSame(['e' => 3], $c->exposed);
+		self::assertSame(['e' => 3], $c->with('d', 4)->exposed);
+		self::assertSame(404, (new ViewModel('t', [], 404))->expose('e', 1)->status);
 	}
 }

@@ -6,6 +6,8 @@ namespace Dolibarr\Module\User\Controller;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Http\Request;
+use Dolibarr\Core\Legacy\FlashBag;
+use Dolibarr\Core\Legacy\HookResult;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Routing\Route;
@@ -30,7 +32,8 @@ final class UserController
 		private readonly LegacyHooks $hooks,
 		private readonly LegacyObjectLoader $legacy,
 		private readonly Translator $t,
-		private readonly UserCardChrome $chrome
+		private readonly UserCardChrome $chrome,
+		private readonly FlashBag $flash
 	) {
 	}
 
@@ -68,12 +71,12 @@ final class UserController
 			$this->t->load('salaries');
 		}
 
-		$hookFormObjectOptions = $hookMoreObjectBlock = $hookMoreActionsButtons = '';
+		$outputBeforeHeader = $hookFormObjectOptions = $hookMoreObjectBlock = $hookMoreActionsButtons = '';
 		$showActions = true;
 		if ($this->hooks->hasListenersFor(self::HOOK_CONTEXTS)) {
 			$action = '';
 			$object = $legacyUser;
-			// card.php l.183 ($parameters, still current when extrafields_view.tpl.php runs formObjectOptions, l.2004);
+			// card.php l.185 ($parameters, still current when extrafields_view.tpl.php runs formObjectOptions, l.2004);
 			// $socid is the one of the current user (l.124-127), $group is GETPOSTINT('group') (l.86).
 			$parameters = [
 				'id' => $id,
@@ -81,16 +84,29 @@ final class UserController
 				'group' => (int) $r->query('group', '0'),
 				'caneditgroup' => $this->perms->canEditGroups($user),
 			];
-			$hookFormObjectOptions = $this->hooks->execute('formObjectOptions', $parameters, $object, $action)->print;
-			// card.php l.2263-2268: printed only when the hook replaces
+
+			// card.php l.185-189, the Actions section. A hook returning > 0 replaces the standard actions:
+			// a GET show runs none, so the card is rendered in both cases. What it echoes, card.php prints
+			// before llxHeader().
+			$doActions = $this->hooks->execute('doActions', $parameters, $object, $action);
+			$this->flashErrors($doActions);
+			$outputBeforeHeader = $doActions->output;
+
+			// extrafields_view.tpl.php l.72-76: echoed output, then resPrint, always
+			$options = $this->hooks->execute('formObjectOptions', $parameters, $object, $action);
+			$this->flashErrors($options);
+			$hookFormObjectOptions = $options->output.$options->print;
+
+			// card.php l.2263-2268: resPrint printed only when the hook replaces
 			$block = $this->hooks->execute('addMoreObjectBlock', [
 				'caneditpasswordandsee' => $this->perms->canSetPassword($user),
 				'caneditpasswordandsend' => $this->perms->canSendPassword($user),
 			], $object, $action);
-			$hookMoreObjectBlock = $block->code > 0 ? $block->print : '';
-			// card.php l.2284-2286: standard buttons only when no hook replaces them
+			$hookMoreObjectBlock = $block->output.($block->code > 0 ? $block->print : '');
+
+			// card.php l.2282-2394: standard buttons only when no hook replaces them; resPrint is never printed
 			$buttons = $this->hooks->execute('addMoreActionsButtons', [], $object, $action);
-			$hookMoreActionsButtons = $buttons->print;
+			$hookMoreActionsButtons = $buttons->output;
 			$showActions = $buttons->code === 0;
 		}
 
@@ -102,16 +118,29 @@ final class UserController
 
 		$personName = $user->firstname !== null && $user->firstname !== '' ? $user->lastname.', '.$user->firstname : (string) $user->lastname;
 
-		return new ViewModel('user:user_show', [
+		return (new ViewModel('user:user_show', [
+			'outputBeforeHeader' => $outputBeforeHeader,
 			'title' => $personName.' - '.$this->t->trans('Card'),
 			'bodyCss' => 'mod-user page-card',
-			'user' => new UserView($user, $visibility, $canSeeSalary),
 			'canSeeSalary' => $canSeeSalary,
 			'card' => $this->chrome->build($legacyUser, $user, $this->perms, $canSeeSalary, $this->repo->countInEntity()),
 			'showActions' => $showActions,
 			'hookFormObjectOptions' => $hookFormObjectOptions,
 			'hookMoreObjectBlock' => $hookMoreObjectBlock,
 			'hookMoreActionsButtons' => $hookMoreActionsButtons,
-		]);
+		]))->expose('user', new UserView($user, $visibility, $canSeeSalary));
+	}
+
+	/**
+	 * setEventMessages($hookmanager->error, $hookmanager->errors, 'errors') of a failed hook.
+	 */
+	private function flashErrors(HookResult $result): void
+	{
+		if (!$result->failed()) {
+			return;
+		}
+		foreach ($result->errors as $error) {
+			$this->flash->error($error);
+		}
 	}
 }

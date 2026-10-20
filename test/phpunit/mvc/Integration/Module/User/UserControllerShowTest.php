@@ -6,6 +6,7 @@ namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Http\Request;
+use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
 use Dolibarr\Core\Legacy\LegacyHooks;
@@ -21,15 +22,20 @@ use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Module\User\View\UserCardHtml;
+use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
 use PHPUnit\Framework\TestCase;
 
 final class UserControllerShowTest extends TestCase
 {
 	private ?\stdClass $browser = null;
 
+	/** @var array<mixed> */
+	private array $session = [];
+
 	protected function setUp(): void
 	{
 		// Browser detection is done by main.inc.php, not by master.inc.php used here: the banner reads it.
+		$this->session = $_SESSION ?? [];
 		$conf = $GLOBALS['conf'];
 		$this->browser = $conf->browser;
 		$conf->browser = clone $conf->browser;
@@ -41,6 +47,7 @@ final class UserControllerShowTest extends TestCase
 	protected function tearDown(): void
 	{
 		$GLOBALS['conf']->browser = $this->browser;
+		$_SESSION = $this->session;
 	}
 
 	public function testShowBuildsViewModelWithEntityAndTabs(): void
@@ -48,7 +55,9 @@ final class UserControllerShowTest extends TestCase
 		$vm = $this->controller()->show(new Request('GET', '/user/1', [], [], [], []), 1);
 
 		self::assertSame('user:user_show', $vm->template);
-		$user = $vm->data['user'];
+		$user = $vm->exposed['user'];
+		self::assertSame(['user'], array_keys($vm->exposed));
+		self::assertArrayNotHasKey('user', $vm->data);
 		self::assertInstanceOf(UserView::class, $user);
 		self::assertSame(1, $user->toArray()['id']);
 		self::assertSame(Visibility::Admin, $user->visibility);
@@ -82,22 +91,80 @@ final class UserControllerShowTest extends TestCase
 		$this->controller()->show(new Request('GET', '/user/999999', [], [], [], []), 999999);
 	}
 
-	private function controller(): UserController
+	public function testHookOutputIsComposedAsCardPhpPrintsIt(): void
+	{
+		$hooks = new ScriptedHooks([
+			'doActions' => ['echo' => '[echo doActions]', 'print' => '[print doActions]'],
+			'formObjectOptions' => ['echo' => '[echo options]', 'print' => '[print options]'],
+			'addMoreObjectBlock' => ['echo' => '[echo block]', 'print' => '[print block]'],
+			'addMoreActionsButtons' => ['echo' => '[echo buttons]', 'print' => '[print buttons]'],
+		]);
+
+		ob_start();
+		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', [], [], [], []), 1);
+		self::assertSame('', ob_get_clean());
+
+		self::assertSame(['doActions', 'formObjectOptions', 'addMoreObjectBlock', 'addMoreActionsButtons'], $hooks->calls);
+		self::assertSame('[echo doActions]', $vm->data['outputBeforeHeader']);
+		self::assertSame('[echo options][print options]', $vm->data['hookFormObjectOptions']);
+		self::assertSame('[echo block]', $vm->data['hookMoreObjectBlock']);
+		self::assertSame('[echo buttons]', $vm->data['hookMoreActionsButtons']);
+		self::assertTrue($vm->data['showActions']);
+	}
+
+	public function testReplacingHooksPrintTheirBlockAndHideTheStandardButtons(): void
+	{
+		$hooks = new ScriptedHooks([
+			'addMoreObjectBlock' => ['echo' => '[echo block]', 'print' => '[print block]', 'code' => 1],
+			'addMoreActionsButtons' => ['echo' => '[echo buttons]', 'print' => '[print buttons]', 'code' => 1],
+		]);
+
+		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', [], [], [], []), 1);
+
+		self::assertSame('[echo block][print block]', $vm->data['hookMoreObjectBlock']);
+		self::assertSame('[echo buttons]', $vm->data['hookMoreActionsButtons']);
+		self::assertFalse($vm->data['showActions']);
+	}
+
+	public function testDoActionsReceivesTheCardParametersAndItsErrorsAreFlashed(): void
+	{
+		$_SESSION = [];
+		$hooks = new ScriptedHooks(['doActions' => ['code' => -1, 'error' => 'Hook failed', 'errors' => ['First error', 'Second error']]]);
+
+		$vm = $this->controller($hooks)->show(new Request('GET', '/user/1', ['group' => '3'], [], [], []), 1);
+
+		self::assertSame('user:user_show', $vm->template);
+		self::assertSame(['Hook failed', 'First error', 'Second error'], $_SESSION['dol_events']['errors']);
+		$parameters = $hooks->parameters['doActions'];
+		self::assertSame(1, $parameters['id']);
+		self::assertSame(3, $parameters['group']);
+		self::assertArrayHasKey('socid', $parameters);
+		self::assertArrayHasKey('caneditgroup', $parameters);
+		self::assertSame('usercard', $parameters['currentcontext']);
+	}
+
+	private function controller(?ScriptedHooks $scripted = null): UserController
 	{
 		$ctx = LegacyContext::fromGlobals();
 		$connection = new Connection($ctx->db);
 		$me = new LegacyCurrentUser($GLOBALS['user']);
 		$perms = new UserPermissionChecker($me, false, false, false, [1], false, false, (int) $ctx->conf->entity);
 		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$hm = $ctx->hookmanager;
+		if ($scripted !== null) {
+			$hm = new \HookManager($ctx->db);
+			ScriptedHooks::register($hm, 'usercard', $scripted);
+		}
 
 		return new UserController(
 			new UserRepository($connection, (int) $ctx->conf->entity),
 			$perms,
 			$me,
-			new LegacyHooks($ctx->hookmanager),
+			new LegacyHooks($hm),
 			new LegacyObjectLoader($connection),
 			new LegacyTranslator($ctx->langs),
-			new UserCardChrome($ctx, $urls)
+			new UserCardChrome($ctx, $urls),
+			new FlashBag()
 		);
 	}
 }

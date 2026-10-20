@@ -8,6 +8,7 @@ use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
@@ -114,7 +115,8 @@ final class UserModule implements ModuleInterface
 			self::get($c, LegacyHooks::class),
 			self::get($c, LegacyObjectLoader::class),
 			self::get($c, Translator::class),
-			self::get($c, UserCardChrome::class)
+			self::get($c, UserCardChrome::class),
+			self::get($c, FlashBag::class)
 		));
 	}
 

@@ -64,7 +64,10 @@ final class CoreServices
 				$object = null;
 				$action = '';
 
-				return $hooks->execute($name, $params, $object, $action)->print;
+				$result = $hooks->execute($name, $params, $object, $action);
+
+				// What a legacy template prints at the call point: the echoed output, then resPrint
+				return $result->output.$result->print;
 			};
 
 			return new DolibarrExtension(
