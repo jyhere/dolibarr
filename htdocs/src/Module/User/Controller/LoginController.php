@@ -9,6 +9,7 @@ use Dolibarr\Core\Http\HtmlResponse;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
+use Dolibarr\Core\Http\SafeRedirect;
 use Dolibarr\Core\Legacy\HookResult;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
@@ -72,7 +73,7 @@ final class LoginController
 		$username = sanitizeVal(self::posted($r, 'username'), 'alpha');	// GETPOST('username', 'alpha'), main.inc.php l.707
 		$username = is_string($username) ? $username : '';
 		$entity = (int) $r->post('entity', '0');
-		$backToPage = self::safeBackToPage($r->post('backtopage') ?? $r->query('backtopage'), $this->urlRoot);
+		$backToPage = SafeRedirect::relativePath($r->post('backtopage') ?? $r->query('backtopage'), $this->urlRoot);
 
 		// main.inc.php l.610-617: hooks for security access
 		$this->hooks->init(['login']);
@@ -115,26 +116,6 @@ final class LoginController
 		}
 
 		return $this->openSession($r, $result, $backToPage);
-	}
-
-	/**
-	 * $backtopage when it is a path of this instance: relative, not protocol relative, no
-	 * backslash or control character, under $urlRoot when it is not empty; null otherwise.
-	 */
-	public static function safeBackToPage(?string $backtopage, string $urlRoot): ?string
-	{
-		if ($backtopage === null || $backtopage === '' || $backtopage[0] !== '/' || str_starts_with($backtopage, '//')) {
-			return null;
-		}
-		if (str_contains($backtopage, '\\') || preg_match('/[\x00-\x1F\x7F]/', $backtopage) === 1) {
-			return null;
-		}
-		// Under $urlRoot: '/dolibarr/x' for '/dolibarr', never '/dolibarrother/x'
-		if ($urlRoot !== '' && (!str_starts_with($backtopage, $urlRoot) || !in_array(substr($backtopage, strlen($urlRoot), 1), ['', '/', '?', '#'], true))) {
-			return null;
-		}
-
-		return $backtopage;
 	}
 
 	/**
@@ -183,6 +164,13 @@ final class LoginController
 			return new HtmlResponse(dol_escape_htmltag('Error in some triggers USER_LOGIN or in some hooks afterLogin'), 500);
 		}
 
+		// l.1195-1211: a user who must change his password can only reach the change password page (or log out).
+		// main.inc.php checks it on the login request only, so the next page must be that one. Legacy runs the
+		// MAIN_LANDING_PAGE redirection first, which skips this check: here the forced change always wins.
+		if (!empty($user->force_pass_change) && $result->authMode() === 'dolibarr') {
+			return new RedirectResponse($this->urlRoot.'/user/changepassword.php');
+		}
+
 		return new RedirectResponse($backToPage ?? $this->landingPage($user) ?? $this->urlRoot.'/index.php');
 	}
 
@@ -196,7 +184,7 @@ final class LoginController
 			return null;
 		}
 
-		return self::safeBackToPage(dol_buildpath($landingPage, 1), $this->urlRoot);
+		return SafeRedirect::relativePath(dol_buildpath($landingPage, 1), $this->urlRoot);
 	}
 
 	/**

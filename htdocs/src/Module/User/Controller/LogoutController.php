@@ -9,14 +9,17 @@ use Dolibarr\Core\Http\HtmlResponse;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
+use Dolibarr\Core\Http\SafeRedirect;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
+use Dolibarr\Core\Legacy\LegacyInput;
 use Dolibarr\Core\Routing\Route;
 use Dolibarr\Module\User\Event\UserLoggedOut;
 
 /**
  * Disconnection of the user, htdocs/user/logout.php.
- * Like the legacy page, urlfrom and MAIN_LOGOUT_GOTO_URL are trusted: logout.php applies no validation to them.
+ * urlfrom (session or request value) gets the GETPOST() filter of logout.php, then must be a path of this
+ * instance (SafeRedirect), else the default target is used. MAIN_LOGOUT_GOTO_URL is setup: trusted, as in logout.php.
  */
 final class LogoutController
 {
@@ -59,10 +62,10 @@ final class LogoutController
 
 		// l.84-100: url to go after the disconnection
 		$sessionUrlfrom = $_SESSION['urlfrom'] ?? '';
-		$urlfrom = is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? $sessionUrlfrom : self::param($r, 'urlfrom');
+		$urlfrom = LegacyInput::urlParameter(is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? $sessionUrlfrom : self::param($r, 'urlfrom'));
 		$url = $this->urlRoot.'/index.php';
 		if ($urlfrom !== '') {
-			$url = $this->urlRoot.$urlfrom;
+			$url = SafeRedirect::relativePath($this->urlRoot.$urlfrom, $this->urlRoot) ?? $url;
 		}
 		$gotoUrl = getDolGlobalString('MAIN_LOGOUT_GOTO_URL');
 		if ($gotoUrl !== '') {
