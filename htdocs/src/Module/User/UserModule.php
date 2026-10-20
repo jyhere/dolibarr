@@ -25,10 +25,13 @@ use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Entity\User;
+use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
+use Dolibarr\Module\User\Repository\UserWriter;
 use Dolibarr\Module\User\Security\Authenticator;
 use Dolibarr\Module\User\Security\SessionAuthenticator;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
+use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\View\LegacyLoginPage;
 use Dolibarr\Module\User\View\UserCardChrome;
 
@@ -69,6 +72,18 @@ final class UserModule implements ModuleInterface
 		$c->set(UserRepository::class, static function (Container $c): UserRepository {
 			return new UserRepository(self::get($c, Connection::class), self::get($c, Config::class)->entity());
 		});
+		$c->set(UserWriter::class, static fn (Container $c): UserWriter => new LegacyUserWriter(
+			self::get($c, LegacyContext::class),
+			self::get($c, LegacyObjectLoader::class),
+			self::get($c, Connection::class)
+		));
+		$c->set(UserService::class, static fn (Container $c): UserService => new UserService(
+			self::get($c, UserRepository::class),
+			self::get($c, UserWriter::class),
+			self::get($c, EventDispatcher::class),
+			self::get($c, Connection::class),
+			self::get($c, CurrentUser::class)
+		));
 		// Configuration read when the service is built (after main.inc.php); the hierarchy from the legacy user.
 		$c->set(UserPermissionChecker::class, static function (Container $c): UserPermissionChecker {
 			$config = self::get($c, Config::class);

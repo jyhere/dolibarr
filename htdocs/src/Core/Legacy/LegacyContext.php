@@ -63,6 +63,16 @@ final class LegacyContext
 	}
 
 	/**
+	 * The global $menumanager set by main.inc.php, null when no menu is loaded (NOREQUIREMENU, CLI).
+	 */
+	public function menuManager(): ?object
+	{
+		$menu = $GLOBALS['menumanager'] ?? null;
+
+		return is_object($menu) ? $menu : null;
+	}
+
+	/**
 	 * Publish the object of the page as the global $object, which legacy helpers
 	 * (dol_get_fiche_head() drag and drop, dolGetButtonAction() hooks...) read as card pages define it.
 	 */

@@ -336,7 +336,7 @@ final class UserCardChrome
 			$params['attr']['title'] = $langs->trans('CantDisableYourself');
 			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', $card.'#', '', false, $params);
 		}
-		if ($perms->canDelete($target)) {
+		if ($perms->canSeeDeleteButton($target)) {
 			$enabled = $perms->canDeleteAdminTarget($target);
 			$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', dolBuildUrl($card, ['action' => 'delete', 'id' => $object->id], true), '', $enabled, ['attr' => ['class' => 'reposition']]);
 		}

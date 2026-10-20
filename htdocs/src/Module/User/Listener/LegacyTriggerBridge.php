@@ -16,6 +16,8 @@ use Dolibarr\Module\User\Security\AuthenticationException;
 
 /**
  * Runs the legacy triggers (security events log, modules) for the authentication events.
+ * The events of UserService (UserCreated, UserUpdated...) are not subscribed: their legacy
+ * triggers already ran inside the legacy methods (legacyTriggerFired).
  */
 final class LegacyTriggerBridge
 {

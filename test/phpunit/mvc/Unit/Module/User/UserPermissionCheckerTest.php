@@ -174,6 +174,111 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertTrue($deleter->canDeleteAdminTarget($enabled));
 	}
 
+	public function testDeleteButtonShownForAdminTargetButDisabled(): void
+	{
+		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);
+		$deleter = $this->checker(me: 5, rights: ['user.user.delete']);
+		self::assertTrue($deleter->canSeeDeleteButton($admin));
+		self::assertFalse($deleter->canDeleteAdminTarget($admin));
+		self::assertFalse($deleter->canSeeDeleteButton($this->user(id: 5)));
+		self::assertFalse($deleter->canSeeDeleteButton(new User(id: 7, entity: 2, login: 'x')));
+	}
+
+	public function testNonAdminCannotEditAdmin(): void
+	{
+		$other = $this->user(id: 6);
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canEditAdminFlag($other));
+		self::assertTrue($this->checker(me: 5, admin: true)->canEditAdminFlag($other));
+		// Never for oneself, never for an external user (card.php l.520, l.2620-2626).
+		self::assertFalse($this->checker(me: 5, admin: true)->canEditAdminFlag($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5, admin: true)->canEditAdminFlag($this->user(id: 6, companyId: 10)));
+		// A new user (id 0) gets the flag from an admin only (card.php l.1184).
+		self::assertTrue($this->checker(me: 5, admin: true)->canEditAdminFlag(new User(id: 0, entity: 1, login: '')));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canEditAdminFlag(new User(id: 0, entity: 1, login: '')));
+	}
+
+	public function testOnlyAdminCanDeleteAdmin(): void
+	{
+		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);
+		$superadmin = new User(id: 9, entity: 0, login: 'root', admin: true);
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.delete'])->canDelete($admin));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.delete'])->canDelete($this->user(id: 6)));
+		self::assertTrue($this->checker(me: 5, admin: true)->canDelete($admin));
+		// Only a superadmin deletes a superadmin (card.php l.264-267).
+		self::assertFalse($this->checker(me: 5, admin: true)->canDelete($superadmin));
+		self::assertTrue($this->checker(me: 5, admin: true, meEntity: 0)->canDelete($superadmin));
+		self::assertFalse($this->checker(me: 5, admin: true)->canDelete($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5)->canDelete($this->user(id: 6)));
+	}
+
+	public function testCannotDisableSelf(): void
+	{
+		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);
+		self::assertFalse($this->checker(me: 5, admin: true)->canDisable($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5, admin: true)->canEnable($this->user(id: 5)));
+		self::assertTrue($this->checker(me: 5, admin: true)->canEnable($this->user(id: 6)));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.delete'])->canEnable($this->user(id: 6)));
+		self::assertFalse($this->checker(me: 5)->canEnable($this->user(id: 6)));
+		// Only an admin disables an admin (card.php l.218-221).
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.delete'])->canDisable($admin));
+		self::assertTrue($this->checker(me: 5, admin: true)->canDisable($admin));
+	}
+
+	public function testEditLoginOnlyAdminAndNoLdap(): void
+	{
+		$other = $this->user(id: 6);
+		self::assertTrue($this->checker(me: 5, admin: true)->canEditLogin($other));
+		self::assertFalse($this->checker(me: 5, admin: true)->canEditLogin($other, true));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canEditLogin($other));
+		self::assertFalse($this->checker(me: 5, rights: ['user.self.write'])->canEditLogin($this->user(id: 5)));
+		// Creation form: the login is always typed, unless it comes from LDAP (card.php l.1178).
+		$new = new User(id: 0, entity: 1, login: '');
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canEditLogin($new));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canEditLogin($new, true));
+	}
+
+	public function testRightsRulesWithAdvancedPerms(): void
+	{
+		$other = $this->user(id: 6);
+		$self = $this->user(id: 5);
+		// Without advanced permissions (perms.php l.67-69).
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.read'])->canReadRights($other));
+		self::assertFalse($this->checker(me: 5)->canReadRights($other));
+		self::assertTrue($this->checker(me: 5)->canReadRights($self));
+		self::assertTrue($this->checker(me: 5, admin: true)->canEditRights($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canEditRights($other));
+		self::assertFalse($this->checker(me: 5, rights: ['user.self_advance.writeperms'])->canEditRights($self));
+		// With advanced permissions (perms.php l.71-75 and l.84).
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'], advanced: true)->canReadRights($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.read', 'user.user_advance.readperms'], advanced: true)->canReadRights($other));
+		self::assertTrue($this->checker(me: 5, admin: true, advanced: true)->canReadRights($other));
+		self::assertFalse($this->checker(me: 5, advanced: true)->canReadRights($self));
+		self::assertTrue($this->checker(me: 5, rights: ['user.self_advance.readperms'], advanced: true)->canReadRights($self));
+		self::assertTrue($this->checker(me: 5, admin: true, advanced: true)->canReadRights($self));
+		self::assertTrue($this->checker(me: 5, rights: ['user.self_advance.writeperms'], advanced: true)->canEditRights($self));
+		self::assertFalse($this->checker(me: 5, rights: ['user.self_advance.writeperms'], advanced: true)->canEditRights($other));
+		self::assertFalse($this->checker(me: 5, advanced: true)->canEditRights($self));
+		// External users only on their company.
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'], companyId: 10)->canReadRights($other));
+	}
+
+	public function testHrApiKeyAndMassActions(): void
+	{
+		self::assertFalse($this->checker(me: 5)->canReadHr());
+		self::assertTrue($this->checker(me: 5, rights: ['hrm.read_personal_information.read'])->canReadHr());
+		self::assertTrue($this->checker(me: 5, rights: ['hrm.write_personal_information.write'])->canReadHr());
+		self::assertTrue($this->checker(me: 5)->canReadApiKey($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canReadApiKey($this->user(id: 6)));
+		self::assertTrue($this->checker(me: 5, admin: true)->canReadApiKey($this->user(id: 6)));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canUseMassActions());
+		self::assertTrue($this->checker(me: 5, admin: true)->canUseMassActions());
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'])->canUseMassActions());
+		// list.php l.227: forced off in multicompany transverse mode for a user of an entity.
+		self::assertFalse($this->checker(me: 5, admin: true, multicompany: true, transverse: true)->canUseMassActions());
+		self::assertTrue($this->checker(me: 5, admin: true, multicompany: true, transverse: true, meEntity: 0)->canUseMassActions());
+		self::assertTrue($this->checker(me: 5, admin: true, transverse: true)->canUseMassActions());
+	}
+
 	/**
 	 * @param list<string> $rights
 	 * @param list<int>    $subordinates

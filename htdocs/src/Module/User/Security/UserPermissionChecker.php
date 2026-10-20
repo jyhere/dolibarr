@@ -9,8 +9,8 @@ use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Module\User\Entity\User;
 
 /**
- * What the current user may do on a user card. Mirrors htdocs/user/card.php
- * (line numbers of the mirrored rules are given on each method).
+ * What the current user may do on users. Mirrors htdocs/user/card.php, list.php and perms.php
+ * (file and line numbers of the mirrored rules are given on each method).
  */
 final class UserPermissionChecker implements EntityPermissions
 {
@@ -106,11 +106,21 @@ final class UserPermissionChecker implements EntityPermissions
 	}
 
 	/**
-	 * card.php l.135 ($permissiontodisable, also used for delete).
+	 * Action confirm_disable: card.php l.135 ($permissiontodisable), l.216 (a user can't disable
+	 * himself) and l.218-221 (only an admin disables an admin).
 	 */
 	public function canDisable(User $target): bool
 	{
-		return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'delete')) && $this->sameCompany($target);
+		return $this->permissionToDisable($target) && !$this->isSelf($target) && ($this->me->isAdmin() || !$target->admin);
+	}
+
+	/**
+	 * Action confirm_enable: card.php l.135 ($permissiontodisable) and l.231 (not oneself).
+	 * The users quota ($dolibarr_main_limit_users, l.235-241) is not a permission and is left to the caller.
+	 */
+	public function canEnable(User $target): bool
+	{
+		return $this->permissionToDisable($target) && !$this->isSelf($target);
 	}
 
 	/**
@@ -207,7 +217,7 @@ final class UserPermissionChecker implements EntityPermissions
 	 */
 	public function canReactivate(User $target): bool
 	{
-		return !$this->isSelf($target) && $this->canDisable($target) && $target->status === 0 && $this->inManageableEntity($target);
+		return !$this->isSelf($target) && $this->permissionToDisable($target) && $target->status === 0 && $this->inManageableEntity($target);
 	}
 
 	/**
@@ -215,15 +225,26 @@ final class UserPermissionChecker implements EntityPermissions
 	 */
 	public function canDeactivate(User $target): bool
 	{
-		return !$this->isSelf($target) && $this->canDisable($target) && $target->status === 1 && $this->inManageableEntity($target);
+		return !$this->isSelf($target) && $this->permissionToDisable($target) && $target->status === 1 && $this->inManageableEntity($target);
 	}
 
 	/**
-	 * DeleteUser button shown: card.php l.2382.
+	 * Action confirm_delete: card.php l.135 ($permissiontodisable), l.254 (not oneself), l.261-263
+	 * (only an admin deletes an admin) and l.264-267 (only a superadmin deletes a superadmin).
 	 */
 	public function canDelete(User $target): bool
 	{
-		return !$this->isSelf($target) && $this->canDisable($target) && $this->inManageableEntity($target);
+		return $this->permissionToDisable($target) && !$this->isSelf($target)
+			&& ($this->me->isAdmin() || !$target->admin)
+			&& !($target->admin && $target->entity === 0 && $this->me->entity() !== 0);
+	}
+
+	/**
+	 * DeleteUser button shown: card.php l.2382 (enabled or not by canDeleteAdminTarget()).
+	 */
+	public function canSeeDeleteButton(User $target): bool
+	{
+		return !$this->isSelf($target) && $this->permissionToDisable($target) && $this->inManageableEntity($target);
 	}
 
 	/**
@@ -232,6 +253,84 @@ final class UserPermissionChecker implements EntityPermissions
 	public function canDeleteAdminTarget(User $target): bool
 	{
 		return $this->me->isAdmin() || !$target->admin;
+	}
+
+	/**
+	 * Admin flag editable: card.php l.520-524 on update (an admin, not on himself), l.1184 on
+	 * creation (admin only) and l.2620-2626 (never on an external user). The "last superadmin"
+	 * protection of l.2627-2630 needs user counts and is left to the form.
+	 */
+	public function canEditAdminFlag(User $target): bool
+	{
+		return $this->me->isAdmin() && !$this->isSelf($target) && !$target->isExternal();
+	}
+
+	/**
+	 * Login editable: card.php l.525 and l.2544 (an admin, on a user not managed by LDAP);
+	 * on creation (id 0) the login is always typed unless it comes from LDAP (l.1178).
+	 *
+	 * @param bool $ldapManaged The target has an ldap_sid (Active Directory)
+	 */
+	public function canEditLogin(User $target, bool $ldapManaged = false): bool
+	{
+		if ($ldapManaged) {
+			return false;
+		}
+
+		return $target->id === 0 || $this->me->isAdmin();
+	}
+
+	/**
+	 * perms.php l.67, l.72 ($canreaduser) for others; l.84 for oneself: always allowed
+	 * unless advanced permissions are on without user->self_advance->readperms (admins excepted).
+	 */
+	public function canReadRights(User $target): bool
+	{
+		if ($this->isSelf($target)) {
+			return !$this->advancedPerms || $this->me->isAdmin() || $this->me->hasRight('user', 'self_advance', 'readperms');
+		}
+		$read = $this->me->hasRight('user', 'user', 'read') && (!$this->advancedPerms || $this->me->hasRight('user', 'user_advance', 'readperms'));
+
+		return ($this->me->isAdmin() || $read) && $this->sameCompany($target);
+	}
+
+	/**
+	 * perms.php l.69 ($caneditperms) and l.73-74 (user->self_advance->writeperms on oneself with advanced permissions).
+	 */
+	public function canEditRights(User $target): bool
+	{
+		$self = $this->advancedPerms && $this->isSelf($target) && $this->me->hasRight('user', 'self_advance', 'writeperms');
+
+		return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'write') || $self) && $this->sameCompany($target);
+	}
+
+	/**
+	 * list.php l.133 ($permissiontoreadhr): HR personal information.
+	 */
+	public function canReadHr(): bool
+	{
+		return $this->me->hasRight('hrm', 'read_personal_information', 'read') || $this->me->hasRight('hrm', 'write_personal_information', 'write');
+	}
+
+	/**
+	 * card.php l.2214: the API key line is shown to the user himself or to an admin.
+	 */
+	public function canReadApiKey(User $target): bool
+	{
+		return $this->isSelf($target) || $this->me->isAdmin();
+	}
+
+	/**
+	 * list.php l.227 ($permissiontoadd, forced false in multicompany transverse mode for a user
+	 * of an entity) which gates the mass actions of l.655-666.
+	 */
+	public function canUseMassActions(): bool
+	{
+		if ($this->multicompany && $this->transverseMode && $this->me->entity() !== 0) {
+			return false;
+		}
+
+		return $this->me->isAdmin() || $this->me->hasRight('user', 'user', 'write');
 	}
 
 	public function isSelf(User $target): bool
@@ -249,6 +348,14 @@ final class UserPermissionChecker implements EntityPermissions
 		}
 
 		return $entity;
+	}
+
+	/**
+	 * card.php l.135 ($permissiontodisable).
+	 */
+	private function permissionToDisable(User $target): bool
+	{
+		return ($this->me->isAdmin() || $this->me->hasRight('user', 'user', 'delete')) && $this->sameCompany($target);
 	}
 
 	/**
