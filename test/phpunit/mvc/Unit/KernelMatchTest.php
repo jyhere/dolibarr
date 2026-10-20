@@ -136,6 +136,22 @@ final class KernelMatchTest extends TestCase
 		unlink($log);
 	}
 
+	public function testPhpSelfIsTheMatchedPathUnderTheUrlRoot(): void
+	{
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+
+		self::assertSame('/d/fixture/42', $kernel->phpSelfFor($this->match('GET', '/d/fixture/42?x=1')));
+		self::assertSame('/d/fixture/public', $kernel->phpSelfFor($this->match('GET', '/d/fixture/public/')));
+	}
+
+	public function testPhpSelfIsNullWhenNothingMatched(): void
+	{
+		$kernel = new Kernel('/nonexistent-document-root', $this->dataRoot, '/d', false, [new FixtureModule()]);
+
+		self::assertNull($kernel->phpSelfFor($this->match('GET', '/d/nexistepas')));
+		self::assertNull($kernel->phpSelfFor($this->match('POST', '/d/fixture/42')));
+	}
+
 	public function testConstantsForEachMode(): void
 	{
 		self::assertSame(['NOLOGIN', 'NOREQUIREMENU', 'NOREQUIREHTML', 'NOREQUIREAJAX'], BootstrapMode::constantsFor(BootstrapMode::PUBLIC));

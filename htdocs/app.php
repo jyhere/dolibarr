@@ -14,6 +14,10 @@ require __DIR__.'/src/autoload.php';
 
 $kernel = new \Dolibarr\Core\Kernel(DOL_DOCUMENT_ROOT, DOL_DATA_ROOT, DOL_URL_ROOT, !empty($dolibarr_main_prod));
 $matchResult = $kernel->match();
+$phpSelf = $kernel->phpSelfFor($matchResult);
+if ($phpSelf !== null) {
+	$_SERVER['PHP_SELF'] = $phpSelf;   // Before main.inc.php: legacy code (form actions, landing page guard, logs) reads it
+}
 foreach (\Dolibarr\Core\BootstrapMode::constantsFor($matchResult['mode']) as $const) {
 	if (!defined($const)) {
 		define($const, '1');

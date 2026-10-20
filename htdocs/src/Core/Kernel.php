@@ -80,6 +80,27 @@ final class Kernel
 	}
 
 	/**
+	 * The $_SERVER['PHP_SELF'] of a matched route: its path under the URL root. Legacy code
+	 * reads PHP_SELF for form actions (login.tpl.php), the MAIN_LANDING_PAGE loop guard and
+	 * log lines; behind app.php it would be '/app.php'. Null when nothing matched, or when the
+	 * path holds characters a route path never holds (captured variables): PHP_SELF is then kept.
+	 *
+	 * @param MatchResult $matchResult
+	 */
+	public function phpSelfFor(array $matchResult): ?string
+	{
+		if ($matchResult['matched'] === null) {
+			return null;
+		}
+		$path = $matchResult['request']->path();
+		if (preg_match('#^[A-Za-z0-9_/.-]+$#', $path) !== 1) {
+			return null;
+		}
+
+		return $this->urlRoot.$path;
+	}
+
+	/**
 	 * Answer the request once main.inc.php has been included.
 	 *
 	 * @param MatchResult $matchResult

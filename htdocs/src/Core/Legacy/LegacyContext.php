@@ -53,6 +53,16 @@ final class LegacyContext
 	}
 
 	/**
+	 * The global $mysoc (the company of the instance) set by master.inc.php, null when not loaded.
+	 */
+	public function mysoc(): ?\Societe
+	{
+		$mysoc = $GLOBALS['mysoc'] ?? null;
+
+		return $mysoc instanceof \Societe ? $mysoc : null;
+	}
+
+	/**
 	 * Publish the object of the page as the global $object, which legacy helpers
 	 * (dol_get_fiche_head() drag and drop, dolGetButtonAction() hooks...) read as card pages define it.
 	 */
