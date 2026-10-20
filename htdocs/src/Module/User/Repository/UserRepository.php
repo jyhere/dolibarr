@@ -44,6 +44,16 @@ final class UserRepository
 		return $this->fetch("u.login = '".$this->c->escape($login)."'", ' ORDER BY u.entity DESC');
 	}
 
+	/**
+	 * Number of users of the entity, superadmins (entity 0) included: getEntity('user') without multicompany.
+	 */
+	public function countInEntity(): int
+	{
+		$row = $this->c->fetchOne('SELECT COUNT(u.rowid) as nb FROM '.$this->c->prefix().'user as u WHERE u.entity IN (0, '.$this->entity.')');
+
+		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
+	}
+
 	private function fetch(string $where, string $order = ''): ?User
 	{
 		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL

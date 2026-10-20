@@ -12,3 +12,6 @@ parameters:
 		- htdocs/user/class
 	scanFiles:
 		- htdocs/main.inc.php
+		- htdocs/societe/class/societe.class.php
+		- htdocs/contact/class/contact.class.php
+		- htdocs/adherents/class/adherent.class.php

@@ -1,0 +1,82 @@
+{* Read-only user card: the view mode of htdocs/user/card.php (l.1741-2290). *}
+{layout 'core:@layout'}
+{block content}
+{var $u = $user->user}
+{$card->confirmHtml|noescape}
+{$card->tabsHtml|noescape}
+{$card->bannerHtml|noescape}
+<div class="fichecenter">
+<div class="fichehalfleft">
+<div class="underbanner clearboth"></div>
+<table class="border tableforfield centpercent">
+<tr><td class="titlefieldmiddle">{='Login'|trans}</td><td>{$card->loginHtml|noescape}</td></tr>
+<tr><td>{$card->typeLabelHtml|noescape}</td><td><span class="badgeneutral">{=($u->isExternal() ? 'External' : 'Internal')|trans}</span></td></tr>
+<tr><td>{='Employee'|trans}</td><td><input type="checkbox" disabled name="employee" value="1"{if $u->employee} checked="checked"{/if}></td></tr>
+{if $card->supervisorHtml !== null}
+<tr><td>{='HierarchicalResponsible'|trans}</td><td>{$card->supervisorHtml|noescape}</td></tr>
+{if $card->expenseValidatorLabelHtml !== null}
+<tr><td>{$card->expenseValidatorLabelHtml|noescape}</td><td>{$card->expenseValidatorHtml|noescape}</td></tr>
+{/if}
+{if $card->holidayValidatorLabelHtml !== null}
+<tr><td>{$card->holidayValidatorLabelHtml|noescape}</td><td>{$card->holidayValidatorHtml|noescape}</td></tr>
+{/if}
+{/if}
+<tr><td>{='PostOrFunction'|trans}</td><td>{$u->job}</td></tr>
+{if $canSeeSalary}
+<tr><td>{='WeeklyHours'|trans}</td><td>{$card->weeklyHours}</td></tr>
+<tr><td>{='Salary'|trans}</td><td>{$card->salaryHtml|noescape}</td></tr>
+<tr><td>{$card->thmLabelHtml|noescape}</td><td>{$card->thmHtml|noescape}</td></tr>
+<tr><td>{$card->tjmLabelHtml|noescape}</td><td>{$card->tjmHtml|noescape}</td></tr>
+<tr><td>{='DateOfEmployment'|trans}</td><td>
+{if $u->dateEmployment}<span class="opacitymedium">{='FromDate'|trans}</span> {$u->dateEmployment|date:'day','gmt'}{/if}
+{if $u->dateEmploymentEnd}<span class="opacitymedium"> - {='To'|trans}</span> {$u->dateEmploymentEnd|date:'day','gmt'}{/if}
+</td></tr>
+{/if}
+<tr><td>{='DateOfBirth'|trans}</td><td>{$u->birth|date:'day','gmt'}</td></tr>
+</table>
+</div>
+<div class="fichehalfright">
+<div class="underbanner clearboth"></div>
+<table class="border tableforfield centpercent">
+{if $card->colorHtml !== null}
+<tr><td class="titlefieldmax45">{='Color'|trans}</td><td>{$card->colorHtml|noescape}</td></tr>
+{/if}
+{if $card->langLabelHtml !== null}
+<tr><td>{$card->langLabelHtml|noescape}</td><td>{$card->langHtml|noescape}</td></tr>
+{/if}
+{$hookFormObjectOptions|noescape}
+{if $card->companyHtml !== null}
+<tr><td>{='LinkToCompanyContact'|trans}</td><td>{$card->companyHtml|noescape}</td></tr>
+{/if}
+{if $card->memberHtml !== null}
+<tr><td>{='LinkedToDolibarrMember'|trans}</td><td>{$card->memberHtml|noescape}</td></tr>
+{/if}
+<tr><td class="tdtop">{='Signature'|trans}</td><td class="wordbreak">{$card->signatureHtml|noescape}</td></tr>
+</table>
+<br>
+<!-- credential section -->
+<div class="div-table-responsive-no-min">
+<table class="noborder tableforfield centpercent">
+<tr class="liste_titre"><th class="liste_titre" colspan="2"><div class="centpercent display-flex"><div class="left inline-block">{$card->securityPictoHtml|noescape}{='SecurityForConnection'|trans}</div></div></th></tr>
+<tr class="nooddeven"><td class="titlefieldmax45 nowraponall">{='RangeOfLoginValidity'|trans}</td><td>
+{if $u->dateStartValidity}<span class="opacitymedium">{='FromDate'|trans}</span> {$u->dateStartValidity|date:'day','gmt'}{/if}
+{if $u->dateEndValidity}<span class="opacitymedium"> - {='To'|trans}</span> {$u->dateEndValidity|date:'day','gmt'}{/if}
+</td></tr>
+{if $card->passwordToChangeLabelHtml !== null}
+<tr><td class="titlefieldcreate">{$card->passwordToChangeLabelHtml|noescape}</td><td>{$card->passwordToChangeHtml|noescape}</td></tr>
+{/if}
+{if $card->lastLoginHtml !== null}
+<tr class="nooddeven"><td>{='LastConnexion'|trans}</td><td>{$card->lastLoginHtml|noescape}</td></tr>
+{/if}
+</table>
+</div>
+{$hookMoreObjectBlock|noescape}
+</div>
+</div>
+<div class="clearboth"></div>
+{$card->tabsEndHtml|noescape}
+<div class="tabsAction">
+{$hookMoreActionsButtons|noescape}
+{if $showActions}{$card->actionsHtml|noescape}{/if}
+</div>
+{/block}

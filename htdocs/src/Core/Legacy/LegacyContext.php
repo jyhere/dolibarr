@@ -35,4 +35,39 @@ final class LegacyContext
 
 		return new self($conf, $db, $langs, $user instanceof \User ? $user : null, $hookmanager);
 	}
+
+	/**
+	 * The global $form that legacy helpers such as dol_banner_tab() expect.
+	 * It is created as top_menu() does when the page has not printed its header yet.
+	 */
+	public function form(): \Form
+	{
+		$form = $GLOBALS['form'] ?? null;
+		if (!$form instanceof \Form) {
+			require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
+			$form = new \Form($this->db);
+			$GLOBALS['form'] = $form;
+		}
+
+		return $form;
+	}
+
+	/**
+	 * Publish the object of the page as the global $object, which legacy helpers
+	 * (dol_get_fiche_head() drag and drop, dolGetButtonAction() hooks...) read as card pages define it.
+	 */
+	public function setPageObject(object $object): void
+	{
+		$GLOBALS['object'] = $object;
+	}
+
+	/**
+	 * Authentication mode of the current session ($_SESSION['dol_authmode']), '' when none.
+	 */
+	public function authMode(): string
+	{
+		$mode = $_SESSION['dol_authmode'] ?? '';
+
+		return is_string($mode) ? $mode : '';
+	}
 }

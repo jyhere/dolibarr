@@ -12,12 +12,13 @@ final class LegacyLayout
 	/**
 	 * @param list<string> $css
 	 * @param list<string> $js
+	 * @param string       $bodyCss CSS classes of <body>, e.g. 'mod-user page-card'
 	 */
-	public function header(string $title, string $helpUrl = '', array $css = [], array $js = []): string
+	public function header(string $title, string $helpUrl = '', array $css = [], array $js = [], string $bodyCss = ''): string
 	{
 		$this->assertAvailable();
 		ob_start();
-		llxHeader('', $title, $helpUrl, '', 0, 0, $js, $css);
+		llxHeader('', $title, $helpUrl, '', 0, 0, $js, $css, '', $bodyCss);
 
 		return (string) ob_get_clean();
 	}

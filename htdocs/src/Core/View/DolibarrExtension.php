@@ -42,7 +42,7 @@ final class DolibarrExtension extends Extension
 			'trans' => fn (string $key, string ...$args): string => $this->translator->trans($key, ...$args),
 			'transnoentities' => fn (string $key, string ...$args): string => $this->translator->transnoentities($key, ...$args),
 			'url' => fn (string $name, array $params = []): string => $this->urls->generate($name, $params),
-			'date' => fn (int $ts, string $format = 'day'): string => $this->global('dol_print_date', $ts, $format),
+			'date' => $this->date(...),
 			'price' => fn (float|int|string $value): string => $this->global('price', $value),
 			'picto' => fn (string $name): Html => new Html($this->global('img_picto', '', $name)),
 		];
@@ -59,6 +59,19 @@ final class DolibarrExtension extends Extension
 			'legacyHook' => fn (string $name, array $params = []): Html => new Html($this->legacyHook === null ? '' : ($this->legacyHook)($name, $params)),
 			'legacy' => $this->callLegacy(...),
 		];
+	}
+
+	/**
+	 * dol_print_date() of a timestamp or a date object; '' for null, like dol_print_date('').
+	 * Entities hold DATE columns as UTC midnight: print them with $tz = 'gmt'.
+	 */
+	private function date(\DateTimeInterface|int|null $value, string $format = 'day', string $tz = 'auto'): string
+	{
+		if ($value === null) {
+			return '';
+		}
+
+		return $this->global('dol_print_date', $value instanceof \DateTimeInterface ? $value->getTimestamp() : $value, $format, $tz);
 	}
 
 	/**

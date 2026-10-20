@@ -7,4 +7,6 @@ declare(strict_types=1);
  *
  * @return list<\Dolibarr\Core\Module\ModuleInterface>
  */
-return [];
+return [
+	new \Dolibarr\Module\User\UserModule(),
+];
