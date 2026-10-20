@@ -30,6 +30,8 @@ final class RouteMatcher
 	}
 
 	/**
+	 * HEAD is answered by an explicit HEAD route, else by the GET route of the path.
+	 *
 	 * @throws RouteNotFoundException
 	 * @throws MethodNotAllowedException
 	 */
@@ -37,9 +39,22 @@ final class RouteMatcher
 	{
 		$method = strtoupper($method);
 		if ($method === 'HEAD') {
-			$method = 'GET';
+			try {
+				return $this->matchMethod('HEAD', $path);
+			} catch (MethodNotAllowedException) {
+				$method = 'GET';
+			}
 		}
 
+		return $this->matchMethod($method, $path);
+	}
+
+	/**
+	 * @throws RouteNotFoundException
+	 * @throws MethodNotAllowedException
+	 */
+	private function matchMethod(string $method, string $path): MatchedRoute
+	{
 		/** @var list<string> $allowed */
 		$allowed = [];
 

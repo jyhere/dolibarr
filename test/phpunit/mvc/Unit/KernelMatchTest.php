@@ -169,4 +169,29 @@ final class KernelMatchTest extends TestCase
 
 		return $kernel->match();
 	}
+
+	/**
+	 * @return iterable<string, array{0: string, 1: bool}>
+	 */
+	public static function staticAssetProvider(): iterable
+	{
+		yield 'png' => ['/theme/eldy/img/nothere.png', true];
+		yield 'uppercase JPG with query' => ['/a/B.JPG?v=1', true];
+		yield 'jpeg' => ['/x.jpeg', true];
+		yield 'woff2' => ['/fonts/x.woff2', true];
+		yield 'js map' => ['/includes/x.min.js.map', true];
+		yield 'json' => ['/nexistepas.json', true];
+		yield 'encoded dot' => ['/x%2Ecss', true];
+		yield 'route' => ['/user/1', false];
+		yield 'php' => ['/theme/eldy/style.css.php', false];
+		yield 'extension in the query only' => ['/user/1?f=a.png', false];
+		yield 'no extension' => ['/nexistepas', false];
+		yield 'extension as directory' => ['/x.png/y', false];
+	}
+
+	#[\PHPUnit\Framework\Attributes\DataProvider('staticAssetProvider')]
+	public function testIsStaticAssetPath(string $uri, bool $expected): void
+	{
+		self::assertSame($expected, Kernel::isStaticAssetPath($uri));
+	}
 }

@@ -18,18 +18,26 @@ final class LegacyLayout
 	{
 		$this->assertAvailable();
 		ob_start();
-		llxHeader('', $title, $helpUrl, '', 0, 0, $js, $css, '', $bodyCss);
+		try {
+			llxHeader('', $title, $helpUrl, '', 0, 0, $js, $css, '', $bodyCss);
+		} finally {
+			$html = (string) ob_get_clean();
+		}
 
-		return (string) ob_get_clean();
+		return $html;
 	}
 
 	public function footer(): string
 	{
 		$this->assertAvailable();
 		ob_start();
-		llxFooter();
+		try {
+			llxFooter();
+		} finally {
+			$html = (string) ob_get_clean();
+		}
 
-		return (string) ob_get_clean();
+		return $html;
 	}
 
 	private function assertAvailable(): void

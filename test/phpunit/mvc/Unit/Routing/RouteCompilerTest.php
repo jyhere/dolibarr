@@ -6,7 +6,9 @@ namespace Dolibarr\Tests\Unit\Routing;
 
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\RouteDefinition;
+use Dolibarr\Tests\Unit\Routing\Fixture\DuplicateNameController;
 use Dolibarr\Tests\Unit\Routing\Fixture\FakeController;
+use Dolibarr\Tests\Unit\Routing\Fixture\MethodsController;
 use Dolibarr\Tests\Unit\Routing\Fixture\UnnamedController;
 use PHPUnit\Framework\TestCase;
 
@@ -40,5 +42,28 @@ final class RouteCompilerTest extends TestCase
 		foreach ((new RouteCompiler())->compile([FakeController::class]) as $d) {
 			self::assertEquals($d, RouteDefinition::fromArray($d->toArray()));
 		}
+	}
+
+	public function testDuplicateRouteNamesAreRefusedNamingBothMethods(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessageMatches('/"same".*DuplicateNameController::first\(\).*DuplicateNameController::second\(\)/');
+		(new RouteCompiler())->compile([DuplicateNameController::class]);
+	}
+
+	public function testDuplicateRouteNamesAcrossControllersAreRefused(): void
+	{
+		$this->expectException(\LogicException::class);
+		(new RouteCompiler())->compile([FakeController::class, FakeController::class]);
+	}
+
+	public function testMethodsAreUppercased(): void
+	{
+		$byName = [];
+		foreach ((new RouteCompiler())->compile([MethodsController::class]) as $d) {
+			$byName[$d->name] = $d;
+		}
+		self::assertSame(['GET', 'POST'], $byName['lower']->methods);
+		self::assertSame(['HEAD'], $byName['probe_head']->methods);
 	}
 }

@@ -9,6 +9,7 @@ use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\RouteMatcher;
 use Dolibarr\Core\Routing\RouteNotFoundException;
 use Dolibarr\Tests\Unit\Routing\Fixture\FakeController;
+use Dolibarr\Tests\Unit\Routing\Fixture\MethodsController;
 use PHPUnit\Framework\TestCase;
 
 final class RouteMatcherTest extends TestCase
@@ -63,5 +64,23 @@ final class RouteMatcherTest extends TestCase
 	public function testHeadIsTreatedAsGet(): void
 	{
 		self::assertSame('user_list', $this->matcher()->match('HEAD', '/user')->route->name);
+	}
+
+	public function testLowercaseDeclaredMethodsMatch(): void
+	{
+		$m = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
+		self::assertSame('lower', $m->match('post', '/lower')->route->name);
+	}
+
+	public function testExplicitHeadRouteWinsOverTheGetFallback(): void
+	{
+		$m = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
+		self::assertSame('probe_head', $m->match('HEAD', '/probe')->route->name);
+		self::assertSame('probe_get', $m->match('GET', '/probe')->route->name);
+	}
+
+	public function testHeadFallsBackToGet(): void
+	{
+		self::assertSame('user_show', $this->matcher()->match('HEAD', '/user/42')->route->name);
 	}
 }

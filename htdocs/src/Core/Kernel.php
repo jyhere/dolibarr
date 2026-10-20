@@ -10,6 +10,7 @@ use Dolibarr\Core\Http\JsonResponse;
 use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Http\Response;
+use Dolibarr\Core\Http\TextResponse;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\ArgumentResolver;
@@ -80,6 +81,18 @@ final class Kernel
 	}
 
 	/**
+	 * True when $uri (request URI or path, query string ignored) names a static file: app.php
+	 * answers such an unmatched URL with a bare 404, without main.inc.php (no session, no database).
+	 * '.json' is in the list: app.php asks only when no route matched, so a JSON route is never concerned.
+	 */
+	public static function isStaticAssetPath(string $uri): bool
+	{
+		$path = rawurldecode(explode('#', explode('?', $uri, 2)[0], 2)[0]);
+
+		return preg_match('#\.(png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|eot|txt|xml|json)$#i', $path) === 1;
+	}
+
+	/**
 	 * The $_SERVER['PHP_SELF'] of a matched route: its path under the URL root. Legacy code
 	 * reads PHP_SELF for form actions (login.tpl.php), the MAIN_LANDING_PAGE loop guard and
 	 * log lines; behind app.php it would be '/app.php'. Null when nothing matched, or when the
@@ -101,7 +114,8 @@ final class Kernel
 	}
 
 	/**
-	 * Answer the request once main.inc.php has been included.
+	 * Answer the request once main.inc.php has been included. Any uncaught error is logged
+	 * and answered with a bare 500: its message (SQL, paths) never reaches the client.
 	 *
 	 * @param MatchResult $matchResult
 	 * @param mixed       $mainIncResult Value returned by the include of main.inc.php
@@ -109,10 +123,29 @@ final class Kernel
 	public function run(array $matchResult, mixed $mainIncResult): Response
 	{
 		$request = $this->requestForRun();
+		$responder = null;
+		try {
+			return $this->handle($matchResult, $mainIncResult, $request, $responder);
+		} catch (\Throwable $e) {
+			return $this->serverError($e, $request, $responder);
+		}
+	}
+
+	/**
+	 * @param MatchResult $matchResult
+	 * @param-out ?Responder $responder The responder, once built
+	 */
+	private function handle(array $matchResult, mixed $mainIncResult, Request $request, ?Responder &$responder): Response
+	{
 		$error = $matchResult['error'];
 
 		if ($error instanceof MethodNotAllowedException) {
-			return new HtmlResponse('', 405, ['Allow' => implode(', ', $error->allowed())]);
+			$allow = ['Allow' => implode(', ', $error->allowed())];
+			if ($request->wantsJson()) {
+				return new JsonResponse(['error' => 'method_not_allowed'], 405, $allow);
+			}
+
+			return new HtmlResponse('<!DOCTYPE html><html><body>405 Method Not Allowed</body></html>', 405, $allow);
 		}
 
 		if ($mainIncResult === 'ERROR_NOT_LOGGED') {
@@ -135,10 +168,11 @@ final class Kernel
 			$this->urlRoot,
 			$this->prod
 		);
-		$responder = $container->get(Responder::class);
-		if (!$responder instanceof Responder) {
+		$service = $container->get(Responder::class);
+		if (!$service instanceof Responder) {
 			throw new \LogicException('Service '.Responder::class.' has an unexpected type');
 		}
+		$responder = $service;
 
 		try {
 			if ($error !== null) {
@@ -157,10 +191,39 @@ final class Kernel
 
 			return $responder->respond(new ViewModel('core:error404', [], 404, ['error' => 'not_found']));
 		} catch (AccessDeniedException $e) {
+			if ($request->wantsJson()) {
+				return new JsonResponse(['error' => 'forbidden'], 403);
+			}
 			// accessforbidden() prints the standard Dolibarr page then exits: it cannot be captured into a Response.
 			http_response_code(403);
 			accessforbidden($e->getMessage(), 1, 1, 1);
 		}
+	}
+
+	/**
+	 * Log $e (dol_syslog, else the PHP error log) and answer a 500 without any detail.
+	 */
+	private function serverError(\Throwable $e, Request $request, ?Responder $responder): Response
+	{
+		$message = 'Dolibarr MVC: uncaught '.get_class($e).': '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine();
+		if (function_exists('dol_syslog')) {
+			(new Logger())->error($message);
+		} else {
+			error_log($message);
+		}
+
+		if ($request->wantsJson()) {
+			return new JsonResponse(['error' => 'server_error'], 500);
+		}
+		if ($responder !== null) {
+			try {
+				return $responder->respond(new ViewModel('core:error500', [], 500));
+			} catch (\Throwable $renderError) {
+				error_log('Dolibarr MVC: error page not rendered: '.get_class($renderError).': '.$renderError->getMessage());
+			}
+		}
+
+		return new TextResponse('Internal Server Error', 500);
 	}
 
 	/**

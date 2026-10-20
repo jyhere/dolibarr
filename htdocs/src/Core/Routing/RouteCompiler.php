@@ -16,21 +16,29 @@ final class RouteCompiler
 	/**
 	 * @param list<class-string> $controllers
 	 * @return list<RouteDefinition>
+	 * @throws \LogicException When two routes have the same name
 	 */
 	public function compile(array $controllers): array
 	{
 		$definitions = [];
+		/** @var array<string,string> $declaredBy route name => Class::method() */
+		$declaredBy = [];
 		foreach ($controllers as $controller) {
 			$class = new ReflectionClass($controller);
 			foreach ($class->getMethods() as $method) {
 				foreach ($method->getAttributes(Route::class) as $attribute) {
 					$route = $attribute->newInstance();
 					$name = $route->name !== '' ? $route->name : $this->defaultName($class->getShortName(), $method->getName());
+					$where = $controller.'::'.$method->getName().'()';
+					if (isset($declaredBy[$name])) {
+						throw new \LogicException('Route name "'.$name.'" is declared twice: by '.$declaredBy[$name].' and by '.$where);
+					}
+					$declaredBy[$name] = $where;
 					[$regex, $variables] = $this->compilePath($route->path, $route->requirements);
 					$definitions[] = new RouteDefinition(
 						$name,
 						$route->path,
-						$route->methods,
+						array_values(array_unique(array_map('strtoupper', $route->methods))),
 						$controller,
 						$method->getName(),
 						$route->requirements,
