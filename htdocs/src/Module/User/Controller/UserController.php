@@ -30,6 +30,7 @@ use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\Service\UserValidator;
 use Dolibarr\Module\User\Service\ValidationException;
 use Dolibarr\Module\User\View\UserCardChrome;
+use Dolibarr\Module\User\View\UserEditRights;
 use Dolibarr\Module\User\View\UserFormChrome;
 
 final class UserController
@@ -233,6 +234,229 @@ final class UserController
 		$target = $backtopage !== '' ? SafeRedirect::relativePath(str_replace('__ID__', (string) $created->id, $backtopage), $urlRoot) : null;
 
 		return new RedirectResponse($target ?? $this->urls->generate('user_show', ['id' => $created->id]));
+	}
+
+	/**
+	 * The edit form, the edit view of htdocs/user/card.php (l.2498-3309). An actor who may only set the
+	 * password (card.php l.165) gets the fields read-only and the password input.
+	 *
+	 * @throws NotFoundException     When the user does not exist in the entity
+	 * @throws AccessDeniedException When the current user may neither edit it nor set its password
+	 */
+	#[Route('/user/{id}/edit', methods: ['GET'], name: 'user_edit', requirements: ['id' => '\d+'])]
+	public function editForm(Request $r, int $id): ViewModel
+	{
+		$existing = $this->prepareEdit($id);
+
+		return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($r, $existing, 'edit'));
+	}
+
+	/**
+	 * Action update of htdocs/user/card.php (l.478-773), then a redirection to the card (card.php renders
+	 * the card again without one: a redirect-after-POST here). A failure redisplays the form with the posted
+	 * values and the messages.
+	 *
+	 * @throws NotFoundException     When the user does not exist in the entity
+	 * @throws AccessDeniedException When the current user may neither edit it nor set its password
+	 */
+	#[Route('/user/{id}/edit', methods: ['POST'], name: 'user_edit_post', requirements: ['id' => '\d+'])]
+	public function update(Request $r, int $id): Response|ViewModel
+	{
+		$existing = $this->prepareEdit($id);
+		$card = $this->urls->generate('user_show', ['id' => $id]);
+
+		// Invalid CSRF token (main.inc.php l.456-478): doActions with an empty action, nothing written
+		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($r, $existing, ''));
+		}
+
+		// card.php l.185-191: the standard actions only when doActions returns 0
+		$doActions = $this->doActionsEdit($r, $existing, 'update');
+		if ($doActions->code !== 0) {
+			$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config);
+
+			return $this->editView($existing, $in->toEntity($existing, $this->entityForUpdate($in, $existing)), $in->forcePasswordChange, true, $doActions);
+		}
+
+		// card.php l.203-212: backtopageforcancel, else backtopage, else the card
+		if ($this->param($r, 'cancel', 'alpha') !== '') {
+			$backtopageforcancel = $this->param($r, 'backtopageforcancel');
+			$candidate = $backtopageforcancel !== '' ? $backtopageforcancel : $this->param($r, 'backtopage');
+
+			return new RedirectResponse(SafeRedirect::relativePath($candidate === '' ? null : $candidate, $this->config->urlRoot()) ?? $card);
+		}
+
+		if (!$this->perms->canEdit($existing)) {
+			return $this->updatePasswordOnly($r, $existing, $doActions) ?? new RedirectResponse($card);
+		}
+
+		$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config);
+		$values = $in->toEntity($existing, $this->entityForUpdate($in, $existing));
+
+		$errors = $this->validator->validate($in, false, 0);
+		if ($errors !== []) {
+			foreach ($errors as $error) {
+				// setOptionalsFromPost() has already queued its own message: not flashed twice
+				if ($error !== $in->extraFieldsError) {
+					$this->flash->error($error);
+				}
+			}
+
+			return $this->editView($existing, $values, $in->forcePasswordChange, true, $doActions);
+		}
+
+		// card.php l.666-671 ($passwordismodified); fromRequest() reads the password only with canSetPassword()
+		$password = $in->password ?? '';
+		$passwordModified = $password !== '' && !$this->service->isCurrentPassword($id, $password);
+		try {
+			$after = $this->service->update($values, $in->categoryIds, $in->contactId, $in->companyId, $passwordModified ? $password : null);
+		} catch (ValidationException $e) {
+			foreach ($e->messages as $message) {
+				$this->flash->error($message);
+			}
+
+			return $this->editView($existing, $values, $in->forcePasswordChange, true, $doActions);
+		}
+
+		// card.php l.736-750
+		$this->flash->success($this->t->trans('UserModified'));
+		if ($this->me->login() === $existing->login && $existing->login !== $after->login) {
+			$this->flash->warning($this->t->transnoentities('WarningYourLoginWasModifiedPleaseLogin'));
+		}
+		if ($passwordModified && $after->login === $this->me->login()) {
+			$this->flash->warning($this->t->transnoentities('WarningYourPasswordWasModifiedPleaseLogin'));
+		}
+
+		return new RedirectResponse($card);
+	}
+
+	/**
+	 * card.php l.757-772: only the password, set when one is typed (even the current one), no message.
+	 *
+	 * @return ViewModel|null The form again when the password is refused, null on success
+	 */
+	private function updatePasswordOnly(Request $r, User $existing, HookResult $doActions): ?ViewModel
+	{
+		$clear = $r->getPost('password', 'password', '');
+		if (!is_string($clear) || $clear === '') {
+			return null;
+		}
+		try {
+			$this->service->setPasswordFromForm($existing->id, $clear);
+		} catch (ValidationException $e) {
+			foreach ($e->messages as $message) {
+				$this->flash->error($message);
+			}
+
+			return $this->editView($existing, $existing, $existing->forcePasswordChange, true, $doActions);
+		}
+
+		return null;
+	}
+
+	/**
+	 * card.php l.79, l.119, l.152-154 (read access) and l.478 (edit or password right): the user, the domains
+	 * and the hooks of the edit view.
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	private function prepareEdit(int $id): User
+	{
+		$user = $this->repo->find($id);
+		if ($user === null) {
+			throw new NotFoundException('User '.$id.' not found');
+		}
+		if (!$this->perms->canRead($user) || (!$this->perms->canEdit($user) && !$this->perms->canSetPassword($user))) {
+			throw new AccessDeniedException();
+		}
+		foreach (['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other', 'errors'] as $domain) {
+			$this->t->load($domain);
+		}
+		$this->hooks->init(self::HOOK_CONTEXTS);
+
+		return $user;
+	}
+
+	/**
+	 * card.php l.185-189 with the parameters of an existing user (l.82-86, l.122-127).
+	 */
+	private function doActionsEdit(Request $r, User $existing, string $action): HookResult
+	{
+		$object = $this->formChrome->legacyObject($existing);
+		$result = $this->hooks->execute('doActions', [
+			'id' => $existing->id,
+			'socid' => $this->me->companyId(),
+			'group' => $r->getInt('group'),
+			'caneditgroup' => $this->perms->canEditGroups($existing),
+		], $object, $action);
+		$this->flashErrors($result);
+
+		return $result;
+	}
+
+	/**
+	 * card.php l.595-606: the entity only changes with multicompany, from an admin without entity.
+	 */
+	private function entityForUpdate(UserInput $in, User $existing): int
+	{
+		if (!$this->config->isModuleEnabled('multicompany') || !$this->me->isAdmin() || $this->me->entity() !== 0) {
+			return $existing->entity;
+		}
+		if ($in->superadmin) {
+			return 0;
+		}
+		if ($this->config->string('MULTICOMPANY_TRANSVERSE_MODE') !== '') {
+			return 1;
+		}
+
+		return $in->entity ?? $existing->entity;
+	}
+
+	/**
+	 * The edit form of $existing showing $values: the stored ones, or the posted ones on a redisplay.
+	 */
+	private function editView(User $existing, User $values, bool $forcePasswordChange, bool $redisplay, HookResult $doActions): ViewModel
+	{
+		$canSeeSalary = $this->perms->canSeeSalary($existing);
+		if ($canSeeSalary) {
+			$this->t->load('salaries');
+		}
+		$canEditAdminFlag = $this->perms->canEditAdminFlag($existing);
+		$rights = new UserEditRights(
+			$this->perms->canEdit($existing),
+			$this->perms->canSetPassword($existing),
+			$this->perms->canSendPassword($existing),
+			$this->perms->canEditLogin($existing, $existing->isLdapManaged),
+			$this->me->isAdmin() && !$this->perms->isSelf($existing),
+			$this->repo->countInEntity()
+		);
+		// card.php l.977-979
+		$personName = $existing->firstname !== null && $existing->firstname !== '' ? $existing->lastname.', '.$existing->firstname : (string) $existing->lastname;
+
+		return new ViewModel('user:user_form', [
+			'outputBeforeHeader' => $doActions->output,
+			'title' => $personName.' - '.$this->t->trans('Card'),
+			'bodyCss' => 'mod-user page-card',
+			'mode' => 'edit',
+			'formAction' => $this->urls->generate('user_edit_post', ['id' => $existing->id]),
+			'values' => $values,
+			'forcePasswordChange' => $forcePasswordChange,
+			'backtopage' => '',
+			'backtopageforcancel' => '',
+			'entity' => $existing->entity,
+			'canEdit' => $rights->canEdit,
+			'canEditLogin' => $rights->canEditLogin,
+			'ldap' => $existing->isLdapManaged,
+			'canSeeSalary' => $canSeeSalary,
+			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
+			// card.php l.3263: the dash only between two posted employment dates
+			'employmentDash' => $redisplay && $values->dateEmployment !== null && $values->dateEmploymentEnd !== null,
+			'show' => $this->formChrome->visibility($canSeeSalary, $canEditAdminFlag, $rights->nbOfUsers > 1),
+			'titleHtml' => '',
+			'loginJs' => '',
+			'f' => $this->formChrome->fragments($values, 'edit', $canSeeSalary, $canEditAdminFlag, null, $rights),
+		]);
 	}
 
 	/**

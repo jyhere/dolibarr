@@ -91,7 +91,7 @@ final class UserControllerShowTest extends TestCase
 		$card = $vm->data['card'];
 		self::assertInstanceOf(UserCardHtml::class, $card);
 		$langs = $GLOBALS['langs'];
-		self::assertStringContainsString('action=edit', $card->actionsHtml);
+		self::assertStringContainsString('href="/user/1/edit"', $card->actionsHtml);
 		self::assertStringContainsString('>'.$langs->trans('Modify').'<', $card->actionsHtml);
 		self::assertMatchesRegularExpression(
 			'/<span[^>]*butActionRefused[^>]*title="'.preg_quote(dol_escape_htmltag($langs->trans('CantDisableYourself')), '/').'"[^>]*><span class="textbutton">'.preg_quote($langs->trans('DisableUser'), '/').'</',
@@ -183,7 +183,7 @@ final class UserControllerShowTest extends TestCase
 			new FlashBag(),
 			new UserService(new UserRepository($connection, (int) $ctx->conf->entity), new LegacyUserWriter($ctx, new LegacyObjectLoader($connection), $connection), new EventDispatcher(), $connection, $me),
 			new UserValidator(new LegacyTranslator($ctx->langs), new LegacyConfig($ctx)),
-			new UserFormChrome($ctx),
+			new UserFormChrome($ctx, $urls),
 			new LegacyConfig($ctx),
 			$urls
 		);

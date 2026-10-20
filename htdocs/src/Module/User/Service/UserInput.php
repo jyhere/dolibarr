@@ -253,7 +253,9 @@ final class UserInput
 			accountancyCode: $this->accountancyCode,
 			warehouseId: $this->warehouseId,
 			nationalRegistrationNumber: $this->nationalRegistrationNumber,
-			isLdapManaged: $base->isLdapManaged ?? false
+			isLdapManaged: $base->isLdapManaged ?? false,
+			// card.php l.380 (add) and l.586 (update): the posted checkbox, 0 when it is absent
+			forcePasswordChange: $this->forcePasswordChange
 		);
 	}
 

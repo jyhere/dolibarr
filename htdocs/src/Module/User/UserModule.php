@@ -107,7 +107,7 @@ final class UserModule implements ModuleInterface
 			);
 		});
 		$c->set(UserCardChrome::class, static fn (Container $c): UserCardChrome => new UserCardChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
-		$c->set(UserFormChrome::class, static fn (Container $c): UserFormChrome => new UserFormChrome(self::get($c, LegacyContext::class)));
+		$c->set(UserFormChrome::class, static fn (Container $c): UserFormChrome => new UserFormChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
 		$c->set(UserValidator::class, static fn (Container $c): UserValidator => new UserValidator(self::get($c, Translator::class), self::get($c, Config::class)));
 		$c->set(Authenticator::class, static function (Container $c): Authenticator {
 			$ctx = self::get($c, LegacyContext::class);

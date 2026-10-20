@@ -152,7 +152,8 @@ expect_code "user/1/ trailing slash" 200 -b "$J1" "$BASE/user/1/"
 expect_grep "user/1 Accept */* is HTML" '<html' 1 -H 'Accept: */*' -b "$J1" "$BASE/user/1"
 expect_code "user/1 json 200" 200 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 expect_grep "user/1 json login" '"login":"admin"' 1 -b "$J1" "${JSON[@]}" "$BASE/user/1"
-GREP_OPTS=-i expect_grep "user/1 json no pass" 'pass' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
+# No key starting with "pass" (pass, pass_crypted, pass_temp, password...); forcePasswordChange is a flag, not a secret
+GREP_OPTS=-i expect_grep "user/1 json no pass" '"pass' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 # Only the exposed data: {"user":{...}} with the flat UserView::toArray() keys, no presentation data
 expect_grep "user/1 json is only the exposed user" '^{"user":{[^{}]*}}$' 1 -b "$J1" "${JSON[@]}" "$BASE/user/1"
 expect_grep "user/1 json no title" '"title"' 0 -b "$J1" "${JSON[@]}" "$BASE/user/1"
@@ -187,6 +188,36 @@ expect_grep "duplicate login redisplays the form" 'name="createuser"' 1 -b "$J1"
 expect_grep "invalid token redisplays the form" 'name="createuser"' 1 -b "$J1" -c "$J1" -X POST -d "token=bogus" \
 	--data-urlencode "lastname=Smoke" --data-urlencode "login=${SMOKE_LOGIN}b" --data-urlencode "password=$SMOKE_PASSWORD" "$BASE/user/new"
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login = '${SMOKE_LOGIN}b'")" = "0" ] && ok "invalid token creates no user" || fail "invalid token creates no user" "a user"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+
+echo "== User edit (/user/{id}/edit)"
+expect_code "user/1/edit 200" 200 -b "$J1" "$BASE/user/1/edit"
+expect_grep "user/1/edit edit form" 'name="updateuser"' 1 -b "$J1" "$BASE/user/1/edit"
+expect_grep "user/1/edit posts to itself" '<form action="[^"]*/user/1/edit" method="POST" name="updateuser"' 1 -b "$J1" "$BASE/user/1/edit"
+expect_grep "user/1 Modify button points to the edit form" 'href="[^"]*/user/1/edit"' 1 -b "$J1" "$BASE/user/1"
+# The writes run on a smoke user: like card.php, the update clears the fields the POST does not carry,
+# and a hand-made POST on user 1 would wipe what the form shows.
+SMOKE_LOGIN="smoke_$(date +%s)$$e"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Edited" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "smoke user for the edit created";; *) fail "smoke user for the edit" "$OUT";; esac
+EDITID="${OUT##*/}"
+TE="$(token_from "$J1" "/user/$EDITID/edit")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TE" \
+	--data-urlencode "lastname=Edited" --data-urlencode "login=$SMOKE_LOGIN" -d "action=update&admin=0&employee=1&entity=1&job=Smoke" "$BASE/user/$EDITID/edit")"
+[ "$OUT" = "302 $BASE/user/$EDITID" ] && ok "POST /user/<id>/edit job=Smoke 302 to /user/<id>" || fail "POST /user/<id>/edit job=Smoke" "$OUT"
+expect_grep "user/<id> shows the new job" '>Smoke<' 1 -b "$J1" "$BASE/user/$EDITID"
+TE="$(token_from "$J1" "/user/$EDITID/edit")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TE" \
+	--data-urlencode "lastname=Edited" --data-urlencode "login=$SMOKE_LOGIN" -d "action=update&admin=0&employee=1&entity=1&job=" "$BASE/user/$EDITID/edit")"
+[ "$OUT" = "302 $BASE/user/$EDITID" ] && ok "POST /user/<id>/edit job= (restore) 302" || fail "POST /user/<id>/edit job= (restore)" "$OUT"
+[ "$(smoke_sql "SELECT COALESCE(job, '') FROM llx_user WHERE rowid = $EDITID")" = "" ] && ok "job restored" || fail "job restored" "not empty"
+expect_grep "invalid token redisplays the edit form" 'name="updateuser"' 1 -b "$J1" -c "$J1" -X POST -d "token=bogus" \
+	--data-urlencode "lastname=Bogus" --data-urlencode "login=$SMOKE_LOGIN" "$BASE/user/$EDITID/edit"
+[ "$(smoke_sql "SELECT lastname FROM llx_user WHERE rowid = $EDITID")" = "Edited" ] && ok "invalid token writes nothing" || fail "invalid token writes nothing" "lastname changed"
 cleanup_smoke_users
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
 

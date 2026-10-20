@@ -17,3 +17,4 @@ parameters:
 		- htdocs/adherents/class/adherent.class.php
 		- htdocs/categories/class/categorie.class.php
 		- htdocs/product/class/html.formproduct.class.php
+		- htdocs/blockedlog/lib/securitycore.lib.php

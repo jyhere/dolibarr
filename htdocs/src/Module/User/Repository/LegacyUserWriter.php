@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Repository;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Module\User\Entity\User;
@@ -52,18 +53,43 @@ final class LegacyUserWriter implements UserWriter
 	/**
 	 * user/card.php l.497-745 (action update): fetch, oldcopy, properties, update().
 	 * Only the mapped properties are replaced: the others keep their database value.
+	 *
+	 * The company and the contact stay the fetched ones, as on the card where the new link is the raw
+	 * UPDATE that follows (linkToContact()): update() synchronises the contact the user was linked to,
+	 * never the newly chosen one.
+	 *
+	 * A unique key refused by the database (DB_ERROR_RECORD_ALREADY_EXISTS, card.php l.674-677) gives
+	 * ErrorUpdateCanceledDueToDuplicatedUniqueValue; the duplicate login that update() detects itself
+	 * keeps its own message (ErrorLoginAlreadyExists), as on the card.
 	 */
 	public function update(User $u, int $actorId): void
 	{
 		$o = $this->fetch($u->id);
 		$o->oldcopy = clone $o;
+		$socid = $o->socid;
+		$contactId = $o->contact_id;
 		$this->fill($o, $u);
+		$o->socid = $socid;
+		$o->contact_id = $contactId;
 		$o->entity = $u->entity;
 		$o->array_options = array_merge(is_array($o->array_options) ? $o->array_options : [], $u->extraFields);
 
 		if ($o->update($this->actor($actorId)) < 0) {
+			// card.php tests $db->errno(), the code of the last statement (lasterrno() may be an older one)
+			if ($this->ctx->db->errno() === 'DB_ERROR_RECORD_ALREADY_EXISTS') {
+				$this->ctx->langs->load('users');
+				throw new ValidationException([$this->ctx->langs->trans('ErrorUpdateCanceledDueToDuplicatedUniqueValue', $u->login)]);
+			}
 			$this->fail($o);
 		}
+	}
+
+	public function isCurrentPassword(int $id, string $clearPassword): bool
+	{
+		require_once DOL_DOCUMENT_ROOT.'/core/lib/security.lib.php';
+		$o = $this->fetch($id);
+
+		return $clearPassword === (string) $o->pass_indatabase || dol_verifyHash($clearPassword, (string) $o->pass_indatabase_crypted);
 	}
 
 	/**
@@ -198,7 +224,12 @@ final class LegacyUserWriter implements UserWriter
 		} else {
 			$sql = 'UPDATE '.$table.' SET fk_socpeople = NULL, fk_soc = NULL';
 		}
-		$this->db->execute($sql.' WHERE rowid = '.$id);
+		try {
+			$this->db->execute($sql.' WHERE rowid = '.$id);
+		} catch (DatabaseException) {
+			// card.php l.680-683: the database message (e.g. uk_user_fk_socpeople, a contact already linked to a user)
+			throw new ValidationException([$this->ctx->db->lasterror()]);
+		}
 	}
 
 	/**
@@ -271,6 +302,8 @@ final class LegacyUserWriter implements UserWriter
 		$o->accountancy_code = $u->accountancyCode ?? '';
 		$o->fk_warehouse = $u->warehouseId ?? 0;
 		$o->national_registration_number = $u->nationalRegistrationNumber ?? '';
+		// Reset by setPassword(): see User::$forcePasswordChange
+		$o->force_pass_change = $u->forcePasswordChange ? 1 : 0;
 	}
 
 	/**

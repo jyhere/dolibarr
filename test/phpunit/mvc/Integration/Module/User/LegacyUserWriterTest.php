@@ -111,6 +111,72 @@ final class LegacyUserWriterTest extends TestCase
 		self::assertSame('mvc-openid', $row->openid, 'A field the entity does not carry keeps its value');
 	}
 
+	public function testUpdateDuplicateUniqueValueThrowsTheUpdateCanceledMessage(): void
+	{
+		$taken = 'mvc_test_'.uniqid();
+		$this->writer()->insert($this->newUser($taken), 1);
+		$id = $this->writer()->insert($this->newUser($taken.'b'), 1);
+
+		// \User::update() checks the login in the entity it is given, the unique key is on the stored entity:
+		// with another entity the check passes and the UPDATE hits uk_user_login (DB_ERROR_RECORD_ALREADY_EXISTS).
+		try {
+			$this->writer()->update(new User(id: $id, entity: 999, login: $taken, lastname: 'Dup'), 1);
+			self::fail('ValidationException expected');
+		} catch (ValidationException $e) {
+			$this->ctx->langs->load('users');
+			self::assertSame([$this->ctx->langs->trans('ErrorUpdateCanceledDueToDuplicatedUniqueValue', $taken)], $e->messages);
+		}
+		self::assertSame($taken.'b', $this->repo()->find($id)?->login);
+	}
+
+	public function testUpdateWritesForcePasswordChange(): void
+	{
+		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
+		$before = $this->repo()->find($id);
+		self::assertNotNull($before);
+		self::assertFalse($before->forcePasswordChange);
+
+		$this->writer()->update(new User(id: $id, entity: 1, login: $before->login, lastname: 'Tester', forcePasswordChange: true), 1);
+
+		self::assertTrue($this->repo()->find($id)?->forcePasswordChange);
+	}
+
+	public function testUpdateSyncsTheContactLinkedBeforeNotTheNewOne(): void
+	{
+		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC contact', 1, NOW(), 1)");
+		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+
+		// card.php l.497-652: update() syncs $object->contact_id, the fetched one; the new link is the raw UPDATE after
+		$this->writer()->update(new User(id: $id, entity: 1, login: 'mvc_test_'.uniqid(), lastname: 'Overwrites', contactId: $contactId), 1);
+
+		$row = $this->connection->fetchOne('SELECT lastname FROM '.MAIN_DB_PREFIX.'socpeople WHERE rowid = '.$contactId);
+		self::assertSame('MVC contact', $row?->lastname);
+		self::assertNull($this->repo()->find($id)?->contactId);
+	}
+
+	public function testLinkToAContactOfAnotherUserThrowsValidationException(): void
+	{
+		$first = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
+		$second = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC contact', 1, NOW(), 1)");
+		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		$this->writer()->linkToContact($first, $contactId, 0);
+
+		// uk_user_fk_socpeople: card.php l.680-683 shows $db->lasterror()
+		$this->expectException(ValidationException::class);
+		$this->writer()->linkToContact($second, $contactId, 0);
+	}
+
+	public function testIsCurrentPassword(): void
+	{
+		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
+		$this->writer()->setPassword($id, 'Current-Pass-123!', false, 1);
+
+		self::assertTrue($this->writer()->isCurrentPassword($id, 'Current-Pass-123!'));
+		self::assertFalse($this->writer()->isCurrentPassword($id, 'Other-Pass-123!'));
+	}
+
 	public function testUpdateUnknownUserThrows(): void
 	{
 		$this->expectException(ValidationException::class);

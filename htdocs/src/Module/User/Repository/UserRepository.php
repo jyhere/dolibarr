@@ -32,6 +32,7 @@ final class UserRepository
 		'salary', 'salaryextra', 'thm', 'tjm', 'weeklyhours',
 		'dateemployment', 'dateemploymentend',
 		'office_fax', 'accountancy_code', 'fk_warehouse', 'national_registration_number',
+		'force_pass_change',
 	];
 
 	public function __construct(private readonly Connection $c, private readonly int $entity)
@@ -142,7 +143,8 @@ final class UserRepository
 			accountancyCode: self::str($r['accountancy_code'] ?? null),
 			warehouseId: self::nint($r['fk_warehouse'] ?? null),
 			nationalRegistrationNumber: self::str($r['national_registration_number'] ?? null),
-			isLdapManaged: self::int($r['is_ldap_managed'] ?? 0) === 1
+			isLdapManaged: self::int($r['is_ldap_managed'] ?? 0) === 1,
+			forcePasswordChange: self::int($r['force_pass_change'] ?? 0) > 0
 		);
 	}
 

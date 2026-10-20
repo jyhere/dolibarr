@@ -39,7 +39,34 @@ final class UserFormTemplateTest extends TestCase
 		self::assertStringContainsString('<form action="/user/new" method="POST" name="createuser">', $html);
 	}
 
-	private function render(User $values, string $backtopage): string
+	public function testEditFormEscapesValuesInInputsAndHiddenInputs(): void
+	{
+		$values = new User(7, 1, 'lo"gin', lastname: '<b>x</b>', job: '"><script>', email: "a'b@c.d", officePhone: '<i>1</i>');
+
+		$html = $this->render($values, '', 'edit', ['canEdit' => true, 'canEditLogin' => true, 'ldap' => false]);
+		self::assertStringContainsString('<form action="/user/7/edit" method="POST" name="updateuser" enctype="multipart/form-data">', $html);
+		self::assertStringContainsString('<input type="hidden" name="action" value="update">', $html);
+		self::assertStringContainsString('name="lastname" value="&lt;b&gt;x&lt;/b&gt;"', $html);
+		self::assertStringContainsString('name="login" value="lo&quot;gin"', $html);
+		self::assertStringContainsString('name="job" value="&quot;&gt;&lt;script&gt;"', $html);
+		self::assertStringContainsString('name="save"', $html);
+		self::assertStringContainsString('name="cancel"', $html);
+		self::assertStringNotContainsString('name="createuser"', $html);
+
+		// Read-only (password-only actor): hidden inputs and texts, escaped too
+		$html = $this->render($values, '', 'edit', ['canEdit' => false, 'canEditLogin' => false, 'ldap' => false]);
+		self::assertStringContainsString('<input type="hidden" name="lastname" value="&lt;b&gt;x&lt;/b&gt;">&lt;b&gt;x&lt;/b&gt;', $html);
+		self::assertStringContainsString('<input type="hidden" name="login" value="lo&quot;gin">lo"gin', $html);
+		self::assertStringContainsString('<input type="hidden" name="office_phone" value="&lt;i&gt;1&lt;/i&gt;">&lt;i&gt;1&lt;/i&gt;', $html);
+		self::assertStringContainsString('<input type="hidden" name="job" value="&quot;&gt;&lt;script&gt;">"&gt;&lt;script&gt;', $html);
+		self::assertStringNotContainsString('<b>x</b>', $html);
+		self::assertStringNotContainsString('<i>1</i>', $html);
+	}
+
+	/**
+	 * @param array<string, mixed> $extra
+	 */
+	private function render(User $values, string $backtopage, string $mode = 'create', array $extra = []): string
 	{
 		$source = (string) file_get_contents(self::TEMPLATE);
 		preg_match_all("/\\\$f\\['(\\w+)'\\]/", $source, $m);
@@ -72,7 +99,9 @@ final class UserFormTemplateTest extends TestCase
 		return $renderer->render('user:user_form', [
 			'layout' => $layout,
 			'title' => 'T',
-			'formAction' => '/user/new',
+			'mode' => $mode,
+			'formAction' => $mode === 'edit' ? '/user/'.$values->id.'/edit' : '/user/new',
+			'employmentDash' => false,
 			'values' => $values,
 			'forcePasswordChange' => false,
 			'backtopage' => $backtopage,
@@ -84,6 +113,6 @@ final class UserFormTemplateTest extends TestCase
 			'titleHtml' => '<i data-frag="title"></i>',
 			'loginJs' => '<i data-frag="loginJs"></i>',
 			'f' => $f,
-		]);
+		] + $extra);
 	}
 }

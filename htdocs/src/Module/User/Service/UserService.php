@@ -62,16 +62,25 @@ final class UserService
 	/**
 	 * user/card.php l.497-745: update, contact link when posted, tags (always replaced).
 	 *
+	 * $password, when given and not the current one, is set in the same transaction: on the card update()
+	 * calls setPassword() itself (user.class.php l.2474-2481) and a refused password cancels the whole update.
+	 * The writer does not copy the password, hence the explicit call; setPassword() resets force_pass_change.
+	 *
 	 * @param list<int> $categoryIds
 	 * @param ?int      $contactId   null when the contact field was not posted
+	 * @param ?string   $password    The clear password posted, null or '' to keep it
 	 * @throws ValidationException
 	 * @throws NotFoundException
 	 */
-	public function update(User $u, array $categoryIds, ?int $contactId, ?int $companyId): User
+	public function update(User $u, array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): User
 	{
-		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId): User {
+		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId, $password): User {
 			$before = $this->load($u->id);
 			$this->writer->update($u, $this->me->id());
+			if ($password !== null && $password !== '' && !$this->writer->isCurrentPassword($u->id, $password)) {
+				$this->writer->setPassword($u->id, $password, false, $this->me->id());
+				$this->events->dispatch(new UserPasswordChanged($u->id, false));
+			}
 			if ($contactId !== null) {
 				$this->writer->linkToContact($u->id, $contactId, $companyId ?? 0);
 			}
@@ -138,6 +147,18 @@ final class UserService
 	}
 
 	/**
+	 * Whether $clear is the stored password of the user ($passwordismodified of card.php l.666-671, inverted).
+	 *
+	 * @throws ValidationException When the user does not exist
+	 */
+	public function isCurrentPassword(int $id, string $clear): bool
+	{
+		return $this->writer->isCurrentPassword($id, $clear);
+	}
+
+	/**
+	 * user/card.php l.757-772: the password typed in the form, set even when it is the current one.
+	 *
 	 * @throws ValidationException
 	 */
 	public function setPasswordFromForm(int $id, string $clear): void

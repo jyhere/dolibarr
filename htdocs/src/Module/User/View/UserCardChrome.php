@@ -261,7 +261,7 @@ final class UserCardChrome
 	}
 
 	/**
-	 * card.php l.2282-2400: action buttons (still pointing to card.php).
+	 * card.php l.2282-2400: action buttons (Modify points to the new edit form, the others still to card.php).
 	 */
 	private function actions(\User $object, User $target, UserPermissionChecker $perms): string
 	{
@@ -289,11 +289,11 @@ final class UserCardChrome
 				$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card).'#', '', false, $params);
 			} else {
 				unset($params['attr']['title']);
-				$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'edit'], true), '', true, $params);
+				$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', $this->urls->generate('user_edit', ['id' => (int) $object->id]), '', true, $params);
 			}
 		} elseif ($perms->canModifyForPassword($target, $ldapManaged)) {
 			unset($params['attr']['title']);
-			$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'edit'], true), '', true, $params);
+			$out .= dolGetButtonAction($langs->trans('Modify'), '', 'default', $this->urls->generate('user_edit', ['id' => (int) $object->id]), '', true, $params);
 		}
 
 		$params = ['attr' => ['title' => '', 'class' => 'classfortooltip']];

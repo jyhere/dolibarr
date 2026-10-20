@@ -321,7 +321,7 @@ final class UserCreateTest extends TestCase
 			new FlashBag(),
 			new UserService($this->repo(), new LegacyUserWriter($ctx, $loader, $this->connection), new EventDispatcher(), $this->connection, $me),
 			new UserValidator($translator, $config),
-			new UserFormChrome($ctx),
+			new UserFormChrome($ctx, $urls),
 			$config,
 			$urls
 		);

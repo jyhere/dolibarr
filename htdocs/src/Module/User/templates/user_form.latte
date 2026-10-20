@@ -1,8 +1,13 @@
-{* User creation form: the create view of htdocs/user/card.php (l.992-1626), same names, order and classes.
-   Not rendered (see UserFormChrome): api_key, social networks, LDAP import form, old multicompany entity row. *}
+{* User form of htdocs/user/card.php, same names, order and classes:
+   mode 'create', the create view (l.992-1626); mode 'edit', the edit view (l.2498-3309).
+   Not rendered (see UserFormChrome): api_key, social networks, LDAP import form, old multicompany entity row,
+   and on the edit form OpenID and photo. *}
 {layout 'core:@layout'}
 {block content}
 {var $u = $values}
+{if $mode === 'edit'}
+{include editForm}
+{else}
 {var $externalUser = ('CreateExternalUser'|transnoentities)}
 {$titleHtml|noescape}
 <span class="opacitymedium">{='CreateInternalUserDesc'|trans: $externalUser}</span><br>
@@ -133,4 +138,141 @@
 {$f['buttons']|noescape}
 </form>
 {$f['passwordJs']|noescape}
+{/if}
 {/block}
+
+{define editForm}
+{* The edit view of card.php (l.2498-3309): a field the current user may not edit is shown read-only,
+   with its hidden input where card.php prints one. *}
+{var $u = $values}
+<form action="{$formAction}" method="POST" name="updateuser" enctype="multipart/form-data">
+<input type="hidden" name="token" value="{token()}">
+<input type="hidden" name="action" value="update">
+<input type="hidden" name="entity" value="{$entity}">
+{$f['ficheHead']|noescape}
+<table class="border centpercent">
+{if $show['technicalId']}
+<tr><td class="titlefieldcreate">{='Ref'|trans}</td><td>{$u->id}</td></tr>
+{/if}
+<tr><td class="titlefieldcreate fieldrequired">{='Lastname'|trans}</td>
+<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="lastname" value="{$u->lastname ?? ''}">{else}<input type="hidden" name="lastname" value="{$u->lastname ?? ''}">{$u->lastname}{/if}</td></tr>
+<tr><td>{='Firstname'|trans}</td>
+<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="firstname" value="{$u->firstname ?? ''}">{else}<input type="hidden" name="firstname" value="{$u->firstname ?? ''}">{$u->firstname}{/if}</td></tr>
+<tr><td><span class="fieldrequired">{='Login'|trans}</span></td>
+<td>{if $canEditLogin}<input maxlength="50" type="text" class="flat" name="login" value="{$u->login}" spellcheck="false">{else}<input type="hidden" name="login" value="{$u->login}">{$u->login}{/if}</td></tr>
+<tr><td>{='ExternalUser'|trans} ?</td>
+<td>{if isset($f['company'])}{$f['company']|noescape}{else}{$f['externalType']|noescape}{/if}</td></tr>
+<tr><td>{$f['adminLabel']|noescape}</td>
+<td>{$f['admin']|noescape}</td></tr>
+{if $show['civility']}
+<tr><td class="titlefieldcreate"><label for="civility_code">{='UserTitle'|trans}</label></td><td>{if isset($f['civility'])}{$f['civility']|noescape}{elseif $u->civility !== null && $u->civility !== ''}{=('Civility'.$u->civility)|trans}{/if}</td></tr>
+{/if}
+<tr><td>{='Gender'|trans}</td>
+<td>{$f['gender']|noescape}</td></tr>
+<tr><td>{$f['employeeLabel']|noescape}</td><td><input type="checkbox" name="employee"{if !$canEdit} disabled{/if} value="1"{if $u->employee} checked="checked"{/if}></td></tr>
+{if $show['hierarchy']}
+<tr><td class="titlefieldcreate">{='HierarchicalResponsible'|trans}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user" value="{$u->supervisorId ?? 0}">{/if}{$f['supervisor']|noescape}</td>
+</tr>
+{if $show['expenseValidator']}
+<tr><td class="titlefieldcreate">{$f['expenseValidatorLabel']|noescape}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user_expense_validator" value="{$u->expenseValidatorId ?? 0}">{/if}{$f['expenseValidator']|noescape}</td>
+</tr>
+{/if}
+{if $show['holidayValidator']}
+<tr><td class="titlefieldcreate">{$f['holidayValidatorLabel']|noescape}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user_holiday_validator" value="{$u->holidayValidatorId ?? 0}">{/if}{$f['holidayValidator']|noescape}</td>
+</tr>
+{/if}
+{/if}
+</table><hr><table class="border centpercent">
+<tr><td class="titlefieldcreate">{='RangeOfLoginValidity'|trans}</td>
+<td>{$f['dateStartValidity']|noescape} &nbsp; {$f['dateEndValidity']|noescape}</td>
+</tr>
+<tr><td class="titlefieldcreate">{='Password'|trans}</td>
+<td>{$f['passwordField']|noescape}</td></tr>
+{if $show['forcePasswordChange']}
+<tr class="valigntop">{if $show['smallScreen']}<td colspan="2">{$f['forcePass']|noescape}</td>{else}<td></td><td>{$f['forcePass']|noescape}</td>{/if}</tr>
+{/if}
+{* api_key (card.php l.2876-2889), OpenID (l.2891-2902): not rendered *}
+</table><hr><table class="border centpercent">
+<tr><td class="tdtop titlefieldcreate">{$f['addressLabel']|noescape}</td>
+<td>{if $canEdit}<textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$u->address}</textarea>{else}{$u->address}{/if}</td></tr>
+<tr><td>{$f['zipLabel']|noescape}</td><td>{if $canEdit}{$f['zip']|noescape}{else}{$u->zip}{/if}</td></tr>
+<tr><td>{$f['townLabel']|noescape}</td><td>{if $canEdit}{$f['town']|noescape}{else}{$u->town}{/if}</td></tr>
+<tr><td>{$f['countryLabel']|noescape}</td><td>{$f['country']|noescape}</td></tr>
+{if $show['state']}
+<tr><td class="tdoverflow">{$f['stateLabel']|noescape}</td><td>{$f['state']|noescape}</td></tr>
+{/if}
+<tr><td>{='PhonePro'|trans}</td>
+<td>{if $canEdit && !$ldap}{$f['officePhone']|noescape}{else}{$f['officePhonePicto']|noescape}<input type="hidden" name="office_phone" value="{$u->officePhone ?? ''}">{$u->officePhone}{/if}</td></tr>
+<tr><td>{='PhoneMobile'|trans}</td>
+<td>{if $canEdit && !$ldap}{$f['userMobile']|noescape}{else}{$f['userMobilePicto']|noescape}<input type="hidden" name="user_mobile" value="{$u->userMobile ?? ''}">{$u->userMobile}{/if}</td></tr>
+<tr><td>{='Fax'|trans}</td>
+<td>{if $canEdit && !$ldap}{$f['officeFax']|noescape}{else}{$f['officeFaxPicto']|noescape}<input type="hidden" name="office_fax" value="{$u->officeFax ?? ''}">{$u->officeFax}{/if}</td></tr>
+<tr><td n:class="$show['emailRequired'] ? fieldrequired">{='EMail'|trans}</td>
+<td>{$f['emailPicto']|noescape}{if $canEdit && !$ldap}<input class="minwidth100 maxwidth500 widthcentpercentminusx" type="text" name="email" value="{$u->email ?? ''}">{else}<input type="hidden" name="email" value="{$u->email ?? ''}">{$u->email}{/if}</td></tr>
+{* social networks (card.php l.3011-3031): not rendered, deferred *}
+</table><hr><table class="border centpercent">
+{if $show['warehouse']}
+<tr><td class="titlefieldcreate">{='DefaultWarehouse'|trans}</td><td>{$f['warehouse']|noescape}</td></tr>
+{/if}
+{if $show['accountancyCode']}
+<tr><td class="titlefieldcreate">{='AccountancyCode'|trans}</td>
+<td>{if $canEdit}<input type="text" class="flat maxwidth300" name="accountancy_code" value="{$u->accountancyCode ?? ''}">{else}<input type="hidden" name="accountancy_code" value="{$u->accountancyCode ?? ''}">{$u->accountancyCode}{/if}</td></tr>
+{/if}
+{if $show['color']}
+<tr><td class="titlefieldcreate">{='ColorUser'|trans}</td>
+<td>{$f['color']|noescape}</td></tr>
+{/if}
+{* photo (card.php l.3076-3082): not rendered, the upload stays on the legacy card *}
+{if $show['categories']}
+<tr><td>{$f['categoriesLabel']|noescape}</td>
+<td>{$f['categories']|noescape}</td></tr>
+{/if}
+{if $show['language']}
+<tr><td>{$f['languageLabel']|noescape}</td><td colspan="3">
+{$f['language']|noescape}</td></tr>
+{/if}
+<tr><td>{='Status'|trans}</td>
+<td>{$f['status']|noescape}</td></tr>
+{if $show['member']}
+<tr><td>{='LinkedToDolibarrMember'|trans}</td>
+<td>{$f['member']|noescape}</td></tr>
+{/if}
+{$f['extrafields']|noescape}
+<tr><td class="tdtop">{='Signature'|trans}</td>
+<td>{$f['signature']|noescape}</td></tr>
+</table><hr><table class="border centpercent">
+<tr><td class="titlefieldcreate">{='PostOrFunction'|trans}</td>
+<td>{if $canEdit}<input type="text" class="minwidth300 maxwidth500" name="job" value="{$u->job ?? ''}">{else}<input type="hidden" name="job" value="{$u->job ?? ''}">{$u->job}{/if}</td></tr>
+<tr><td>{='WeeklyHours'|trans}</td>
+<td>{if $canEdit}<input size="8" type="text" name="weeklyhours" value="{$u->weeklyHours ?? ''}">{else}{$u->weeklyHours}{/if}</td>
+</tr>
+{if $canSeeSalary}
+<tr><td>{='Salary'|trans}</td>
+<td>{$f['salaryPicto']|noescape}<input size="8" type="text" name="salary" value="{$u->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+</tr>
+<tr><td>{$f['thmLabel']|noescape}</td>
+<td>{if $canEdit}<input size="8" type="text" name="thm" value="{$u->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$f['thm']|noescape}{/if}</td>
+</tr>
+<tr><td>{$f['tjmLabel']|noescape}</td>
+<td>{if $canEdit}<input size="8" type="text" name="tjm" value="{$u->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$f['tjm']|noescape}{/if}</td>
+</tr>
+{/if}
+<tr><td>{='DateEmployment'|trans}</td>
+<td>{$f['dateEmployment']|noescape}{if $employmentDash} - {/if}{$f['dateEmploymentEnd']|noescape}</td>
+</tr>
+<tr><td>{='DateOfBirth'|trans}</td>
+<td>{$f['dateOfBirth']|noescape}</td>
+</tr>
+</table>
+{$f['ficheEnd']|noescape}
+<div class="center">
+<input value="{='Save'|trans}" class="button button-save" type="submit" name="save">
+&nbsp; &nbsp; &nbsp;
+<input value="{='Cancel'|trans}" class="button button-cancel" type="submit" name="cancel">
+</div>
+</form>
+{$f['passwordJs']|noescape}
+{/define}

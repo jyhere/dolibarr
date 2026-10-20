@@ -10,6 +10,9 @@ use Dolibarr\Core\View\Exposable;
 /**
  * Read model of a Dolibarr user (llx_user). Secrets (password hashes, API key,
  * OpenID, LDAP SID) are never part of this entity.
+ *
+ * forcePasswordChange is force_pass_change. Legacy quirk kept as is: \User::setPassword() resets it to 0,
+ * so a flag written with a new password does not survive (the same on user/card.php).
  */
 final class User implements Exposable, HasNotes
 {
@@ -73,7 +76,8 @@ final class User implements Exposable, HasNotes
 		public readonly ?string $accountancyCode = null,
 		public readonly ?int $warehouseId = null,
 		public readonly ?string $nationalRegistrationNumber = null,
-		public readonly bool $isLdapManaged = false
+		public readonly bool $isLdapManaged = false,
+		public readonly bool $forcePasswordChange = false
 	) {
 	}
 
@@ -192,6 +196,7 @@ final class User implements Exposable, HasNotes
 			'warehouseId' => $this->warehouseId,
 			'nationalRegistrationNumber' => $this->nationalRegistrationNumber,
 			'isLdapManaged' => $this->isLdapManaged,
+			'forcePasswordChange' => $this->forcePasswordChange,
 		];
 	}
 

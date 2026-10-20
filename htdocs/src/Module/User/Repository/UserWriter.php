@@ -23,10 +23,19 @@ interface UserWriter
 	 * The admin flag and the login are copied as given: callers must apply
 	 * UserPermissionChecker::canEditAdminFlag() and canEditLogin() when building $u.
 	 * (The legacy update() ignores admin for a non-admin actor but writes login unconditionally.)
+	 * The company and the contact of $u are not written: linkToContact() does it.
 	 *
 	 * @throws ValidationException
 	 */
 	public function update(User $u, int $actorId): void;
+
+	/**
+	 * Whether $clearPassword is the stored password of the user, the test \User::update() makes before
+	 * calling setPassword() (user.class.php l.2474-2476). The stored password never leaves the writer.
+	 *
+	 * @throws ValidationException When the user does not exist
+	 */
+	public function isCurrentPassword(int $id, string $clearPassword): bool;
 
 	/**
 	 * @throws ValidationException
