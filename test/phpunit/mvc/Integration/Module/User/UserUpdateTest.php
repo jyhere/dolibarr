@@ -19,6 +19,7 @@ use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Legacy\LegacyTranslator;
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
+use Dolibarr\Core\View\Confirm;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Core\View\ViewModel;
@@ -589,7 +590,8 @@ final class UserUpdateTest extends TestCase
 			new UserValidator($translator, $config),
 			new UserFormChrome($ctx, $urls),
 			$config,
-			$urls
+			$urls,
+			new Confirm($ctx)
 		);
 	}
 

@@ -20,6 +20,7 @@ use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Session;
 use Dolibarr\Core\Translator;
+use Dolibarr\Core\View\Confirm;
 use Dolibarr\Module\User\Controller\LoginController;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
@@ -165,7 +166,8 @@ final class UserModule implements ModuleInterface
 			self::get($c, UserValidator::class),
 			self::get($c, UserFormChrome::class),
 			self::get($c, Config::class),
-			self::get($c, UrlGenerator::class)
+			self::get($c, UrlGenerator::class),
+			self::get($c, Confirm::class)
 		));
 	}
 

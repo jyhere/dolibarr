@@ -1,7 +1,8 @@
-{* Read-only user card: the view mode of htdocs/user/card.php (l.1741-2290). *}
+{* Read-only user card: the view mode of htdocs/user/card.php (l.1697-2491 and l.3315-3355). *}
 {layout 'core:@layout'}
 {block content}
 {var $u = $user->user}
+{$confirmDialogHtml|noescape}
 {$card->confirmHtml|noescape}
 {$card->tabsHtml|noescape}
 {$card->bannerHtml|noescape}
@@ -79,4 +80,6 @@
 {$hookMoreActionsButtons|noescape}
 {if $showActions}{$card->actionsHtml|noescape}{/if}
 </div>
+{$groupsHtml|noescape}
+{$bottomHtml|noescape}
 {/block}

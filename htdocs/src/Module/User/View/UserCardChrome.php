@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\View;
 
 use Dolibarr\Core\Legacy\LegacyContext;
+use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
@@ -140,6 +141,147 @@ final class UserCardChrome
 	}
 
 	/**
+	 * card.php l.2416-2491: the groups of the user, the form adding one and the removals. The form posts
+	 * to the user_groups route; each removal, a GET link in card.php, is a small POST form here (outside
+	 * the add form, which cannot contain forms) submitted by a button styled as the link.
+	 *
+	 * @param string $action The action of card.php, passed to the formAddUserToGroup hook
+	 */
+	public function groupsBlock(\User $object, bool $canEditGroups, bool $canReadGroups, LegacyHooks $hooks, string $action = ''): string
+	{
+		if (!$canReadGroups) {
+			return '';
+		}
+		require_once DOL_DOCUMENT_ROOT.'/user/class/usergroup.class.php';
+		$langs = $this->ctx->langs;
+		$form = $this->ctx->form();
+		$url = $this->urls->generate('user_groups', ['id' => (int) $object->id]);
+
+		$out = '<!-- Group section -->'."\n";
+		$out .= load_fiche_titre($langs->trans('ListOfGroupsForUser'), '', '');
+
+		$exclude = [];
+		$usergroup = new \UserGroup($this->ctx->db);
+		$groupslist = $usergroup->listGroupsForUser($object->id, false);
+		if (!empty($groupslist)) {
+			foreach ($groupslist as $groupforuser) {
+				$exclude[] = $groupforuser->id;
+			}
+		}
+
+		$hookObject = $object;
+		$hook = $hooks->execute('formAddUserToGroup', ['caneditgroup' => $canEditGroups, 'groupslist' => $groupslist, 'exclude' => $exclude], $hookObject, $action);
+		$out .= $hook->output.$hook->print;
+		if ($hook->code !== 0) {
+			return $out;
+		}
+
+		$removeForms = '';
+		if ($canEditGroups) {
+			$out .= '<form action="'.$url.'" method="POST">'."\n";
+			$out .= '<input type="hidden" name="token" value="'.newToken().'" />';
+			$out .= '<input type="hidden" name="action" value="addgroup" />';
+			$out .= '<input type="hidden" name="page_y" value="" />';
+		}
+		$out .= '<!-- List of groups of the user -->'."\n";
+		$out .= '<table class="noborder centpercent">'."\n";
+		$out .= '<tr class="liste_titre">';
+		$out .= '<th class="liste_titre right" colspan="2">';
+		if ($canEditGroups) {
+			$out .= $form->select_dolgroups(0, 'group', 1, $exclude, 0, '', [], (string) $object->entity, false, 'maxwidth150');
+			$out .= ' &nbsp; ';
+			$out .= '<input type="hidden" name="entity" value="'.$this->ctx->conf->entity.'" />';
+			$out .= '<input type="submit" class="button buttongen button-add reposition" value="'.$langs->trans('Add').'" />';
+		}
+		$out .= '</th></tr>'."\n";
+
+		if (!empty($groupslist)) {
+			foreach ($groupslist as $group) {
+				$out .= '<tr class="oddeven">';
+				$out .= '<td class="tdoverflowmax200">';
+				$out .= $canEditGroups ? $group->getNomUrl(1) : img_object($langs->trans('ShowGroup'), 'group').' '.$group->name;
+				$out .= '</td>';
+				$out .= '<td class="right">';
+				if ($canEditGroups) {
+					$formId = 'removegroup'.((int) $group->id);
+					$out .= '<button type="submit" form="'.$formId.'" class="reposition nobordertransp nopadding cursorpointer">';
+					$out .= img_picto($langs->trans('RemoveFromGroup'), 'unlink');
+					$out .= '</button>';
+					$removeForms .= '<form id="'.$formId.'" action="'.$url.'" method="POST">';
+					$removeForms .= '<input type="hidden" name="token" value="'.newToken().'" />';
+					$removeForms .= '<input type="hidden" name="action" value="removegroup" />';
+					$removeForms .= '<input type="hidden" name="group" value="'.((int) $group->id).'" />';
+					$removeForms .= '<input type="hidden" name="page_y" value="" />';
+					$removeForms .= '</form>'."\n";
+				} else {
+					$out .= '&nbsp;';
+				}
+				$out .= "</td></tr>\n";
+			}
+		} else {
+			$out .= '<tr class="oddeven"><td colspan="2"><span class="opacitymedium">'.$langs->trans('None').'</span></td></tr>';
+		}
+
+		$out .= '</table>';
+		if ($canEditGroups) {
+			$out .= '</form>';
+		}
+		$out .= $removeForms;
+
+		return $out.'<br>';
+	}
+
+	/**
+	 * card.php l.3315-3355: generated documents (left) and latest events (right). The documents form keeps
+	 * card.php as its source page: generating and removing a document stay legacy actions (card.php l.943).
+	 *
+	 * @param bool $genAllowed card.php l.3321
+	 * @param bool $delAllowed card.php l.3322
+	 * @param int  $socid      The company of the current user (card.php l.124-127)
+	 */
+	public function bottomBlocks(\User $object, bool $genAllowed, bool $delAllowed, int $socid): string
+	{
+		require_once DOL_DOCUMENT_ROOT.'/core/class/html.formfile.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/core/class/html.formactions.class.php';
+		require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
+		$langs = $this->ctx->langs;
+		$conf = $this->ctx->conf;
+
+		ob_start();
+		try {
+			print '<div class="fichecenter"><div class="fichehalfleft">';
+
+			$filename = dol_sanitizeFileName($object->ref);
+			$filedir = $conf->user->dir_output.'/'.dol_sanitizeFileName($object->ref);
+			$urlsource = DOL_URL_ROOT.'/user/card.php?id='.$object->id;
+			$societe = null;
+			if ($object->socid) {
+				$societe = new \Societe($this->ctx->db);
+				$societe->fetch($object->socid);
+			}
+			$formfile = new \FormFile($this->ctx->db);
+			print $formfile->showdocuments('user', $filename, $filedir, $urlsource, $genAllowed ? 1 : 0, $delAllowed ? 1 : 0, $object->model_pdf, 0, 0, 0, 28, 0, '', '', '', $societe === null || empty($societe->default_lang) ? '' : $societe->default_lang);
+
+			$MAXEVENT = 10;
+			$morehtmlcenter = '<div class="nowraponall">';
+			$morehtmlcenter .= dolGetButtonTitle($langs->trans('FullConversation'), '', 'fa fa-comments imgforviewmode', DOL_URL_ROOT.'/user/messaging.php?id='.$object->id);
+			$morehtmlcenter .= dolGetButtonTitle($langs->trans('SeeAll'), '', 'fa fa-bars imgforviewmode', DOL_URL_ROOT.'/user/agenda.php?id='.$object->id);
+			$morehtmlcenter .= '</div>';
+
+			print '</div><div class="fichehalfright">';
+
+			$formactions = new \FormActions($this->ctx->db);
+			$formactions->showactions($object, 'user', $socid, 1, 'listactions', $MAXEVENT, '', $morehtmlcenter, $object->id);
+
+			print '</div></div>';
+		} finally {
+			$html = (string) ob_get_clean();
+		}
+
+		return $html;
+	}
+
+	/**
 	 * card.php l.1741, the "user" tab pointing to the new route.
 	 */
 	private function tabs(\User $object): string
@@ -261,7 +403,8 @@ final class UserCardChrome
 	}
 
 	/**
-	 * card.php l.2282-2400: action buttons (Modify points to the new edit form, the others still to card.php).
+	 * card.php l.2282-2400: action buttons. Modify, the password, status and delete buttons point to the new
+	 * routes (their dialogs on the card); SendMail and ToClone still to card.php.
 	 */
 	private function actions(\User $object, User $target, UserPermissionChecker $perms): string
 	{
@@ -308,7 +451,7 @@ final class UserCardChrome
 				$out .= dolGetButtonAction($langs->trans('ReinitPassword'), '', 'default', dolBuildUrl($card).'#', '', false, $params);
 			} elseif ($perms->canReinitPassword($target, $ldapManaged)) {
 				unset($params['attr']['title']);
-				$out .= dolGetButtonAction($langs->trans('ReinitPassword'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'password'], true), '', true, $params);
+				$out .= dolGetButtonAction($langs->trans('ReinitPassword'), '', 'default', $this->urls->generate('user_password', ['id' => (int) $object->id]), '', true, $params);
 			}
 
 			if ($object->status == \User::STATUS_DISABLED) {
@@ -317,7 +460,7 @@ final class UserCardChrome
 			} elseif ($perms->canSendNewPassword($target, $ldapManaged)) {
 				if ($object->email) {
 					unset($params['attr']['title']);
-					$out .= dolGetButtonAction($langs->trans('SendNewPassword'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'passwordsend'], true), '', true, $params);
+					$out .= dolGetButtonAction($langs->trans('SendNewPassword'), '', 'default', $this->urls->generate('user_password', ['id' => (int) $object->id, 'mode' => 'send']), '', true, $params);
 				} else {
 					$params['attr']['title'] = $langs->trans('NoEMail');
 					$out .= dolGetButtonAction($langs->trans('SendNewPassword'), '', 'default', $card.'#', '', false, $params);
@@ -327,18 +470,18 @@ final class UserCardChrome
 
 		if ($perms->canReactivate($target)) {
 			unset($params['attr']['title']);
-			$out .= dolGetButtonAction($langs->trans('Reactivate'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'enable'], true), '', true, $params);
+			$out .= dolGetButtonAction($langs->trans('Reactivate'), '', 'default', $this->urls->generate('user_show', ['id' => (int) $object->id, 'confirm' => 'enable']), '', true, $params);
 		}
 		if ($perms->canDeactivate($target)) {
 			unset($params['attr']['title']);
-			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', dolBuildUrl($card, ['id' => $object->id, 'action' => 'disable'], true), '', true, $params);
+			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', $this->urls->generate('user_show', ['id' => (int) $object->id, 'confirm' => 'disable']), '', true, $params);
 		} elseif ($perms->isSelf($target)) {
 			$params['attr']['title'] = $langs->trans('CantDisableYourself');
 			$out .= dolGetButtonAction($langs->trans('DisableUser'), '', 'default', $card.'#', '', false, $params);
 		}
 		if ($perms->canSeeDeleteButton($target)) {
 			$enabled = $perms->canDeleteAdminTarget($target);
-			$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', dolBuildUrl($card, ['action' => 'delete', 'id' => $object->id], true), '', $enabled, ['attr' => ['class' => 'reposition']]);
+			$out .= dolGetButtonAction($langs->trans('DeleteUser'), '', 'default', $this->urls->generate('user_show', ['id' => (int) $object->id, 'confirm' => 'delete']), '', $enabled, ['attr' => ['class' => 'reposition']]);
 		}
 
 		return $out;

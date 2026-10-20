@@ -19,6 +19,7 @@ use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Core\Translator;
+use Dolibarr\Core\View\Confirm;
 use Dolibarr\Core\View\ViewModel;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Entity\UserView;
@@ -37,6 +38,18 @@ final class UserController
 {
 	private const HOOK_CONTEXTS = ['usercard', 'globalcard'];
 
+	/**
+	 * The dialogs of card.php l.1697-1735 (the clone one excepted): route of the confirmed action, title,
+	 * question (with the login) and confirmed action.
+	 */
+	private const DIALOGS = [
+		'password' => ['user_password_post', 'ReinitPassword', 'ConfirmReinitPassword', 'confirm_password'],
+		'passwordsend' => ['user_password_post', 'SendNewPassword', 'ConfirmSendNewPassword', 'confirm_passwordsend'],
+		'disable' => ['user_status', 'DisableAUser', 'ConfirmDisableUser', 'confirm_disable'],
+		'enable' => ['user_status', 'EnableAUser', 'ConfirmEnableUser', 'confirm_enable'],
+		'delete' => ['user_delete', 'DeleteAUser', 'ConfirmDeleteUser', 'confirm_delete'],
+	];
+
 	/** card.php l.79 */
 	private const DOMAINS = ['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other'];
 
@@ -53,18 +66,160 @@ final class UserController
 		private readonly UserValidator $validator,
 		private readonly UserFormChrome $formChrome,
 		private readonly Config $config,
-		private readonly UrlGenerator $urls
+		private readonly UrlGenerator $urls,
+		private readonly Confirm $confirm
 	) {
 	}
 
 	/**
-	 * Read-only user card, the view mode of htdocs/user/card.php.
+	 * Read-only user card, the view mode of htdocs/user/card.php. With ?confirm=disable|enable|delete
+	 * (or password|passwordsend, card.php's action=disable...), the card shows that confirmation dialog,
+	 * posting to the action route.
 	 *
 	 * @throws NotFoundException     When the user does not exist in the entity
 	 * @throws AccessDeniedException When the current user may not read it
 	 */
 	#[Route('/user/{id}', name: 'user_show', requirements: ['id' => '\d+'])]
 	public function show(Request $r, int $id): ViewModel
+	{
+		$dialog = $this->param($r, 'confirm', 'aZ09');
+
+		return $this->card($r, $id, array_key_exists($dialog, self::DIALOGS) ? $dialog : '');
+	}
+
+	/**
+	 * The card with the dialog of card.php's action=password, or action=passwordsend with ?mode=send.
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	#[Route('/user/{id}/password', methods: ['GET'], name: 'user_password', requirements: ['id' => '\d+'])]
+	public function passwordForm(Request $r, int $id): ViewModel
+	{
+		return $this->card($r, $id, $this->param($r, 'mode', 'alpha') === 'send' ? 'passwordsend' : 'password');
+	}
+
+	/**
+	 * Actions confirm_disable (card.php l.215-228) and confirm_enable (l.230-250), then the card.
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	#[Route('/user/{id}/status', methods: ['POST'], name: 'user_status', requirements: ['id' => '\d+'])]
+	public function setStatus(Request $r, int $id): RedirectResponse
+	{
+		$user = $this->prepareAction($id);
+		$action = $this->standardAction($r, $user, true);
+
+		if ($action === 'confirm_disable') {
+			if ($this->perms->canDisable($user)) {
+				$this->writeOrFlash(fn () => $this->service->setStatus($id, false));
+			} elseif ($this->perms->canEnable($user) && !$this->perms->canDeleteAdminTarget($user)) {
+				// Allowed, not oneself, refused as an admin by a non-admin (card.php l.218-221)
+				$this->flash->error($this->t->trans('OnlyAdminUsersCanDisableAdminUsers'));
+			}
+		} elseif ($action === 'confirm_enable' && $this->perms->canEnable($user)) {
+			// card.php l.235-241
+			$limit = $this->config->limitUsers();
+			if ($limit > 0 && $this->repo->countForQuota() >= $limit) {
+				$this->flash->error($this->t->trans('YourQuotaOfUsersIsReached'));
+			} else {
+				$this->writeOrFlash(fn () => $this->service->setStatus($id, true));
+			}
+		}
+
+		// card.php l.226 and l.248: the card, without message
+		return new RedirectResponse($this->urls->generate('user_show', ['id' => $id]));
+	}
+
+	/**
+	 * Action confirm_delete (card.php l.252-285): the list on success, else the card.
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	#[Route('/user/{id}/delete', methods: ['POST'], name: 'user_delete', requirements: ['id' => '\d+'])]
+	public function delete(Request $r, int $id): RedirectResponse
+	{
+		$user = $this->prepareAction($id);
+
+		if ($this->standardAction($r, $user, true) === 'confirm_delete') {
+			if ($this->perms->canDelete($user)) {
+				if ($this->writeOrFlash(fn () => $this->service->delete($id))) {
+					$this->flash->success($this->t->trans('RecordDeleted'));
+
+					return new RedirectResponse($this->config->urlRoot().'/user/list.php?restore_lastsearch_values=1');
+				}
+			} elseif ($this->perms->canEnable($user)) {
+				// Allowed, not oneself: refused by an admin rule (card.php l.261-267)
+				$this->flash->error($this->t->trans($this->perms->canDeleteAdminTarget($user) ? 'OnlySuperAdminUsersCanDeleteSuperAdminUsers' : 'OnlyAdminUsersCanDeleteAdminUsers'));
+			}
+		}
+
+		return new RedirectResponse($this->urls->generate('user_show', ['id' => $id]));
+	}
+
+	/**
+	 * Actions confirm_password and confirm_passwordsend (card.php l.776-797): a new generated password,
+	 * shown or sent by email, then the card (card.php renders it without redirection).
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	#[Route('/user/{id}/password', methods: ['POST'], name: 'user_password_post', requirements: ['id' => '\d+'])]
+	public function setPassword(Request $r, int $id): RedirectResponse
+	{
+		$user = $this->prepareAction($id);
+		$action = $this->standardAction($r, $user, true);
+
+		if ($action === 'confirm_password' && $this->perms->canSetPassword($user)) {
+			$clear = '';
+			if ($this->writeOrFlash(function () use ($id, &$clear): void {
+				$clear = $this->service->resetPassword($id, false);
+			})) {
+				$this->flash->warning($this->htmlTrans('PasswordChangedTo', $clear));
+			}
+		} elseif ($action === 'confirm_passwordsend' && $this->perms->canSendPassword($user)) {
+			if ($this->writeOrFlash(fn () => $this->service->resetPassword($id, true))) {
+				$this->flash->success($this->htmlTrans('PasswordChangedAndSentTo', (string) $user->email));
+			}
+		}
+
+		return new RedirectResponse($this->urls->generate('user_show', ['id' => $id]));
+	}
+
+	/**
+	 * Actions addgroup and removegroup (card.php l.455-476), then the card (card.php renders it without
+	 * redirection).
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	#[Route('/user/{id}/groups', methods: ['POST'], name: 'user_groups', requirements: ['id' => '\d+'])]
+	public function groups(Request $r, int $id): RedirectResponse
+	{
+		$user = $this->prepareAction($id);
+		$action = $this->standardAction($r, $user, false);
+		$group = $r->getInt('group');
+
+		if (($action === 'addgroup' || $action === 'removegroup') && $this->perms->canEditGroups($user) && $group > 0) {
+			try {
+				$this->writeOrFlash(fn () => $action === 'addgroup' ? $this->service->addToGroup($id, $group) : $this->service->removeFromGroup($id, $group));
+			} catch (NotFoundException) {
+				$this->flash->error($this->t->trans('ErrorRecordNotFound'));
+			}
+		}
+
+		return new RedirectResponse($this->urls->generate('user_show', ['id' => $id]));
+	}
+
+	/**
+	 * The card, with the dialog $dialog (a key of DIALOGS) or none ('').
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	private function card(Request $r, int $id, string $dialog): ViewModel
 	{
 		$user = $this->repo->find($id);
 		if ($user === null) {
@@ -93,8 +248,9 @@ final class UserController
 
 		$outputBeforeHeader = $hookFormObjectOptions = $hookMoreObjectBlock = $hookMoreActionsButtons = '';
 		$showActions = true;
+		// card.php's $action: the dialog shown (action=disable...), else none
+		$action = $dialog;
 		if ($this->hooks->hasListenersFor(self::HOOK_CONTEXTS)) {
-			$action = '';
 			$object = $legacyUser;
 			// card.php l.185 ($parameters, still current when extrafields_view.tpl.php runs formObjectOptions, l.2004);
 			// $socid is the one of the current user (l.124-127), $group is GETPOSTINT('group') (l.86).
@@ -138,8 +294,15 @@ final class UserController
 
 		$personName = $user->firstname !== null && $user->firstname !== '' ? $user->lastname.', '.$user->firstname : (string) $user->lastname;
 
+		$confirmDialog = '';
+		if ($dialog !== '') {
+			[$route, $title, $question, $confirmAction] = self::DIALOGS[$dialog];
+			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->htmlTrans($question, $user->login), $confirmAction);
+		}
+
 		return (new ViewModel('user:user_show', [
 			'outputBeforeHeader' => $outputBeforeHeader,
+			'confirmDialogHtml' => $confirmDialog,
 			'title' => $personName.' - '.$this->t->trans('Card'),
 			'bodyCss' => 'mod-user page-card',
 			'canSeeSalary' => $canSeeSalary,
@@ -148,6 +311,8 @@ final class UserController
 			'hookFormObjectOptions' => $hookFormObjectOptions,
 			'hookMoreObjectBlock' => $hookMoreObjectBlock,
 			'hookMoreActionsButtons' => $hookMoreActionsButtons,
+			'groupsHtml' => $this->chrome->groupsBlock($legacyUser, $this->perms->canEditGroups($user), $this->perms->canReadGroups($user), $this->hooks, $action),
+			'bottomHtml' => $this->chrome->bottomBlocks($legacyUser, $this->perms->canGenerateDocuments(), $this->perms->canWriteUsers(), $this->me->companyId()),
 		]))->expose('user', new UserView($user, $visibility, $canSeeSalary));
 	}
 
@@ -344,6 +509,79 @@ final class UserController
 		}
 
 		return null;
+	}
+
+	/**
+	 * card.php l.79, l.119 and l.152-154 (read access): the user, the domains and the hooks of an action
+	 * of the card. The right of each action is checked by the action, as card.php does.
+	 *
+	 * @throws NotFoundException
+	 * @throws AccessDeniedException
+	 */
+	private function prepareAction(int $id): User
+	{
+		$user = $this->repo->find($id);
+		if ($user === null) {
+			throw new NotFoundException('User '.$id.' not found');
+		}
+		if (!$this->perms->canRead($user)) {
+			throw new AccessDeniedException();
+		}
+		foreach ([...self::DOMAINS, 'errors'] as $domain) {
+			$this->t->load($domain);
+		}
+		$this->hooks->init(self::HOOK_CONTEXTS);
+
+		return $user;
+	}
+
+	/**
+	 * The standard action card.php would run, '' for none. On an invalid CSRF token (main.inc.php l.456-478,
+	 * its warning already set), doActions gets an empty action and nothing runs. Otherwise doActions gets the
+	 * posted action (card.php l.185-191) and only a 0 lets the standard action run; a confirmed action also
+	 * needs confirm=yes.
+	 */
+	private function standardAction(Request $r, User $user, bool $confirmed): string
+	{
+		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+			$this->doActionsEdit($r, $user, '');
+
+			return '';
+		}
+		$action = $this->param($r, 'action', 'aZ09');
+		if ($this->doActionsEdit($r, $user, $action)->code !== 0) {
+			return '';
+		}
+
+		return !$confirmed || $this->param($r, 'confirm', 'alpha') === 'yes' ? $action : '';
+	}
+
+	/**
+	 * A translation going into HTML (a flash message, a legacy dialog) with its arguments escaped, as the
+	 * legacy \Translate::trans() of card.php escapes them; the tags of the translation itself are kept.
+	 */
+	private function htmlTrans(string $key, string ...$args): string
+	{
+		return $this->t->trans($key, ...array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args));
+	}
+
+	/**
+	 * Runs a write, its refusal flashed as errors.
+	 *
+	 * @param callable(): mixed $write
+	 * @return bool Whether the write succeeded
+	 */
+	private function writeOrFlash(callable $write): bool
+	{
+		try {
+			$write();
+		} catch (ValidationException $e) {
+			$this->flashErrors($e->messages);
+
+			return false;
+		}
+
+		return true;
 	}
 
 	/**

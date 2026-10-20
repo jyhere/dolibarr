@@ -104,6 +104,25 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertFalse($this->checker(me: 5, admin: true, companyId: 10)->canEditGroups($this->user(id: 6, companyId: 11)));
 	}
 
+	public function testGroupReadUsesAdvancedPermsWhenEnabled(): void
+	{
+		// card.php l.136-139
+		$other = $this->user(id: 6);
+		self::assertFalse($this->checker(me: 5)->canReadGroups($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.lire'])->canReadGroups($other));
+		self::assertTrue($this->checker(me: 5, admin: true)->canReadGroups($other));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.read'], advanced: true)->canReadGroups($other));
+		self::assertTrue($this->checker(me: 5, rights: ['user.group_advance.read'], advanced: true)->canReadGroups($other));
+		self::assertFalse($this->checker(me: 5, admin: true, companyId: 10)->canReadGroups($this->user(id: 6, companyId: 11)));
+	}
+
+	public function testDocumentGenerationNeedsTheReadRight(): void
+	{
+		// card.php l.3321: the right, not the admin flag
+		self::assertTrue($this->checker(me: 5, rights: ['user.user.read'])->canGenerateDocuments());
+		self::assertFalse($this->checker(me: 5, admin: true)->canGenerateDocuments());
+	}
+
 	public function testCreateListAndInternal(): void
 	{
 		self::assertTrue($this->checker(me: 5, rights: ['user.user.write'])->canCreate());

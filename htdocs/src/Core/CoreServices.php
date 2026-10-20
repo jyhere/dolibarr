@@ -24,6 +24,7 @@ use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\RouteDefinition;
 use Dolibarr\Core\Routing\UrlGenerator;
+use Dolibarr\Core\View\Confirm;
 use Dolibarr\Core\View\DolibarrExtension;
 use Dolibarr\Core\View\LatteRenderer;
 use Dolibarr\Core\View\Responder;
@@ -62,6 +63,7 @@ final class CoreServices
 		$c->set(LegacyTriggers::class, static fn (): LegacyTriggers => new LegacyTriggers($ctx));
 		$c->set(LegacyObjectLoader::class, static fn (Container $c): LegacyObjectLoader => new LegacyObjectLoader(self::get($c, Connection::class)));
 		$c->set(FlashBag::class, static fn (): FlashBag => new FlashBag());
+		$c->set(Confirm::class, static fn (): Confirm => new Confirm($ctx));
 		$c->set(Logger::class, static fn (): Logger => new Logger());
 		$c->set(LegacyLayout::class, static fn (): LegacyLayout => new LegacyLayout());
 		$c->set(EventDispatcher::class, static fn (): EventDispatcher => new EventDispatcher());

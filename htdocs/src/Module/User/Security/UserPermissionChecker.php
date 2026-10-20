@@ -135,6 +135,24 @@ final class UserPermissionChecker implements EntityPermissions
 	}
 
 	/**
+	 * card.php l.136-139 ($permissiontoreadgroup): the groups block of the card.
+	 */
+	public function canReadGroups(User $target): bool
+	{
+		$right = $this->advancedPerms ? $this->me->hasRight('user', 'group_advance', 'read') : $this->me->hasRight('user', 'user', 'read');
+
+		return ($this->me->isAdmin() || $right) && $this->sameCompany($target);
+	}
+
+	/**
+	 * card.php l.3321 ($genallowed of the documents block); the deletion is canWriteUsers() (l.3322).
+	 */
+	public function canGenerateDocuments(): bool
+	{
+		return $this->me->hasRight('user', 'user', 'read');
+	}
+
+	/**
 	 * card.php l.132 ($permissiontoadd) for a new user (no company).
 	 */
 	public function canCreate(): bool

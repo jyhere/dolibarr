@@ -79,12 +79,26 @@ smoke_sql() {
 	return 1
 }
 
-# Removes the users created by the smoke test (login smoke_*) and what their creation wrote.
-# Task 7 replaces this with the new delete route.
+# Removes the users created by the smoke test (login smoke_*): through POST /user/{id}/delete while the jar
+# $CLEANUP_JAR is logged in, then in SQL for the leftovers and what their creation wrote, and the smoke groups.
+# SMOKE_IDS: ids of the smoke users, whose agenda events (written by the legacy triggers) outlive a deletion.
+CLEANUP_JAR=""
+SMOKE_IDS=()
 cleanup_smoke_users() {
-	local ids="SELECT rowid FROM llx_user WHERE login LIKE 'smoke\\_%'"
-	smoke_sql "DELETE r FROM llx_actioncomm_resources r JOIN llx_actioncomm a ON a.id = r.fk_actioncomm WHERE a.elementtype = 'user' AND a.fk_element IN ($ids);
-		DELETE FROM llx_actioncomm WHERE elementtype = 'user' AND fk_element IN ($ids);
+	local ids="SELECT rowid FROM llx_user WHERE login LIKE 'smoke\\_%'" id tok events
+	for id in $(smoke_sql "$ids" || true); do
+		SMOKE_IDS+=("$id")
+		[ -n "$CLEANUP_JAR" ] || continue
+		tok="$(token_from "$CLEANUP_JAR" "/user/$id")"
+		[ -n "$tok" ] && curl -s -o /dev/null -b "$CLEANUP_JAR" -c "$CLEANUP_JAR" -X POST --data-urlencode "token=$tok" \
+			-d "action=confirm_delete&confirm=yes" "$BASE/user/$id/delete" || true
+	done
+	events="a.fk_element IN ($ids)"
+	[ ${#SMOKE_IDS[@]} -gt 0 ] && events="($events OR a.fk_element IN ($(IFS=,; printf '%s' "${SMOKE_IDS[*]}")))"
+	smoke_sql "DELETE FROM llx_usergroup_user WHERE fk_usergroup IN (SELECT rowid FROM llx_usergroup WHERE nom LIKE 'smoke\\_%');
+		DELETE FROM llx_usergroup WHERE nom LIKE 'smoke\\_%';
+		DELETE r FROM llx_actioncomm_resources r JOIN llx_actioncomm a ON a.id = r.fk_actioncomm WHERE a.elementtype = 'user' AND $events;
+		DELETE a FROM llx_actioncomm a WHERE a.elementtype = 'user' AND $events;
 		DELETE FROM llx_user_rights WHERE fk_user IN ($ids);
 		DELETE FROM llx_usergroup_user WHERE fk_user IN ($ids);
 		DELETE FROM llx_user_param WHERE fk_user IN ($ids);
@@ -147,7 +161,8 @@ expect_grep "legacy card has no login form" 'name="username"' 0 -b "$J1" "$BASE/
 expect_code "legacy card 200" 200 -b "$J1" "$BASE/user/card.php?id=1"
 expect_code "user/1 200" 200 -b "$J1" "$BASE/user/1"
 expect_grep "user/1 mainbody" 'id="mainbody"' 1 -b "$J1" "$BASE/user/1"
-expect_grep "user/1 fichecenter" 'fichecenter' 1 -b "$J1" "$BASE/user/1"
+# The card and the documents/events blocks below it (card.php l.1755 and l.3316)
+expect_grep "user/1 fichecenter" 'fichecenter' 2 -b "$J1" "$BASE/user/1"
 expect_code "user/1/ trailing slash" 200 -b "$J1" "$BASE/user/1/"
 expect_grep "user/1 Accept */* is HTML" '<html' 1 -H 'Accept: */*' -b "$J1" "$BASE/user/1"
 expect_code "user/1 json 200" 200 -b "$J1" "${JSON[@]}" "$BASE/user/1"
@@ -220,6 +235,66 @@ expect_grep "invalid token redisplays the edit form" 'name="updateuser"' 1 -b "$
 [ "$(smoke_sql "SELECT lastname FROM llx_user WHERE rowid = $EDITID")" = "Edited" ] && ok "invalid token writes nothing" || fail "invalid token writes nothing" "lastname changed"
 cleanup_smoke_users
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+
+echo "== User actions (status, password, groups, delete)"
+CLEANUP_JAR="$J1"
+expect_grep "user/1 groups block" '<select[^>]*name="group"' 1 -b "$J1" "$BASE/user/1"
+expect_grep "user/1 groups form posts to /user/1/groups" '<form action="[^"]*/user/1/groups" method="POST">' 1 -b "$J1" "$BASE/user/1"
+expect_grep "user/1 documents block" '<!-- Start show_document -->' 1 -b "$J1" "$BASE/user/1"
+expect_grep "user/1 latest events block" 'formactions->showactions' 1 -b "$J1" "$BASE/user/1"
+SMOKE_LOGIN="smoke_$(date +%s)$$a"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Actions" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "smoke user for the actions created";; *) fail "smoke user for the actions" "$OUT";; esac
+AID="${OUT##*/}"
+SMOKE_IDS+=("$AID")
+expect_grep "user/<id> Disable button opens the dialog" "href=\"[^\"]*/user/$AID?confirm=disable\"" 1 -b "$J1" "$BASE/user/$AID"
+expect_grep "user/<id>?confirm=disable dialog posts to the status route" "<form method=\"POST\" action=\"[^\"]*/user/$AID/status\"" 1 -b "$J1" "$BASE/user/$AID?confirm=disable"
+TA="$(token_from "$J1" "/user/$AID")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TA" -d "action=confirm_disable&confirm=yes" "$BASE/user/$AID/status")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/status disable 302 to the card" || fail "POST /user/<id>/status disable" "$OUT"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = $AID")" = "0" ] && ok "user disabled" || fail "user disabled" "still enabled"
+expect_grep "card shows the disabled user (Reactivate button)" "href=\"[^\"]*/user/$AID?confirm=enable\"" 1 -b "$J1" "$BASE/user/$AID"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=confirm_enable&confirm=yes" "$BASE/user/$AID/status")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/status with an invalid token 302" || fail "POST /user/<id>/status invalid token" "$OUT"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = $AID")" = "0" ] && ok "invalid token enables nothing" || fail "invalid token enables nothing" "enabled"
+TA="$(token_from "$J1" "/user/$AID")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TA" -d "action=confirm_enable&confirm=yes" "$BASE/user/$AID/status")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/status enable 302 to the card" || fail "POST /user/<id>/status enable" "$OUT"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = $AID")" = "1" ] && ok "user enabled" || fail "user enabled" "still disabled"
+expect_code "user/<id>/password 200" 200 -b "$J1" "$BASE/user/$AID/password"
+expect_grep "user/<id>/password shows the dialog" 'name="action" value="confirm_password"' 1 -b "$J1" "$BASE/user/$AID/password"
+expect_code "GET /user/<id>/status is not allowed" 405 -b "$J1" "$BASE/user/$AID/status"
+PASS_BEFORE="$(smoke_sql "SELECT pass_crypted FROM llx_user WHERE rowid = $AID")"
+TA="$(token_from "$J1" "/user/$AID")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TA" -d "action=confirm_password&confirm=yes" "$BASE/user/$AID/password")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/password 302 to the card" || fail "POST /user/<id>/password" "$OUT"
+[ "$(smoke_sql "SELECT pass_crypted FROM llx_user WHERE rowid = $AID")" != "$PASS_BEFORE" ] && ok "password changed" || fail "password changed" "same hash"
+GOT="$(curl -s -b "$J1" "$BASE/user/$AID")"
+# PasswordChangedTo in en_US or fr_FR, the languages of the dev instances
+printf '%s' "$GOT" | grep -qE "Password changed to: |Mot de passe modifi(é|&eacute;) en: " && ok "card shows the PasswordChangedTo warning" || fail "card shows the PasswordChangedTo warning" "no message"
+smoke_sql "INSERT INTO llx_usergroup (nom, entity, datec) VALUES ('smoke_group_$$', 1, NOW())" > /dev/null
+GID="$(smoke_sql "SELECT rowid FROM llx_usergroup WHERE nom = 'smoke_group_$$'")"
+TA="$(token_from "$J1" "/user/$AID")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TA" -d "action=addgroup&group=$GID" "$BASE/user/$AID/groups")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/groups addgroup 302" || fail "POST /user/<id>/groups addgroup" "$OUT"
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup_user WHERE fk_user = $AID AND fk_usergroup = $GID")" = "1" ] && ok "user added to the group" || fail "user added to the group" "no row"
+expect_grep "card has a POST removal form for the group" "name=\"group\" value=\"$GID\"" 1 -b "$J1" "$BASE/user/$AID"
+TA="$(token_from "$J1" "/user/$AID")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TA" -d "action=removegroup&group=$GID" "$BASE/user/$AID/groups")"
+[ "$OUT" = "302 $BASE/user/$AID" ] && ok "POST /user/<id>/groups removegroup 302" || fail "POST /user/<id>/groups removegroup" "$OUT"
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup_user WHERE fk_user = $AID AND fk_usergroup = $GID")" = "0" ] && ok "user removed from the group" || fail "user removed from the group" "row left"
+expect_grep "user/<id>?confirm=delete dialog posts to the delete route" "<form method=\"POST\" action=\"[^\"]*/user/$AID/delete\"" 1 -b "$J1" "$BASE/user/$AID?confirm=delete"
+TA="$(token_from "$J1" "/user/$AID")"
+expect_location_suffix "POST /user/<id>/delete 302 to the list" "/user/list.php?restore_lastsearch_values=1" -b "$J1" -c "$J1" -X POST \
+	--data-urlencode "token=$TA" -d "action=confirm_delete&confirm=yes" "$BASE/user/$AID/delete"
+expect_code "user/<id> deleted 404" 404 -b "$J1" "$BASE/user/$AID"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup WHERE nom LIKE 'smoke\\_%'")" = "0" ] && ok "smoke groups removed" || fail "smoke groups removed" "some left"
+CLEANUP_JAR=""
 
 echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
 expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
