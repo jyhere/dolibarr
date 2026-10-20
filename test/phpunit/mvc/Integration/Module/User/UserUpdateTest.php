@@ -203,6 +203,75 @@ final class UserUpdateTest extends TestCase
 		self::assertSame('MVC contact', $contact?->lastname, 'The newly linked contact is not overwritten by the user');
 	}
 
+	public function testUpdateWithoutTheContactFieldLeavesTheLinkUntouched(): void
+	{
+		$actor = $this->disposable('Actor');
+		$target = $this->disposable('Linked');
+		$contactCompany = $this->company('MVC contact company');
+		$userCompany = $this->company('MVC user company');
+		$contactId = $this->contact('MVC contact', $contactCompany);
+		// The user's company differs from the contact's: the raw UPDATE of card.php l.653-685 would resync it
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_socpeople = '.$contactId.', fk_soc = '.$userCompany.' WHERE rowid = '.$target->id);
+		$target = $this->repo()->find($target->id);
+		self::assertNotNull($target);
+
+		// A non-admin is not shown the selectors (card.php l.2557): the POST has no contactid
+		$response = $this->withoutLegacyContactDeprecations(fn () => $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.write']))->update(
+			$this->request('POST', [], $this->posted($target, ['lastname' => 'Renamed']), $target->id),
+			$target->id
+		));
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		$after = $this->repo()->find($target->id);
+		self::assertSame('Renamed', $after?->lastname);
+		self::assertSame($contactId, $after?->contactId);
+		self::assertSame($userCompany, $after?->companyId, 'card.php runs the link UPDATE only when contactid is posted (l.653)');
+	}
+
+	public function testContactWithoutCompanyAndPostedCompanyWarns(): void
+	{
+		$target = $this->disposable('Linked');
+		$companyId = $this->company('MVC test company');
+		$contactId = $this->contact('MVC lonely contact', null);
+
+		$response = $this->controller()->update(
+			$this->request('POST', [], $this->posted($target, ['contactid' => (string) $contactId, 'socid' => (string) $companyId]), $target->id),
+			$target->id
+		);
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		$after = $this->repo()->find($target->id);
+		self::assertSame($contactId, $after?->contactId);
+		self::assertNull($after?->companyId);
+		self::assertSame([$this->ctx->langs->transnoentities('WarningUserDifferentContactSocid')], $_SESSION['dol_events']['warnings'] ?? []);
+	}
+
+	public function testFullFormUpdateKeepsWhatTheFormDoesNotCarry(): void
+	{
+		$target = $this->disposable('Kept');
+		$apiKey = 'mvcapikey'.uniqid();
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET note_public = 'public note', note_private = 'private note', personal_email = 'me@home.test', api_key = '".$apiKey."' WHERE rowid = ".$target->id);
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
+		$tagId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'categorie');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
+
+		$response = $this->controller()->update(
+			$this->request('POST', [], $this->posted($target, ['job' => 'Pilot', 'usercats' => [(string) $tagId]]), $target->id),
+			$target->id
+		);
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		$after = $this->repo()->find($target->id);
+		self::assertSame('Pilot', $after?->job);
+		self::assertSame('public note', $after?->notePublic);
+		self::assertSame('private note', $after?->notePrivate);
+		self::assertSame('me@home.test', $after?->personalEmail);
+		$row = $this->connection->fetchOne('SELECT api_key FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$target->id);
+		self::assertSame($apiKey, dolDecrypt((string) ($row?->api_key ?? '')), 'update() rewrites the api_key it fetched (encrypted)');
+		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
+		self::assertSame([$tagId], array_map(static fn (object $r): int => (int) $r->fk_categorie, $tags));
+	}
+
 	public function testUpdateByNonAdminOnAdminIsForbidden(): void
 	{
 		$actor = $this->disposable('Actor');
@@ -395,8 +464,8 @@ final class UserUpdateTest extends TestCase
 	/**
 	 * What the edit form posts for $u (the fields of card.php l.2498-3309), with $changes on top.
 	 *
-	 * @param array<string, string> $changes
-	 * @return array<string, string>
+	 * @param array<string, string|list<string>> $changes
+	 * @return array<string, string|list<string>>
 	 */
 	private function posted(User $u, array $changes): array
 	{
@@ -411,6 +480,39 @@ final class UserUpdateTest extends TestCase
 			'email' => (string) $u->email,
 			'job' => (string) $u->job,
 		];
+	}
+
+	private function company(string $name): int
+	{
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."societe (nom, entity, datec) VALUES ('".$this->connection->escape($name)."', 1, NOW())");
+
+		return $this->connection->lastInsertId(MAIN_DB_PREFIX.'societe');
+	}
+
+	private function contact(string $lastname, ?int $companyId): int
+	{
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES ('".$this->connection->escape($lastname)."', ".($companyId ?? 'NULL').', 1, NOW(), 1)');
+
+		return $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+	}
+
+	/**
+	 * \User::update() syncs a linked contact, and the legacy Contact sets undeclared properties (login, birth,
+	 * trackid: PHP 8.2+ deprecations raised from DolDeprecationHandler, the same on user/card.php): only those
+	 * are silenced while $fn runs.
+	 *
+	 * @template T
+	 * @param callable(): T $fn
+	 * @return T
+	 */
+	private function withoutLegacyContactDeprecations(callable $fn): mixed
+	{
+		set_error_handler(static fn (int $no, string $msg, string $file): bool => str_ends_with($file, 'doldeprecationhandler.class.php') && str_contains($msg, 'Contact::'), E_DEPRECATED);
+		try {
+			return $fn();
+		} finally {
+			restore_error_handler();
+		}
 	}
 
 	private function disposable(string $lastname, bool $admin = false): User

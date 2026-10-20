@@ -77,7 +77,9 @@ final class UserInput
 		public readonly array $extraFields = [],
 		public readonly ?string $password = null,
 		public readonly array $categoryIds = [],
+		/** Update only: the posted contact (0 for none), null when the form does not carry contactid */
 		public readonly ?int $contactId = null,
+		/** Update only: the posted third party (0 for none), null when the form does not carry contactid */
 		public readonly ?int $companyId = null,
 		public readonly bool $forcePasswordChange = false,
 		public readonly bool $superadmin = false,
@@ -113,12 +115,12 @@ final class UserInput
 			? $existing->warehouseId
 			: self::id($r, 'fk_warehouse');
 
-		// l.531 (update): the contact and the company are only changed when the form carries them.
-		$contactId = $update ? $existing->contactId : null;
-		$companyId = $update ? $existing->companyId : null;
+		// l.653 (update): the contact link (raw UPDATE of fk_socpeople/fk_soc) only runs when the form carries
+		// contactid. Null tells the caller not to touch the link; toEntity() then keeps the stored ones.
+		$contactId = $companyId = null;
 		if ($update && $r->isSet('contactid')) {
-			$contactId = self::id($r, 'contactid');
-			$companyId = self::id($r, 'socid');
+			$contactId = self::id($r, 'contactid') ?? 0;
+			$companyId = self::id($r, 'socid') ?? 0;
 		}
 
 		$salaryAllowed = $perms->canSeeSalary($target);
@@ -231,8 +233,9 @@ final class UserInput
 			datePreviousLogin: $base?->datePreviousLogin,
 			notePublic: $base === null ? $this->notePublic : $base->notePublic,
 			notePrivate: $base === null ? $this->notePrivate : $base->notePrivate,
-			companyId: $this->companyId,
-			contactId: $this->contactId,
+			// The link posted on an update, else the stored one (the writer never writes these two: linkToContact() does)
+			companyId: $this->contactId === null ? $base?->companyId : ($this->companyId > 0 ? $this->companyId : null),
+			contactId: $this->contactId === null ? $base?->contactId : ($this->contactId > 0 ? $this->contactId : null),
 			memberId: $base?->memberId,
 			supervisorId: $this->supervisorId,
 			expenseValidatorId: $this->expenseValidatorId,

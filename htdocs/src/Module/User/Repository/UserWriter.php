@@ -93,9 +93,11 @@ interface UserWriter
 	 * Links the user to a contact (and its company), or to a company only ($contactId 0),
 	 * or to nothing (both 0): the user becomes external or internal.
 	 *
+	 * @return bool The contact has no third party while $companyId was given: the company is cleared
+	 *              (card.php l.665-668, WarningUserDifferentContactSocid)
 	 * @throws ValidationException
 	 */
-	public function linkToContact(int $id, int $contactId, int $companyId): void;
+	public function linkToContact(int $id, int $contactId, int $companyId): bool;
 
 	/**
 	 * Reloads the permissions (and the menu) of the logged user, after a change on his own rights.

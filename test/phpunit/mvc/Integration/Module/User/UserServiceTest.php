@@ -124,7 +124,7 @@ final class UserServiceTest extends TestCase
 		$created = $service->create($this->newUser('mvc_test_'.uniqid()), null, []);
 		$this->spied = [];
 
-		$updated = $service->update(new User(id: $created->id, entity: $created->entity, login: $created->login, lastname: 'Updated'), [], 0, 0);
+		$updated = $service->update(new User(id: $created->id, entity: $created->entity, login: $created->login, lastname: 'Updated'), [], 0, 0)->user;
 		self::assertSame('Updated', $updated->lastname);
 		self::assertInstanceOf(UserUpdated::class, $this->spied[0]);
 		self::assertSame('Tester', $this->spied[0]->before->lastname);

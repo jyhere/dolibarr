@@ -37,6 +37,9 @@ final class UserController
 {
 	private const HOOK_CONTEXTS = ['usercard', 'globalcard'];
 
+	/** card.php l.79 */
+	private const DOMAINS = ['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other'];
+
 	public function __construct(
 		private readonly UserRepository $repo,
 		private readonly UserPermissionChecker $perms,
@@ -72,7 +75,7 @@ final class UserController
 		}
 
 		// card.php l.79
-		foreach (['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other'] as $domain) {
+		foreach (self::DOMAINS as $domain) {
 			$this->t->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
@@ -106,12 +109,12 @@ final class UserController
 			// a GET show runs none, so the card is rendered in both cases. What it echoes, card.php prints
 			// before llxHeader().
 			$doActions = $this->hooks->execute('doActions', $parameters, $object, $action);
-			$this->flashErrors($doActions);
+			$this->flashHookErrors($doActions);
 			$outputBeforeHeader = $doActions->output;
 
 			// extrafields_view.tpl.php l.72-76: echoed output, then resPrint, always
 			$options = $this->hooks->execute('formObjectOptions', $parameters, $object, $action);
-			$this->flashErrors($options);
+			$this->flashHookErrors($options);
 			$hookFormObjectOptions = $options->output.$options->print;
 
 			// card.php l.2263-2268: resPrint printed only when the hook replaces
@@ -209,12 +212,8 @@ final class UserController
 
 		$errors = $this->validator->validate($in, true, $this->repo->countForQuota());
 		if ($errors !== []) {
-			foreach ($errors as $error) {
-				// setOptionalsFromPost() has already queued its own message: not flashed twice
-				if ($error !== $in->extraFieldsError) {
-					$this->flash->error($error);
-				}
-			}
+			// setOptionalsFromPost() has already queued its own message: not flashed twice
+			$this->flashErrors($errors, $in->extraFieldsError);
 
 			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
 		}
@@ -223,9 +222,7 @@ final class UserController
 			// card.php l.424-428: the tags only with the category module
 			$created = $this->service->create($values, $in->password, $this->config->isModuleEnabled('category') ? $in->categoryIds : []);
 		} catch (ValidationException $e) {
-			foreach ($e->messages as $message) {
-				$this->flash->error($message);
-			}
+			$this->flashErrors($e->messages);
 
 			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
 		}
@@ -295,35 +292,32 @@ final class UserController
 
 		$errors = $this->validator->validate($in, false, 0);
 		if ($errors !== []) {
-			foreach ($errors as $error) {
-				// setOptionalsFromPost() has already queued its own message: not flashed twice
-				if ($error !== $in->extraFieldsError) {
-					$this->flash->error($error);
-				}
-			}
+			// setOptionalsFromPost() has already queued its own message: not flashed twice
+			$this->flashErrors($errors, $in->extraFieldsError);
 
 			return $this->editView($existing, $values, $in->forcePasswordChange, true, $doActions);
 		}
 
-		// card.php l.666-671 ($passwordismodified); fromRequest() reads the password only with canSetPassword()
-		$password = $in->password ?? '';
-		$passwordModified = $password !== '' && !$this->service->isCurrentPassword($id, $password);
+		// fromRequest() reads the password only with canSetPassword(); the service sets it when it changed
 		try {
-			$after = $this->service->update($values, $in->categoryIds, $in->contactId, $in->companyId, $passwordModified ? $password : null);
+			$result = $this->service->update($values, $in->categoryIds, $in->contactId, $in->companyId, $in->password);
 		} catch (ValidationException $e) {
-			foreach ($e->messages as $message) {
-				$this->flash->error($message);
-			}
+			$this->flashErrors($e->messages);
 
 			return $this->editView($existing, $values, $in->forcePasswordChange, true, $doActions);
 		}
 
+		$after = $result->user;
+		// card.php l.665-668: the chosen contact has no third party, the posted one is dropped
+		if ($result->contactCompanyMismatch) {
+			$this->flash->warning($this->t->trans('WarningUserDifferentContactSocid'));
+		}
 		// card.php l.736-750
 		$this->flash->success($this->t->trans('UserModified'));
 		if ($this->me->login() === $existing->login && $existing->login !== $after->login) {
 			$this->flash->warning($this->t->transnoentities('WarningYourLoginWasModifiedPleaseLogin'));
 		}
-		if ($passwordModified && $after->login === $this->me->login()) {
+		if ($result->passwordChanged && $after->login === $this->me->login()) {
 			$this->flash->warning($this->t->transnoentities('WarningYourPasswordWasModifiedPleaseLogin'));
 		}
 
@@ -344,9 +338,7 @@ final class UserController
 		try {
 			$this->service->setPasswordFromForm($existing->id, $clear);
 		} catch (ValidationException $e) {
-			foreach ($e->messages as $message) {
-				$this->flash->error($message);
-			}
+			$this->flashErrors($e->messages);
 
 			return $this->editView($existing, $existing, $existing->forcePasswordChange, true, $doActions);
 		}
@@ -370,7 +362,7 @@ final class UserController
 		if (!$this->perms->canRead($user) || (!$this->perms->canEdit($user) && !$this->perms->canSetPassword($user))) {
 			throw new AccessDeniedException();
 		}
-		foreach (['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other', 'errors'] as $domain) {
+		foreach ([...self::DOMAINS, 'errors'] as $domain) {
 			$this->t->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
@@ -390,7 +382,7 @@ final class UserController
 			'group' => $r->getInt('group'),
 			'caneditgroup' => $this->perms->canEditGroups($existing),
 		], $object, $action);
-		$this->flashErrors($result);
+		$this->flashHookErrors($result);
 
 		return $result;
 	}
@@ -468,7 +460,7 @@ final class UserController
 			throw new AccessDeniedException();
 		}
 		// card.php l.79, plus errors (validation messages)
-		foreach (['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other', 'errors'] as $domain) {
+		foreach ([...self::DOMAINS, 'errors'] as $domain) {
 			$this->t->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
@@ -497,7 +489,7 @@ final class UserController
 			'group' => 0,
 			'caneditgroup' => $this->perms->canEditGroups($values),
 		], $object, $action);
-		$this->flashErrors($result);
+		$this->flashHookErrors($result);
 
 		return $result;
 	}
@@ -556,9 +548,23 @@ final class UserController
 	}
 
 	/**
+	 * Each message as an error, except $skip (a message already queued elsewhere).
+	 *
+	 * @param list<string> $messages
+	 */
+	private function flashErrors(array $messages, ?string $skip = null): void
+	{
+		foreach ($messages as $message) {
+			if ($message !== $skip) {
+				$this->flash->error($message);
+			}
+		}
+	}
+
+	/**
 	 * setEventMessages($hookmanager->error, $hookmanager->errors, 'errors') of a failed hook.
 	 */
-	private function flashErrors(HookResult $result): void
+	private function flashHookErrors(HookResult $result): void
 	{
 		if (!$result->failed()) {
 			return;

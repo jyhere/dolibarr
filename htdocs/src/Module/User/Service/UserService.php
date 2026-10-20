@@ -72,23 +72,23 @@ final class UserService
 	 * @throws ValidationException
 	 * @throws NotFoundException
 	 */
-	public function update(User $u, array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): User
+	public function update(User $u, array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
 	{
-		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId, $password): User {
+		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
 			$before = $this->load($u->id);
+			// card.php l.666-671 ($passwordismodified), tested before update() as there
+			$passwordChanged = $password !== null && $password !== '' && !$this->writer->isCurrentPassword($u->id, $password);
 			$this->writer->update($u, $this->me->id());
-			if ($password !== null && $password !== '' && !$this->writer->isCurrentPassword($u->id, $password)) {
-				$this->writer->setPassword($u->id, $password, false, $this->me->id());
+			if ($passwordChanged) {
+				$this->writer->setPassword($u->id, (string) $password, false, $this->me->id());
 				$this->events->dispatch(new UserPasswordChanged($u->id, false));
 			}
-			if ($contactId !== null) {
-				$this->writer->linkToContact($u->id, $contactId, $companyId ?? 0);
-			}
+			$mismatch = $contactId !== null && $this->writer->linkToContact($u->id, $contactId, $companyId ?? 0);
 			$this->writer->setCategories($u->id, $categoryIds);
 			$after = $this->load($u->id);
 			$this->events->dispatch(new UserUpdated($before, $after));
 
-			return $after;
+			return new UserUpdateResult($after, $passwordChanged, $mismatch);
 		});
 	}
 
@@ -144,16 +144,6 @@ final class UserService
 		}
 
 		return $clear;
-	}
-
-	/**
-	 * Whether $clear is the stored password of the user ($passwordismodified of card.php l.666-671, inverted).
-	 *
-	 * @throws ValidationException When the user does not exist
-	 */
-	public function isCurrentPassword(int $id, string $clear): bool
-	{
-		return $this->writer->isCurrentPassword($id, $clear);
 	}
 
 	/**

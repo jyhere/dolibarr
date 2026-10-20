@@ -271,20 +271,25 @@ final class LegacyUserWriterTest extends TestCase
 		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
 		self::assertGreaterThan(0, $contactId);
 
-		$this->writer()->linkToContact($id, $contactId, 0);
+		self::assertFalse($this->writer()->linkToContact($id, $contactId, 0));
 		$linked = $this->repo()->find($id);
 		self::assertSame($contactId, $linked?->contactId);
 		self::assertSame($companyId, $linked?->companyId);
 
-		$this->writer()->linkToContact($id, 0, $companyId);
+		self::assertFalse($this->writer()->linkToContact($id, 0, $companyId));
 		$linked = $this->repo()->find($id);
 		self::assertNull($linked?->contactId);
 		self::assertSame($companyId, $linked?->companyId);
 
-		$this->writer()->linkToContact($id, 0, 0);
+		self::assertFalse($this->writer()->linkToContact($id, 0, 0));
 		$linked = $this->repo()->find($id);
 		self::assertNull($linked?->contactId);
 		self::assertNull($linked?->companyId);
+		// A contact without company and a posted company: the company is cleared, the caller warns (card.php l.665-668)
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC lonely', 1, NOW(), 1)");
+		$lonely = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		self::assertTrue($this->writer()->linkToContact($id, $lonely, $companyId));
+		self::assertNull($this->repo()->find($id)?->companyId);
 	}
 
 	private function newUser(string $login): User
