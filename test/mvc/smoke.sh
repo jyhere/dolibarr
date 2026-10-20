@@ -335,6 +335,48 @@ restore_note
 trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 [ "$(smoke_sql "SELECT IFNULL(note_public, '<NULL>'), IFNULL(fk_user_modif, '<NULL>') FROM llx_user WHERE rowid = 1")" = "$NOTE_ORIG" ] && ok "note of user 1 restored" || fail "note of user 1 restored" "differs"
 
+echo "== Rights tab (/user/{id}/rights)"
+CLEANUP_JAR="$J1"
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+expect_code "GET /user/1/rights 200" 200 -b "$J1" "$BASE/user/1/rights"
+GOT="$(curl -s -b "$J1" "$BASE/user/1/rights")"
+# img_picto('switch_on') prints the font awesome toggle-on
+case "$GOT" in *"fa-toggle-on"*) ok "rights page has switch_on pictos";; *) fail "rights page has switch_on pictos" "none";; esac
+case "$GOT" in *'name="forbreakperms_'*) ok "rights page has the module break lines";; *) fail "rights page has the module break lines" "none";; esac
+case "$GOT" in *'DOLUSER_PERMS_HIDE_GRP'*) ok "rights page has the collapse script";; *) fail "rights page has the collapse script" "none";; esac
+case "$GOT" in *'href="/user/perms.php?id=1&action='*) fail "rights page has no GET toggle" "a link to perms.php";; *) ok "rights page has no GET toggle";; esac
+expect_grep "rights tab of the card points to the route" 'id="rights" class="tab inline-block valignmiddle" href="/user/1/rights"' 1 -b "$J1" "$BASE/user/1"
+expect_grep "rights json is a non empty list" '"rights":\[{"module":"' 1 "${JSON[@]}" -b "$J1" "$BASE/user/1/rights"
+SMOKE_LOGIN="smoke_$(date +%s)$$r"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Rights" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "smoke user for the rights created";; *) fail "smoke user for the rights" "$OUT";; esac
+RID="${OUT##*/}"
+SMOKE_IDS+=("$RID")
+USER_RIGHTS="SELECT COUNT(*) FROM llx_user_rights ur JOIN llx_rights_def r ON r.id = ur.fk_id AND r.entity = ur.entity WHERE r.module = 'user' AND ur.fk_user = $RID"
+READ_ID="$(smoke_sql "SELECT id FROM llx_rights_def WHERE module = 'user' AND perms = 'user' AND subperms = 'lire' AND entity = 1")"
+TR="$(token_from "$J1" "/user/$RID/rights")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TR" -d "action=addrights&confirm=yes&module=user&updatedmodulename=user" "$BASE/user/$RID/rights")"
+[ "$OUT" = "302 $BASE/user/$RID/rights?updatedmodulename=user" ] && ok "POST /user/<id>/rights addrights module=user 302" || fail "POST /user/<id>/rights addrights" "$OUT"
+[ "$(smoke_sql "$USER_RIGHTS")" -gt 0 ] && ok "rights of the user module granted" || fail "rights of the user module granted" "none"
+expect_grep "the page shows the user read right switched on (a delrights form)" "value=\"delrights\"><input type=\"hidden\" name=\"rights\" value=\"$READ_ID\">" 1 -b "$J1" "$BASE/user/$RID/rights"
+BEFORE="$(smoke_sql "$USER_RIGHTS")"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=delrights&confirm=yes&module=user" "$BASE/user/$RID/rights")"
+[ "$OUT" = "302" ] && [ "$(smoke_sql "$USER_RIGHTS")" = "$BEFORE" ] && ok "invalid token removes no right" || fail "invalid token removes no right" "$OUT"
+TR="$(token_from "$J1" "/user/$RID/rights")"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TR" -d "action=delrights&confirm=yes&module=user&updatedmodulename=user" "$BASE/user/$RID/rights")"
+[ "$OUT" = "302 $BASE/user/$RID/rights?updatedmodulename=user" ] && ok "POST /user/<id>/rights delrights module=user 302" || fail "POST /user/<id>/rights delrights" "$OUT"
+[ "$(smoke_sql "$USER_RIGHTS")" = "0" ] && ok "rights of the user module removed" || fail "rights of the user module removed" "some left"
+TR="$(token_from "$J1" "/user/$RID/rights")"
+expect_code "GET with the legacy action parameters 200" 200 -b "$J1" "$BASE/user/$RID/rights?action=addrights&confirm=yes&module=user&token=$TR"
+[ "$(smoke_sql "$USER_RIGHTS")" = "0" ] && ok "a GET writes no right" || fail "a GET writes no right" "rights added"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+CLEANUP_JAR=""
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+
 echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
 expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
 expect_code "still logged in after the invalid token" 200 -b "$J1" "$BASE/user/1"

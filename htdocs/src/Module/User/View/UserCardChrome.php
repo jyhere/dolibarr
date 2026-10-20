@@ -285,8 +285,8 @@ final class UserCardChrome implements EntityTabs
 	}
 
 	/**
-	 * The chrome of a tab page of the user as htdocs/user/<tab>.php prints it; only the note tab
-	 * (user/note.php l.103-155) today.
+	 * The chrome of a tab page of the user as htdocs/user/<tab>.php prints it: the note tab
+	 * (user/note.php l.103-155) and the rights tab (user/perms.php l.344-472).
 	 *
 	 * @return array{tabsHtml: string, bannerHtml: string, tabsEndHtml: string, headerRowsHtml: string}
 	 *
@@ -297,40 +297,41 @@ final class UserCardChrome implements EntityTabs
 		if (!$legacyObject instanceof \User) {
 			throw new \InvalidArgumentException('UserCardChrome only handles \\User, got '.$legacyObject::class);
 		}
-		if ($activeTab !== 'note') {
+		if ($activeTab !== 'note' && $activeTab !== 'rights') {
 			throw new \InvalidArgumentException('No chrome for the user tab '.$activeTab);
 		}
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/usergroups.lib.php';
 		$langs = $this->ctx->langs;
 		$this->ctx->setPageObject($legacyObject);
-		// note.php l.58
+		// note.php l.58, perms.php l.98
 		$legacyObject->loadRights();
 
-		// note.php l.112-120: the back link and the navigation, from the legacy user's rights
+		// note.php l.112-120 and perms.php l.414-427: the back link and the navigation, from the legacy user's rights
 		$me = $this->ctx->user;
 		$canList = $me !== null && ($me->hasRight('user', 'user', 'read') || $me->admin);
 		$morehtmlref = '<a href="'.DOL_URL_ROOT.'/user/vcard.php?id='.$legacyObject->id.'&output=file&file='.urlencode(dol_sanitizeFileName($legacyObject->getFullName($langs).'.vcf')).'" class="refid valignmiddle" tabindex="-1" rel="noopener">';
 		$morehtmlref .= img_picto($langs->trans('Download').' '.$langs->trans('VCard'), 'vcard', 'class="valignmiddle marginleftonly paddingrightonly"');
 		$morehtmlref .= '</a>';
-		$morehtmlref .= $this->virtualCardButton($legacyObject);
+		// perms.php l.425 gives the virtual card picto the class refid
+		$morehtmlref .= $this->virtualCardButton($legacyObject, $activeTab === 'rights' ? 'refid valignmiddle marginleftonly paddingrightonly' : 'valignmiddle marginleftonly paddingrightonly');
 
 		return [
-			'tabsHtml' => $this->tabs($legacyObject, 'note'),
+			'tabsHtml' => $this->tabs($legacyObject, $activeTab),
 			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref),
 			'tabsEndHtml' => dol_get_fiche_end(),
-			'headerRowsHtml' => $this->noteLoginRow($legacyObject),
+			'headerRowsHtml' => $activeTab === 'rights' ? $this->rightsHeaderRows($legacyObject) : $this->noteLoginRow($legacyObject),
 		];
 	}
 
 	/**
 	 * htdocs/user/note.php: $langs->loadLangs() l.52, initHooks() l.77, the doActions parameters l.83 with
-	 * $socid the company of the current user (l.71-74).
+	 * $socid the company of the current user (l.71-74). htdocs/user/perms.php: l.52, l.89 and l.107 (socid l.78-81).
 	 *
 	 * @throws \InvalidArgumentException When the page is not supported
 	 */
 	public function legacyPageSettings(string $page): LegacyPageSettings
 	{
-		if ($page !== 'note') {
+		if ($page !== 'note' && $page !== 'rights') {
 			throw new \InvalidArgumentException('No legacy page settings for the user page '.$page);
 		}
 		$socid = 0;
@@ -339,12 +340,14 @@ final class UserCardChrome implements EntityTabs
 			$socid = (int) $me->socid;
 		}
 
-		return new LegacyPageSettings(['companies', 'members', 'bills', 'users'], ['usercard', 'usernote', 'globalcard'], ['id' => $socid]);
+		return $page === 'rights'
+			? new LegacyPageSettings(['users', 'admin'], ['usercard', 'userperms', 'globalcard'], ['socid' => $socid])
+			: new LegacyPageSettings(['companies', 'members', 'bills', 'users'], ['usercard', 'usernote', 'globalcard'], ['id' => $socid]);
 	}
 
 	/**
-	 * The tabs of user_prepare_head() with $active selected; the "user" tab (card.php l.1741) and the "note"
-	 * tab (when the notes component is registered) point to the new routes. The note badge is computed by user_prepare_head() from the legacy object.
+	 * The tabs of user_prepare_head() with $active selected; the "user" tab (card.php l.1741), the "note"
+	 * tab (when the notes component is registered) and the "rights" tab point to the new routes. The note badge is computed by user_prepare_head() from the legacy object.
 	 */
 	private function tabs(\User $object, string $active): string
 	{
@@ -354,10 +357,12 @@ final class UserCardChrome implements EntityTabs
 				$head[$i][0] = $this->urls->generate('user_show', ['id' => (int) $object->id]);
 			} elseif (($tab[2] ?? '') === 'note' && $this->urls->has('entity_note')) {
 				$head[$i][0] = $this->urls->generate('entity_note', ['entity' => 'user', 'id' => (int) $object->id]);
+			} elseif (($tab[2] ?? '') === 'rights' && $this->urls->has('user_rights')) {
+				$head[$i][0] = $this->urls->generate('user_rights', ['id' => (int) $object->id]);
 			}
 		}
 
-		// note.php l.106 passes the defaults after the picto; card.php l.1741 enables the drag and drop of files
+		// note.php l.106 and perms.php l.347 pass the defaults after the picto; card.php l.1741 enables the drag and drop of files
 		return $active === 'user'
 			? dol_get_fiche_head($head, 'user', $this->ctx->langs->trans('User'), -1, 'user', 0, '', '', 0, '', 1)
 			: dol_get_fiche_head($head, $active, $this->ctx->langs->trans('User'), -1, 'user');
@@ -376,12 +381,12 @@ final class UserCardChrome implements EntityTabs
 		return $morehtmlref.$this->virtualCardButton($object);
 	}
 
-	private function virtualCardButton(\User $object): string
+	private function virtualCardButton(\User $object, string $pictoClass = 'valignmiddle marginleftonly paddingrightonly'): string
 	{
 		$langs = $this->ctx->langs;
 		$urltovirtualcard = '/user/virtualcard.php?id='.((int) $object->id);
 
-		return dolButtonToOpenUrlInDialogPopup('publicvirtualcard', $langs->transnoentitiesnoconv('PublicVirtualCardUrl').' - '.$object->getFullName($langs), img_picto($langs->trans('PublicVirtualCardUrl'), 'card', 'class="valignmiddle marginleftonly paddingrightonly"'), $urltovirtualcard, '', 'refid valignmiddle nohover');
+		return dolButtonToOpenUrlInDialogPopup('publicvirtualcard', $langs->transnoentitiesnoconv('PublicVirtualCardUrl').' - '.$object->getFullName($langs), img_picto($langs->trans('PublicVirtualCardUrl'), 'card', 'class="'.$pictoClass.'"'), $urltovirtualcard, '', 'refid valignmiddle nohover');
 	}
 
 	/**
@@ -403,12 +408,28 @@ final class UserCardChrome implements EntityTabs
 	}
 
 	/**
-	 * note.php l.141-158: the Login row above the notes.
+	 * perms.php l.435-469: the Login row (anchored) and the Type row above the rights.
 	 */
-	private function noteLoginRow(\User $object): string
+	private function rightsHeaderRows(\User $object): string
 	{
 		$langs = $this->ctx->langs;
-		$out = '<tr><td class="titlefield">'.$langs->trans('Login').'</td>';
+		$out = $this->noteLoginRow($object, ' id="anchorforperms"')."\n";
+		$out .= '<tr><td>'.$this->ctx->form()->textwithpicto($langs->trans('Type'), $langs->trans('InternalExternalDesc')).'</td><td>';
+		$out .= '<span class="badgeneutral">'.$langs->trans($object->socid > 0 ? 'External' : 'Internal');
+		if ($object->ldap_sid) {
+			$out .= ' ('.$langs->trans('DomainUser').')';
+		}
+
+		return $out.'</span></td></tr>'."\n";
+	}
+
+	/**
+	 * note.php l.141-158: the Login row above the notes (perms.php l.436-452 with the anchor attribute).
+	 */
+	private function noteLoginRow(\User $object, string $anchor = ''): string
+	{
+		$langs = $this->ctx->langs;
+		$out = '<tr><td'.$anchor.' class="titlefield">'.$langs->trans('Login').'</td>';
 		if (!empty($object->ldap_sid) && $object->status == 0) {
 			$out .= '<td class="error">'.$langs->trans('LoginAccountDisableInDolibarr').'</td>';
 		} else {

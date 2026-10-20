@@ -1,0 +1,140 @@
+{* The rights tab of a user: htdocs/user/perms.php l.344-965. The All/None links and the toggles of perms.php
+	(GET links with a token) are small POST forms here, their submit styled as the link. *}
+{layout 'core:@layout'}
+
+{* One toggle of perms.php as a POST form: a text submit styled as the link ($text), else a button with the picto *}
+{define toggle, string $formAction, string $action, string $field, string $value, string $module, string $class, string $text, string $pictoHtml = '', string $buttonId = ''}<form method="POST" action="{$formAction}" class="inline-block"><input type="hidden" name="token" value="{token()}"><input type="hidden" name="action" value="{$action}"><input type="hidden" name="{$field}" value="{$value}"><input type="hidden" name="confirm" value="yes">{if $module !== ''}<input type="hidden" name="updatedmodulename" value="{$module}">{/if}{if $text !== ''}<input type="submit" class="{$class}" title="{$text}" value="{$text}">{else}<button type="submit"{if $buttonId !== ''} id="{$buttonId}"{/if} class="{$class}">{$pictoHtml|noescape}</button>{/if}</form>{/define}
+
+{block content}
+{$chrome['tabsHtml']|noescape}
+{$chrome['bannerHtml']|noescape}
+<div class="fichecenter">
+<div class="underbanner clearboth"></div>
+<table class="border centpercent tableforfield">
+{$chrome['headerRowsHtml']|noescape}
+</table>
+</div>
+<br>
+{$f['infoAdminHtml']|noescape}
+{$f['externalWarningHtml']|noescape}
+<br>
+{$headerHookHtml|noescape}
+
+<div class="div-table-responsive-no-min">
+<table class="noborder centpercent">
+<tr class="liste_titre">
+<td>{='Module'|trans}</td>
+{if $canEdit}
+<td class="center nowrap">{include toggle, $formAction, 'addrights', 'module', 'allmodules', '', 'buttonlink nopadding reposition commonlink addexpandedmodulesinparamlist', ('All'|trans)} / {include toggle, $formAction, 'delrights', 'module', 'allmodules', '', 'buttonlink nopadding reposition commonlink addexpandedmodulesinparamlist', ('None'|trans)}</td>
+{else}
+<td></td>
+{/if}
+<td></td>
+<td class="right nowrap" colspan="2"><a class="showallperms" title="{='ShowAllPerms'|trans}" alt="{='ShowAllPerms'|trans}" href="#">{$f['expandAllPicto']|noescape}<span class="hideonsmartphone">{='ExpandAll'|trans}</span></a> | <a class="hideallperms" title="{='HideAllPerms'|trans}" alt="{='HideAllPerms'|trans}" href="#">{$f['collapseAllPicto']|noescape}<span class="hideonsmartphone">{='UndoExpandAll'|trans}</span></a></td>
+</tr>
+{foreach $modules as $m}
+{var $mod = $m['module']}
+{var $expanded = !$m['hidden']}
+<tr class="oddeven trforbreakperms trforbreaknobg" data-hide-perms="{$mod}" data-j="{$m['j']}"><td class="maxwidthonsmartphone tdoverflowmax200 tdforbreakperms" data-hide-perms="{$mod}" title="{$m['name']}"><input type="hidden" name="forbreakperms_{$mod}" id="idforbreakperms_{$mod}" css="cssforfieldishiden" data-j="{$m['j']}" value="{$expanded ? '0' : '1'}">{$m['pictoHtml']|noescape} {$m['name']}<a name="{$m['name']}"></a></td>
+{if ($canEdit && !$m['adminAllowed']) || !$targetIsAdmin}
+{if $canEdit}
+<td class="tdforbreakperms tdforbreakpermsifnotempty center width50 nowraponall" data-hide-perms="{$mod}"><span class="permtohide_{$mod}"{if !$expanded} style="display:none"{/if}>{include toggle, $formAction, 'addrights', 'module', $mod, $mod, 'buttonlink nopadding reposition alink addexpandedmodulesinparamlist', ('All'|trans)} / {include toggle, $formAction, 'delrights', 'module', $mod, $mod, 'buttonlink nopadding reposition alink addexpandedmodulesinparamlist', ('None'|trans)}</span></td><td class="tdforbreakperms" data-hide-perms="{$mod}"></td>
+{else}
+<td class="tdforbreakperms" data-hide-perms="{$mod}"></td><td class="tdforbreakperms" data-hide-perms="{$mod}"></td>
+{/if}
+{elseif $canEdit}
+<td class="tdforbreakperms center wraponsmartphone" data-hide-perms="{$mod}"></td><td class="tdforbreakperms" data-hide-perms="{$mod}"></td>
+{else}
+<td class="right tdforbreakperms" data-hide-perms="{$mod}"></td><td class="tdforbreakperms" data-hide-perms="{$mod}"></td>
+{/if}
+<td class="tdforbreakperms" data-hide-perms="{$mod}"></td><td class="maxwidthonsmartphone right tdforbreakperms" data-hide-perms="{$mod}"><div class="switchfolderperms inline-block marginrightonly folderperms_{$mod}"{if $expanded} style="display:none;"{/if}>{$f['folderPicto']|noescape}</div><div class="switchfolderperms inline-block marginrightonly folderopenperms_{$mod}"{if !$expanded} style="display:none;"{/if}>{$f['folderOpenPicto']|noescape}</div></td></tr>
+{foreach $m['rights'] as $r}
+<!-- {$mod}->{$r['perms']}{if $r['subperms'] !== null}->{$r['subperms']}{/if} -->
+<tr class="oddeven trtohide_{$mod}"{if !$expanded} style="display:none"{/if}><td class="maxwidthonsmartphone"></td>
+{if $targetIsAdmin && $m['adminAllowed']}
+<!-- perm is a perm allowed to any admin --><td class="center nowrap">{if $canEdit}{$f['adminPicto']|noescape}{else}{$f['activePicto']|noescape}{/if}</td><td></td>
+{elseif $r['granted']}
+<!-- user has perm -->{if $canEdit}<td class="center nowrap">{include toggle, $formAction, 'delrights', 'rights', (string) $r['id'], $mod, 'reposition addexpandedmodulesinparamlist nobordertransp nopadding cursorpointer', '', $f['removePicto'], (string) $r['id']}</td>{else}<td class="center nowrap">{$f['activePicto']|noescape}</td>{/if}<td></td>
+{elseif $hasGroupRights && $r['inherited']}
+<!-- permsgroupbyentitypluszero --><td class="center nowrap">{$f['activePicto']|noescape}</td><td class="center nowrap">{$f['inheritedHtml']|noescape}</td>
+{else}
+{if $hasGroupRights}<!-- permsgroupbyentitypluszero -->{else}<!-- do not own permission -->{/if}{if $canEdit}<td class="center nowrap">{include toggle, $formAction, 'addrights', 'rights', (string) $r['id'], $mod, 'reposition addexpandedmodulesinparamlist nobordertransp nopadding cursorpointer', '', $f['addPicto'], (string) $r['id']}</td>{else}<td class="center nowrap">{$f['disabledPicto']|noescape}</td>{/if}<td></td>
+{/if}
+<td colspan="{$meIsAdmin ? null : 2}">{$r['badgeHtml']|noescape}{$r['labelKey']|trans}{foreach $r['descriptionKeys'] as $key}<br><span class="opacitymedium">{$key|trans}</span>{/foreach}{if $r['advancedOnly']} <span class="opacitymedium">({='AdvancedModeOnly'|trans})</span>{/if}{$r['warningsHtml']|noescape}</td>
+{if $meIsAdmin}<td class="right">{$r['idHtml']|noescape}</td>{/if}
+</tr>
+{/foreach}
+{/foreach}
+</table>
+</div>
+{* perms.php l.880-956, verbatim *}
+<script n:syntax="off">$(".tdforbreakperms:not(.alink)").on("click", function(){
+	console.log("Click on tdforbreakperms");
+	moduletohide = $(this).data("hide-perms");
+	j = $(this).data("j");
+	if ($("#idforbreakperms_"+moduletohide).val() == 1) {
+		console.log("idforbreakperms_"+moduletohide+" has value hidden=1, so we show all lines");
+		$(".trtohide_"+moduletohide).show();
+		$(".permtoshow_"+moduletohide).hide();
+		$(".permtohide_"+moduletohide).show();
+		$(".folderperms_"+moduletohide).hide();
+		$(".folderopenperms_"+moduletohide).show();
+		$("#idforbreakperms_"+moduletohide).val("0");
+	} else if (! $(this).hasClass("tdforbreakpermsifnotempty")) {
+		console.log("idforbreakperms_"+moduletohide+" has value hidden=0, so we hide all lines");
+		$(".trtohide_"+moduletohide).hide();
+		$(".folderopenperms_"+moduletohide).hide();
+		$(".folderperms_"+moduletohide).show();
+		$(".permtoshow_"+moduletohide).show();
+		$(".permtohide_"+moduletohide).hide();
+		$("#idforbreakperms_"+moduletohide).val("1");
+	}
+
+	// Now rebuild the value for cookie
+	var hideuserperm="";
+	$(".trforbreakperms").each(function(index) {
+		//console.log( index + ": " + $( this ).data("j") + " " + $( this ).data("hide-perms") + " " + $("input[data-j="+(index+1)+"]").val());
+		if ($("input[data-j="+(index+1)+"]").val() == 1) {
+			hideuserperm=hideuserperm+","+(index+1);
+		}
+	});
+	// set cookie by js
+	date = new Date(); date.setTime(date.getTime()+(30*86400000));
+	if (hideuserperm) {
+		console.log("set cookie DOLUSER_PERMS_HIDE_GRP="+hideuserperm);
+		document.cookie = "DOLUSER_PERMS_HIDE_GRP=" + hideuserperm + "; expires=" + date.toGMTString() + "; path=/ ";
+	} else {
+		console.log("delete cookie DOLUSER_PERMS_HIDE_GRP");
+		document.cookie = "DOLUSER_PERMS_HIDE_GRP=; expires=Thu, 01-Jan-70 00:00:01 GMT; path=/ ";
+	}
+});
+$(".showallperms").on("click", function(){
+	console.log("Click on showallperms");
+
+	console.log("delete cookie DOLUSER_PERMS_HIDE_GRP from showallperms click");
+	document.cookie = "DOLUSER_PERMS_HIDE_GRP=; expires=Thu, 01-Jan-70 00:00:01 GMT; path=/ ";
+	$(".tdforbreakperms").each( function(){
+		moduletohide = $(this).data("hide-perms");
+		//console.log(moduletohide);
+		if ($("#idforbreakperms_"+moduletohide).val() != 0) {
+			$(this).trigger("click");	// emulate the click, so the cooki will be resaved
+		}
+	})
+});
+
+$(".hideallperms").on("click", function(){
+	console.log("Click on hideallperms");
+
+	$(".tdforbreakperms").each( function(){
+		moduletohide = $(this).data("hide-perms");
+		//console.log(moduletohide);
+		if ($("#idforbreakperms_"+moduletohide).val() != 1) {
+			$(this).trigger("click");	// emulate the click, so the cooki will be resaved
+		}
+	})
+});
+</script><style n:syntax="off">.switchfolderperms{
+	cursor: pointer;
+}</style>{$footerHookHtml|noescape}
+{$chrome['tabsEndHtml']|noescape}
+{/block}

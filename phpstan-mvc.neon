@@ -18,3 +18,4 @@ parameters:
 		- htdocs/categories/class/categorie.class.php
 		- htdocs/product/class/html.formproduct.class.php
 		- htdocs/blockedlog/lib/securitycore.lib.php
+		- htdocs/core/modules/DolibarrModules.class.php

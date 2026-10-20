@@ -24,9 +24,11 @@ use Dolibarr\Core\View\Confirm;
 use Dolibarr\Module\User\Controller\LoginController;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserRightsController;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
+use Dolibarr\Module\User\Repository\RightsRepository;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Repository\UserWriter;
 use Dolibarr\Module\User\Security\Authenticator;
@@ -35,6 +37,7 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\Service\UserValidator;
 use Dolibarr\Module\User\View\LegacyLoginPage;
+use Dolibarr\Module\User\View\RightsChrome;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Module\User\View\UserFormChrome;
 
@@ -52,7 +55,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function controllers(): array
 	{
-		return [UserController::class, LoginController::class, LogoutController::class];
+		return [UserController::class, UserRightsController::class, LoginController::class, LogoutController::class];
 	}
 
 	/**
@@ -168,6 +171,27 @@ final class UserModule implements ModuleInterface
 			self::get($c, Config::class),
 			self::get($c, UrlGenerator::class),
 			self::get($c, Confirm::class)
+		));
+		$c->set(RightsChrome::class, static fn (Container $c): RightsChrome => new RightsChrome(self::get($c, LegacyContext::class), self::get($c, Connection::class)));
+		$c->set(RightsRepository::class, static fn (Container $c): RightsRepository => new RightsRepository(
+			self::get($c, Connection::class),
+			self::get($c, RightsChrome::class),
+			self::get($c, Config::class)
+		));
+		$c->set(UserRightsController::class, static fn (Container $c): UserRightsController => new UserRightsController(
+			self::get($c, UserRepository::class),
+			self::get($c, UserPermissionChecker::class),
+			self::get($c, CurrentUser::class),
+			self::get($c, LegacyHooks::class),
+			self::get($c, LegacyObjectLoader::class),
+			self::get($c, Translator::class),
+			self::get($c, UserCardChrome::class),
+			self::get($c, RightsChrome::class),
+			self::get($c, RightsRepository::class),
+			self::get($c, UserService::class),
+			self::get($c, FlashBag::class),
+			self::get($c, Config::class),
+			self::get($c, UrlGenerator::class)
 		));
 	}
 
