@@ -9,8 +9,9 @@ LOGIN="${2:-admin}"
 PASS_="${3:-admin}"
 
 JARS=()
-trap 'rm -f "${JARS[@]}"' EXIT
-newjar() { local j; j="$(mktemp)"; JARS+=("$j"); echo "$j"; }
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+# newjar <varname>: creates a jar in the main shell (no subshell) and registers it for cleanup
+newjar() { local j; j="$(mktemp)"; JARS+=("$j"); printf -v "$1" '%s' "$j"; }
 
 fail() { echo "FAIL $1 (got $2)"; exit 1; }
 ok() { echo "PASS $1"; }
@@ -64,7 +65,7 @@ LOGINACTION="$(curl -s "$BASE/login" | grep -o 'action="[^"]*"' | head -1)"
 case "$LOGINACTION" in 'action="/login'*) ok "login form action";; *) fail "login form action" "$LOGINACTION";; esac
 
 echo "== New login"
-J1="$(newjar)"
+newjar J1
 T1="$(token_from "$J1" /login)"
 [ -n "$T1" ] || fail "login token present" "none"
 ok "login token present"
@@ -99,14 +100,14 @@ expect_code "login while logged in 302" 302 -b "$J1" "$BASE/login"
 echo "== New logout"
 TL="$(token_from "$J1" /user/1)"
 if [ -n "$TL" ]; then
-	expect_code "POST /logout 302" 302 -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TL" "$BASE/logout"
+	expect_location_suffix "POST /logout 302 to index.php" "/index.php" -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TL" "$BASE/logout"
 else
-	expect_code "GET /logout 302" 302 -b "$J1" -c "$J1" "$BASE/logout"
+	expect_location_suffix "GET /logout 302 to index.php" "/index.php" -b "$J1" -c "$J1" "$BASE/logout"
 fi
 expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php?id=1"
 
 echo "== Legacy login -> new world"
-J2="$(newjar)"
+newjar J2
 TLEG="$(token_from "$J2" /index.php)"
 [ -n "$TLEG" ] || fail "legacy token present" "none"
 ok "legacy token present"
