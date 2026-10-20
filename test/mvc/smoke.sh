@@ -7,6 +7,10 @@ BASE="${1:?usage: smoke.sh <base_url> [login] [password]}"
 BASE="${BASE%/}"
 LOGIN="${2:-admin}"
 PASS_="${3:-admin}"
+# SQL client used to remove the users created by the smoke test (default: the docker database of the dev setup)
+SMOKE_MYSQL="${SMOKE_MYSQL:-mysql -h127.0.0.1 -P33306 -udolibarr_user -pdolibarr_password dolibarr}"
+# A password the default policy accepts (12 characters at least)
+SMOKE_PASSWORD="${SMOKE_PASSWORD:-Smoke1234!Smoke1234!}"
 
 JARS=()
 trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
@@ -40,6 +44,27 @@ expect_location_suffix() {
 	code="${out%% *}"; loc="${out#* }"
 	case "$code" in 30?) ;; *) fail "$label" "$out";; esac
 	case "$loc" in *"$suffix") ok "$label";; *) fail "$label" "location $loc, expected suffix $suffix";; esac
+}
+
+# smoke_sql <sql>: runs a statement with SMOKE_MYSQL, prints the result without header
+smoke_sql() {
+	local cmd
+	read -r -a cmd <<< "$SMOKE_MYSQL"
+	"${cmd[@]}" -N -B -e "$1" 2>/dev/null
+}
+
+# Removes the users created by the smoke test (login smoke_*) and what their creation wrote.
+# Task 7 replaces this with the new delete route.
+cleanup_smoke_users() {
+	local ids="SELECT rowid FROM llx_user WHERE login LIKE 'smoke\\_%'"
+	smoke_sql "DELETE r FROM llx_actioncomm_resources r JOIN llx_actioncomm a ON a.id = r.fk_actioncomm WHERE a.elementtype = 'user' AND a.fk_element IN ($ids);
+		DELETE FROM llx_actioncomm WHERE elementtype = 'user' AND fk_element IN ($ids);
+		DELETE FROM llx_user_rights WHERE fk_user IN ($ids);
+		DELETE FROM llx_usergroup_user WHERE fk_user IN ($ids);
+		DELETE FROM llx_user_param WHERE fk_user IN ($ids);
+		DELETE FROM llx_user_extrafields WHERE fk_object IN ($ids);
+		DELETE FROM llx_categorie_user WHERE fk_user IN ($ids);
+		DELETE FROM llx_user WHERE login LIKE 'smoke\\_%';"
 }
 
 token_from() { # <jar> <path>
@@ -113,6 +138,31 @@ expect_code "user/abc 404" 404 -b "$J1" "$BASE/user/abc"
 expect_code "user 404 (list in plan 2)" 404 -b "$J1" "$BASE/user"
 expect_code "user/999999 404" 404 -b "$J1" "$BASE/user/999999"
 expect_code "login while logged in 302" 302 -b "$J1" "$BASE/login"
+
+echo "== User creation (/user/new)"
+smoke_sql "SELECT 1" > /dev/null || fail "SQL client for the smoke users cleanup" "SMOKE_MYSQL=$SMOKE_MYSQL"
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+expect_code "user/new 200" 200 -b "$J1" "$BASE/user/new"
+expect_grep "user/new create form" 'name="createuser"' 1 -b "$J1" "$BASE/user/new"
+expect_grep "user/new posts to itself" '<form action="[^"]*/user/new" method="POST" name="createuser">' 1 -b "$J1" "$BASE/user/new"
+SMOKE_LOGIN="smoke_$(date +%s)$$"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Smoke" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "POST /user/new 302 to /user/<id>";; *) fail "POST /user/new" "$OUT";; esac
+NEWID="${OUT##*/}"
+GOT="$(curl -s -w '\n%{http_code}' -b "$J1" "$BASE/user/$NEWID")"
+[ "${GOT##*$'\n'}" = "200" ] && ok "user/<id> of the new user 200" || fail "user/<id> of the new user" "${GOT##*$'\n'}"
+case "$GOT" in *"$SMOKE_LOGIN"*) ok "user/<id> shows the new login";; *) fail "user/<id> shows the new login" "not found";; esac
+TN="$(token_from "$J1" /user/new)"
+expect_grep "duplicate login redisplays the form" 'name="createuser"' 1 -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Smoke" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" "$BASE/user/new"
+expect_grep "invalid token redisplays the form" 'name="createuser"' 1 -b "$J1" -c "$J1" -X POST -d "token=bogus" \
+	--data-urlencode "lastname=Smoke" --data-urlencode "login=${SMOKE_LOGIN}b" --data-urlencode "password=$SMOKE_PASSWORD" "$BASE/user/new"
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login = '${SMOKE_LOGIN}b'")" = "0" ] && ok "invalid token creates no user" || fail "invalid token creates no user" "a user"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
 
 echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
 expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"

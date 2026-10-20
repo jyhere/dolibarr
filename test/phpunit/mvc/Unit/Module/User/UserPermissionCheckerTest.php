@@ -62,6 +62,9 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertFalse($this->checker(me: 5)->canSeeSalary($target));
 		self::assertTrue($this->checker(me: 5, admin: true)->canSeeSalary($target));
 		self::assertTrue($this->checker(me: 5, subordinates: [6])->canSeeSalary($target));
+		// A new user (id 0) counts as one under me: card.php tests $id == 0 next to the hierarchy.
+		self::assertTrue($this->checker(me: 5, rights: ['salaries.read'], salaries: true)->canSeeSalary($this->user(id: 0)));
+		self::assertTrue($this->checker(me: 5)->canSeeSalary($this->user(id: 0)));
 		// External users never see salaries through the rights.
 		self::assertFalse($this->checker(me: 5, rights: ['salaries.readall'], salaries: true, companyId: 10)->canSeeSalary($this->user(id: 6, companyId: 10)));
 	}

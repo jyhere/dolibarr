@@ -15,3 +15,5 @@ parameters:
 		- htdocs/societe/class/societe.class.php
 		- htdocs/contact/class/contact.class.php
 		- htdocs/adherents/class/adherent.class.php
+		- htdocs/categories/class/categorie.class.php
+		- htdocs/product/class/html.formproduct.class.php

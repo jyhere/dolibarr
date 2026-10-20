@@ -32,8 +32,10 @@ use Dolibarr\Module\User\Security\Authenticator;
 use Dolibarr\Module\User\Security\SessionAuthenticator;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\Service\UserService;
+use Dolibarr\Module\User\Service\UserValidator;
 use Dolibarr\Module\User\View\LegacyLoginPage;
 use Dolibarr\Module\User\View\UserCardChrome;
+use Dolibarr\Module\User\View\UserFormChrome;
 
 final class UserModule implements ModuleInterface
 {
@@ -105,6 +107,8 @@ final class UserModule implements ModuleInterface
 			);
 		});
 		$c->set(UserCardChrome::class, static fn (Container $c): UserCardChrome => new UserCardChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
+		$c->set(UserFormChrome::class, static fn (Container $c): UserFormChrome => new UserFormChrome(self::get($c, LegacyContext::class)));
+		$c->set(UserValidator::class, static fn (Container $c): UserValidator => new UserValidator(self::get($c, Translator::class), self::get($c, Config::class)));
 		$c->set(Authenticator::class, static function (Container $c): Authenticator {
 			$ctx = self::get($c, LegacyContext::class);
 			// main.inc.php l.541-554: the constant MAIN_AUTHENTICATION_MODE overrides $dolibarr_main_authentication
@@ -156,7 +160,12 @@ final class UserModule implements ModuleInterface
 			self::get($c, LegacyObjectLoader::class),
 			self::get($c, Translator::class),
 			self::get($c, UserCardChrome::class),
-			self::get($c, FlashBag::class)
+			self::get($c, FlashBag::class),
+			self::get($c, UserService::class),
+			self::get($c, UserValidator::class),
+			self::get($c, UserFormChrome::class),
+			self::get($c, Config::class),
+			self::get($c, UrlGenerator::class)
 		));
 	}
 

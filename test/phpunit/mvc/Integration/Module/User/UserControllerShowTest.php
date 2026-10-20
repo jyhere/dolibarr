@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
@@ -17,9 +19,13 @@ use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Entity\Visibility;
+use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
+use Dolibarr\Module\User\Service\UserService;
+use Dolibarr\Module\User\Service\UserValidator;
 use Dolibarr\Module\User\View\UserCardChrome;
+use Dolibarr\Module\User\View\UserFormChrome;
 use Dolibarr\Module\User\View\UserCardHtml;
 use Dolibarr\Tests\Integration\Fixture\GlobalsRequest;
 use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
@@ -174,7 +180,12 @@ final class UserControllerShowTest extends TestCase
 			new LegacyObjectLoader($connection),
 			new LegacyTranslator($ctx->langs),
 			new UserCardChrome($ctx, $urls),
-			new FlashBag()
+			new FlashBag(),
+			new UserService(new UserRepository($connection, (int) $ctx->conf->entity), new LegacyUserWriter($ctx, new LegacyObjectLoader($connection), $connection), new EventDispatcher(), $connection, $me),
+			new UserValidator(new LegacyTranslator($ctx->langs), new LegacyConfig($ctx)),
+			new UserFormChrome($ctx),
+			new LegacyConfig($ctx),
+			$urls
 		);
 	}
 }

@@ -4,22 +4,33 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\Controller;
 
+use Dolibarr\Core\Config;
 use Dolibarr\Core\CurrentUser;
+use Dolibarr\Core\Http\RedirectResponse;
 use Dolibarr\Core\Http\Request;
+use Dolibarr\Core\Http\Response;
+use Dolibarr\Core\Http\SafeRedirect;
 use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\HookResult;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Routing\Route;
+use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Core\Translator;
 use Dolibarr\Core\View\ViewModel;
+use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Entity\Visibility;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
+use Dolibarr\Module\User\Service\UserInput;
+use Dolibarr\Module\User\Service\UserService;
+use Dolibarr\Module\User\Service\UserValidator;
+use Dolibarr\Module\User\Service\ValidationException;
 use Dolibarr\Module\User\View\UserCardChrome;
+use Dolibarr\Module\User\View\UserFormChrome;
 
 final class UserController
 {
@@ -33,7 +44,12 @@ final class UserController
 		private readonly LegacyObjectLoader $legacy,
 		private readonly Translator $t,
 		private readonly UserCardChrome $chrome,
-		private readonly FlashBag $flash
+		private readonly FlashBag $flash,
+		private readonly UserService $service,
+		private readonly UserValidator $validator,
+		private readonly UserFormChrome $formChrome,
+		private readonly Config $config,
+		private readonly UrlGenerator $urls
 	) {
 	}
 
@@ -129,6 +145,185 @@ final class UserController
 			'hookMoreObjectBlock' => $hookMoreObjectBlock,
 			'hookMoreActionsButtons' => $hookMoreActionsButtons,
 		]))->expose('user', new UserView($user, $visibility, $canSeeSalary));
+	}
+
+	/**
+	 * The creation form, the create view of htdocs/user/card.php (l.992-1626).
+	 *
+	 * @throws AccessDeniedException When the current user may not create users
+	 */
+	#[Route('/user/new', methods: ['GET'], name: 'user_new')]
+	public function createForm(Request $r): ViewModel
+	{
+		$this->prepareCreate();
+		// card.php l.98-102 and l.1278: no date, l.1214: employee checked by default, l.1068: current entity
+		$values = new User(0, $this->config->entity(), '', employee: true);
+
+		return $this->form($r, $values, null, false, $this->doActions($values, 'create'));
+	}
+
+	/**
+	 * Action add of htdocs/user/card.php (l.185-452): validation, creation, redirection.
+	 * A failure redisplays the form with the posted values and the messages.
+	 *
+	 * @throws AccessDeniedException When the current user may not create users
+	 */
+	#[Route('/user/new', methods: ['POST'], name: 'user_new_post')]
+	public function create(Request $r): Response|ViewModel
+	{
+		$this->prepareCreate();
+		$backtopage = $this->param($r, 'backtopage');
+		$backtopageforcancel = $this->param($r, 'backtopageforcancel');
+		$urlRoot = $this->config->urlRoot();
+
+		// card.php l.185: doActions first; a hook returning > 0 replaces the standard action
+		$blank = new User(0, $this->config->entity(), '', employee: true);
+		$doActions = $this->doActions($blank, 'add');
+		if ($doActions->code > 0) {
+			return $this->form($r, $blank, null, false, $doActions);
+		}
+
+		// card.php l.192-212: cancel goes to backtopageforcancel, else backtopage, else the list
+		// (a backtopage waiting for the new id is no target on a cancel)
+		if ($this->param($r, 'cancel', 'alpha') !== '') {
+			$candidate = $backtopageforcancel !== ''
+				? $backtopageforcancel
+				: ($backtopage !== '' && !str_contains($backtopage, '__ID__') ? $backtopage : null);
+
+			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $urlRoot.'/user/list.php');
+		}
+
+		// main.inc.php refused the CSRF token: $_POST is empty and its warning is set; nothing is written
+		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return $this->form($r, $blank, null, false, $doActions);
+		}
+
+		$in = UserInput::fromRequest($r, $this->perms, null, $this->config);
+		$values = $in->toEntity(null, $this->entityFor($in));
+
+		$errors = $this->validator->validate($in, true, $this->repo->countForQuota());
+		if ($errors !== []) {
+			foreach ($errors as $error) {
+				// setOptionalsFromPost() has already queued its own message: not flashed twice
+				if ($error !== $in->extraFieldsError) {
+					$this->flash->error($error);
+				}
+			}
+
+			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
+		}
+
+		try {
+			// card.php l.424-428: the tags only with the category module
+			$created = $this->service->create($values, $in->password, $this->config->isModuleEnabled('category') ? $in->categoryIds : []);
+		} catch (ValidationException $e) {
+			foreach ($e->messages as $message) {
+				$this->flash->error($message);
+			}
+
+			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
+		}
+
+		// card.php l.430-436: no message, backtopage with the new id, else the card
+		$target = $backtopage !== '' ? SafeRedirect::relativePath(str_replace('__ID__', (string) $created->id, $backtopage), $urlRoot) : null;
+
+		return new RedirectResponse($target ?? $this->urls->generate('user_show', ['id' => $created->id]));
+	}
+
+	/**
+	 * @throws AccessDeniedException
+	 */
+	private function prepareCreate(): void
+	{
+		if (!$this->perms->canCreate()) {
+			throw new AccessDeniedException();
+		}
+		// card.php l.79, plus errors (validation messages)
+		foreach (['users', 'companies', 'ldap', 'admin', 'hrm', 'stocks', 'other', 'errors'] as $domain) {
+			$this->t->load($domain);
+		}
+		$this->hooks->init(self::HOOK_CONTEXTS);
+	}
+
+	/**
+	 * A GETPOST() string, '' when absent. backtopage and backtopageforcancel are kept raw for the hidden
+	 * fields, and checked by SafeRedirect when used.
+	 */
+	private function param(Request $r, string $name, string $filter = 'alphanohtml'): string
+	{
+		$value = $r->get($name, $filter);
+
+		return is_string($value) ? $value : '';
+	}
+
+	/**
+	 * card.php l.185-189 with the parameters of a creation (l.122-127: $id = 0, $socid of the current user).
+	 */
+	private function doActions(User $values, string $action): HookResult
+	{
+		$object = $this->formChrome->legacyObject($values);
+		$result = $this->hooks->execute('doActions', [
+			'id' => 0,
+			'socid' => $this->me->companyId(),
+			'group' => 0,
+			'caneditgroup' => $this->perms->canEditGroups($values),
+		], $object, $action);
+		$this->flashErrors($result);
+
+		return $result;
+	}
+
+	/**
+	 * card.php l.392-414: the entity of the new user. The entity and the superadmin flag posted are only
+	 * trusted from an admin without entity of his own (the only one shown the selectors).
+	 */
+	private function entityFor(UserInput $in): int
+	{
+		$canSetEntity = $this->me->isAdmin() && $this->me->entity() === 0;
+		$entity = $canSetEntity ? $in->entity : $this->me->entity();
+		if ($this->config->isModuleEnabled('multicompany')) {
+			if ($canSetEntity && $in->superadmin) {
+				return 0;
+			}
+			if ($this->config->string('MULTICOMPANY_TRANSVERSE_MODE') !== '') {
+				return 1;
+			}
+		}
+
+		return $entity ?? 1;
+	}
+
+	/**
+	 * The form with $values: the defaults, or the posted values on a redisplay.
+	 */
+	private function form(Request $r, User $values, ?string $password, bool $forcePasswordChange, HookResult $doActions): ViewModel
+	{
+		$canSeeSalary = $this->perms->canSeeSalary($values);
+		if ($canSeeSalary) {
+			$this->t->load('salaries');
+		}
+		$canEditAdminFlag = $this->perms->canEditAdminFlag($values);
+		// card.php l.981-985
+		$title = $this->t->trans($r->getInt('employee') > 0 ? 'NewEmployee' : 'NewUser');
+
+		return new ViewModel('user:user_form', [
+			'outputBeforeHeader' => $doActions->output,
+			'title' => $title,
+			'bodyCss' => 'mod-user page-card',
+			'mode' => 'create',
+			'formAction' => $this->urls->generate('user_new_post'),
+			'values' => $values,
+			'forcePasswordChange' => $forcePasswordChange,
+			'backtopage' => $this->param($r, 'backtopage'),
+			'backtopageforcancel' => $this->param($r, 'backtopageforcancel'),
+			'entity' => $this->config->entity(),
+			'canSeeSalary' => $canSeeSalary,
+			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
+			'show' => $this->formChrome->visibility($canSeeSalary, $canEditAdminFlag),
+			'titleHtml' => $this->formChrome->title($title),
+			'loginJs' => $this->formChrome->loginJs(),
+			'f' => $this->formChrome->fragments($values, 'create', $canSeeSalary, $canEditAdminFlag, $password),
+		]);
 	}
 
 	/**

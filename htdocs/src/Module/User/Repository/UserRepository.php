@@ -58,6 +58,18 @@ final class UserRepository
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
 
+	/**
+	 * The count card.php l.300-301 checks against main_limit_users: \User::getNbOfUsers('active'), the
+	 * active users of getEntity('user', 0), which is "0,<entity>" without multicompany. With multicompany,
+	 * the legacy count is the one of the multicompany module (getEntity() delegates to it): not reproduced.
+	 */
+	public function countForQuota(): int
+	{
+		$row = $this->c->fetchOne('SELECT COUNT(rowid) as nb FROM '.$this->c->prefix().'user WHERE entity IN (0, '.$this->entity.') AND statut = 1');
+
+		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
+	}
+
 	private function fetch(string $where, string $order = ''): ?User
 	{
 		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL

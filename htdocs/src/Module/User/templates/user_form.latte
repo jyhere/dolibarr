@@ -1,0 +1,136 @@
+{* User creation form: the create view of htdocs/user/card.php (l.992-1626), same names, order and classes.
+   Not rendered (see UserFormChrome): api_key, social networks, LDAP import form, old multicompany entity row. *}
+{layout 'core:@layout'}
+{block content}
+{var $u = $values}
+{var $externalUser = ('CreateExternalUser'|transnoentities)}
+{$titleHtml|noescape}
+<span class="opacitymedium">{='CreateInternalUserDesc'|trans: $externalUser}</span><br>
+<br>
+<form action="{$formAction}" method="POST" name="createuser">
+<input type="hidden" name="token" value="{token()}">
+<input type="hidden" name="action" value="add">
+{if $backtopage !== ''}<input type="hidden" name="backtopage" value="{$backtopage}">
+{/if}
+{if $backtopageforcancel !== ''}<input type="hidden" name="backtopageforcancel" value="{$backtopageforcancel}">
+{/if}
+<input type="hidden" name="entity" value="{$entity}">
+{$f['ficheHead']|noescape}
+{$f['focusJs']|noescape}
+<table class="border centpercent">
+{if $show['civility']}
+<tr><td><label for="civility_code">{='UserTitle'|trans}</label></td><td>{$f['civility']|noescape}</td></tr>
+{/if}
+<tr>
+<td class="titlefieldcreate"><span class="fieldrequired">{='Lastname'|trans}</span></td>
+<td><input class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" id="lastname" name="lastname" value="{$u->lastname ?? ''}"></td></tr>
+<tr><td>{='Firstname'|trans}</td>
+<td><input id="firstname" class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" name="firstname" value="{$u->firstname ?? ''}"></td></tr>
+<tr><td><span class="fieldrequired">{='Login'|trans}</span></td>
+<td><input id="login" class="maxwidth200 maxwidth150onsmartphone" maxsize="24" type="text" name="login" value="{$u->login ?? ''}" spellcheck="false"></td></tr>
+{$loginJs|noescape}
+{if $show['admin']}
+<tr><td>{$f['adminLabel']|noescape}</td>
+<td>{$f['admin']|noescape}</td></tr>
+{/if}
+<tr><td>{='Gender'|trans}</td>
+<td>{$f['gender']|noescape}</td></tr>
+<tr>
+<td>{='Employee'|trans}</td><td><input type="checkbox" name="employee" value="1"{if $u->employee} checked="checked"{/if}></td></tr>
+<tr><td class="titlefieldcreate">{='HierarchicalResponsible'|trans}</td>
+<td>{$f['supervisor']|noescape}</td>
+</tr>
+{if $show['expenseValidator']}
+<tr><td class="titlefieldcreate">{$f['expenseValidatorLabel']|noescape}</td>
+<td>{$f['expenseValidator']|noescape}</td>
+</tr>
+{/if}
+{if $show['holidayValidator']}
+<tr><td class="titlefieldcreate">{$f['holidayValidatorLabel']|noescape}</td>
+<td>{$f['holidayValidator']|noescape}</td>
+</tr>
+{/if}
+<tr><td>{='ExternalUser'|trans} ?</td>
+<td>{$f['internal']|noescape}</td></tr>
+</table><hr><table class="border centpercent">
+<tr><td class="titlefieldcreate">{='RangeOfLoginValidity'|trans}</td>
+<td>{$f['dateStartValidity']|noescape} &nbsp; {$f['dateEndValidity']|noescape}</td>
+</tr>
+<tr><td class="fieldrequired">{='Password'|trans}</td>
+<td>{$f['passwordField']|noescape}</td></tr>
+{if $show['forcePasswordChange']}
+<tr><td class="titlefieldcreate"></td>
+<td><input type="checkbox" name="forcepasswordchange" id="forcepasswordchange" value="1"{if $forcePasswordChange} checked="checked"{/if}><label class="opacitymedium" for="forcepasswordchange">{='ForcePasswordChange'|trans}</label></td>
+</tr>
+{/if}
+{* api_key (card.php l.1340-1359): not rendered, the new path never stores it *}
+</table><hr><table class="border centpercent">
+<tr><td class="tdtop titlefieldcreate">{$f['addressLabel']|noescape}</td>
+<td><textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$u->address}</textarea></td></tr>
+<tr><td>{$f['zipLabel']|noescape}</td><td>{$f['zip']|noescape}</td></tr>
+<tr><td>{$f['townLabel']|noescape}</td><td>{$f['town']|noescape}</td></tr>
+<tr><td>{$f['countryLabel']|noescape}</td><td class="maxwidthonsmartphone">{$f['country']|noescape}</td></tr>
+{if $show['state']}
+<tr><td>{$f['stateLabel']|noescape}</td><td class="maxwidthonsmartphone">{$f['state']|noescape}</td></tr>
+{/if}
+<tr><td>{='PhonePro'|trans}</td>
+<td>{$f['officePhone']|noescape}</td></tr>
+<tr><td>{='PhoneMobile'|trans}</td>
+<td>{$f['userMobile']|noescape}</td></tr>
+<tr><td>{='Fax'|trans}</td>
+<td>{$f['officeFax']|noescape}</td></tr>
+<tr><td n:class="$show['emailRequired'] ? fieldrequired">{='EMail'|trans}</td>
+<td>{$f['emailPicto']|noescape}<input type="text" name="email" class="maxwidth500 widthcentpercentminusx" value="{$u->email ?? ''}" spellcheck="false"></td></tr>
+{* social networks (card.php l.1446-1474): not rendered, deferred *}
+{if $show['accountancyCode']}
+<tr><td>{='AccountancyCode'|trans}</td>
+<td><input type="text" class="maxwidthonsmartphone" name="accountancy_code" value="{$u->accountancyCode ?? ''}"></td></tr>
+{/if}
+{if $show['color']}
+<tr><td>{='Color'|trans}</td>
+<td>{$f['color']|noescape}</td></tr>
+{/if}
+{if $show['categories']}
+<tr><td>{$f['categoriesLabel']|noescape}</td><td>{$f['categories']|noescape}</td></tr>
+{/if}
+{if $show['language']}
+<tr><td>{$f['languageLabel']|noescape}</td>
+<td class="maxwidthonsmartphone">{$f['language']|noescape}</td></tr>
+{/if}
+{$f['extrafields']|noescape}
+<tr><td class="tdtop">{='Signature'|trans}</td>
+<td class="wordbreak">{$f['signature']|noescape}</td></tr>
+<tr><td class="tdtop">{='NotePublic'|trans}</td><td>{$f['notePublic']|noescape}</td></tr>
+<tr><td class="tdtop">{='NotePrivate'|trans}</td><td>{$f['notePrivate']|noescape}</td></tr>
+</table><hr><table class="border centpercent">
+{if $show['warehouse']}
+<tr><td>{='DefaultWarehouse'|trans}</td><td>{$f['warehouse']|noescape}</td></tr>
+{/if}
+<tr><td class="titlefieldcreate">{='PostOrFunction'|trans}</td>
+<td><input class="maxwidth200 maxwidth150onsmartphone" type="text" name="job" value="{$u->job ?? ''}"></td></tr>
+{if $canSeeSalary}
+<tr><td>{$f['thmLabel']|noescape}</td>
+<td><input size="8" type="text" name="thm" value="{$u->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+</tr>
+<tr><td>{$f['tjmLabel']|noescape}</td>
+<td><input size="8" type="text" name="tjm" value="{$u->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+</tr>
+<tr><td>{='Salary'|trans}</td>
+<td>{$f['salaryPicto']|noescape}<input class="width100" type="text" name="salary" value="{$u->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+</tr>
+{/if}
+<tr><td>{='WeeklyHours'|trans}</td>
+<td><input size="8" type="text" name="weeklyhours" value="{$u->weeklyHours ?? ''}"></td>
+</tr>
+<tr><td>{='DateOfEmployment'|trans}</td>
+<td>{$f['dateEmployment']|noescape} - {$f['dateEmploymentEnd']|noescape}</td>
+</tr>
+<tr><td>{='DateOfBirth'|trans}</td>
+<td>{$f['dateOfBirth']|noescape}</td>
+</tr>
+</table>
+{$f['ficheEnd']|noescape}
+{$f['buttons']|noescape}
+</form>
+{$f['passwordJs']|noescape}
+{/block}

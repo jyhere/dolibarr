@@ -59,11 +59,12 @@ final class UserPermissionChecker implements EntityPermissions
 	}
 
 	/**
-	 * card.php l.171-175 ($permissiontoseesalary). As there, the hierarchy-less fallback is not limited to internal users.
+	 * card.php l.171-175 ($permissiontoseesalary). As there, the hierarchy-less fallback is not limited to internal users,
+	 * and a new user (id 0, the creation form) counts as one under the current user ($id == 0).
 	 */
 	public function canSeeSalary(User $target): bool
 	{
-		$subordinate = in_array($target->id, $this->subordinateIds, true);
+		$subordinate = $target->id === 0 || in_array($target->id, $this->subordinateIds, true);
 		$byRight = $this->me->companyId() <= 0 && (
 			($this->salariesEnabled && $this->me->hasRight('salaries', 'read') && $subordinate)
 			|| ($this->salariesEnabled && $this->me->hasRight('salaries', 'readall'))
