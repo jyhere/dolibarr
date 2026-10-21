@@ -30,27 +30,27 @@ final class RequestGetTest extends TestCase
 
 	public function testGetDelegatesToInjectedFilter(): void
 	{
-		$f = new FakeInputFilter(['login' => 'jdoe']);
-		self::assertSame('jdoe', (new Request('POST', '/login', [], [], [], []))->withInputFilter($f)->get('login', 'alphanohtml'));
-		self::assertSame(['login', 'alphanohtml'], $f->lastCall);
+		$inputFilter = new FakeInputFilter(['login' => 'jdoe']);
+		self::assertSame('jdoe', (new Request('POST', '/login', [], [], [], []))->withInputFilter($inputFilter)->get('login', 'alphanohtml'));
+		self::assertSame(['login', 'alphanohtml'], $inputFilter->lastCall);
 	}
 
 	public function testGetReadsGetFirst(): void
 	{
-		$f = new FakeInputFilter(['x' => 'v']);
-		(new Request('GET', '/', [], [], [], []))->withInputFilter($f)->get('x');
-		self::assertSame(0, $f->lastMethod);
+		$inputFilter = new FakeInputFilter(['x' => 'v']);
+		(new Request('GET', '/', [], [], [], []))->withInputFilter($inputFilter)->get('x');
+		self::assertSame(0, $inputFilter->lastMethod);
 	}
 
 	public function testGetPostUsesPostFirst(): void
 	{
-		$f = new FakeInputFilter(['username' => 'admin']);
-		$r = (new Request('POST', '/login', [], [], [], []))->withInputFilter($f);
-		self::assertSame('admin', $r->getPost('username', 'alpha'));
-		self::assertSame(['username', 'alpha'], $f->lastCall);
-		self::assertSame(3, $f->lastMethod);
-		self::assertSame('none', $r->getPost('absent', default: 'none'));
-		self::assertSame(['absent', 'alphanohtml'], $f->lastCall);
+		$inputFilter = new FakeInputFilter(['username' => 'admin']);
+		$request = (new Request('POST', '/login', [], [], [], []))->withInputFilter($inputFilter);
+		self::assertSame('admin', $request->getPost('username', 'alpha'));
+		self::assertSame(['username', 'alpha'], $inputFilter->lastCall);
+		self::assertSame(3, $inputFilter->lastMethod);
+		self::assertSame('none', $request->getPost('absent', default: 'none'));
+		self::assertSame(['absent', 'alphanohtml'], $inputFilter->lastCall);
 	}
 
 	public function testGetPostWithoutFilterThrows(): void
@@ -61,35 +61,35 @@ final class RequestGetTest extends TestCase
 
 	public function testGetDefaultsToAlphanohtmlAndReturnsTheDefaultWhenMissing(): void
 	{
-		$f = new FakeInputFilter([]);
-		self::assertSame('none', (new Request('GET', '/', [], [], [], []))->withInputFilter($f)->get('x', default: 'none'));
-		self::assertSame(['x', 'alphanohtml'], $f->lastCall);
+		$inputFilter = new FakeInputFilter([]);
+		self::assertSame('none', (new Request('GET', '/', [], [], [], []))->withInputFilter($inputFilter)->get('x', default: 'none'));
+		self::assertSame(['x', 'alphanohtml'], $inputFilter->lastCall);
 	}
 
 	public function testGetIntUsesTheIntFilterAndCasts(): void
 	{
-		$f = new FakeInputFilter(['id' => '12']);
-		$r = (new Request('GET', '/', [], [], [], []))->withInputFilter($f);
-		self::assertSame(12, $r->getInt('id'));
-		self::assertSame(['id', 'int'], $f->lastCall);
-		self::assertSame(7, $r->getInt('missing', 7));
+		$inputFilter = new FakeInputFilter(['id' => '12']);
+		$request = (new Request('GET', '/', [], [], [], []))->withInputFilter($inputFilter);
+		self::assertSame(12, $request->getInt('id'));
+		self::assertSame(['id', 'int'], $inputFilter->lastCall);
+		self::assertSame(7, $request->getInt('missing', 7));
 	}
 
 	public function testIsSetDelegatesToInjectedFilter(): void
 	{
-		$r = (new Request('GET', '/', [], [], [], []))->withInputFilter(new FakeInputFilter(['a' => '']));
-		self::assertTrue($r->isSet('a'));
-		self::assertFalse($r->isSet('b'));
+		$request = (new Request('GET', '/', [], [], [], []))->withInputFilter(new FakeInputFilter(['a' => '']));
+		self::assertTrue($request->isSet('a'));
+		self::assertFalse($request->isSet('b'));
 	}
 
 	public function testWithInputFilterReturnsANewInstance(): void
 	{
-		$r = new Request('GET', '/user/1', ['q' => 'v'], [], [], []);
-		$filtered = $r->withInputFilter(new FakeInputFilter([]));
-		self::assertNotSame($r, $filtered);
+		$request = new Request('GET', '/user/1', ['q' => 'v'], [], [], []);
+		$filtered = $request->withInputFilter(new FakeInputFilter([]));
+		self::assertNotSame($request, $filtered);
 		self::assertSame('/user/1', $filtered->path());
 		self::assertSame('v', $filtered->query('q'));
 		$this->expectException(\LogicException::class);
-		$r->get('q');
+		$request->get('q');
 	}
 }

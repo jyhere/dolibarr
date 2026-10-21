@@ -113,7 +113,7 @@ final class UserListControllerTest extends TestCase
 
 	public function testListJsonExposesItemsAndTotal(): void
 	{
-		$a = $this->disposable('Alpha');
+		$firstUser = $this->disposable('Alpha');
 		$this->disposable('Beta');
 
 		$vm = $this->list('GET', ['search_lastname' => 'mvc_list_'], [], true);
@@ -127,7 +127,7 @@ final class UserListControllerTest extends TestCase
 		self::assertCount(2, $items);
 		self::assertInstanceOf(UserView::class, $items[0]);
 		$first = $items[0]->toArray();
-		self::assertSame($a->login, $first['login']);
+		self::assertSame($firstUser->login, $first['login']);
 		self::assertArrayNotHasKey('pass', $first);
 		self::assertArrayNotHasKey('api_key', $first);
 		self::assertArrayNotHasKey('apiKey', $first);
@@ -266,9 +266,9 @@ final class UserListControllerTest extends TestCase
 
 	public function testGrandTotalAndFooterHookGetTheListSql(): void
 	{
-		$a = $this->disposable('Paid');
-		$b = $this->disposable('Paid2');
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1000 WHERE rowid IN ('.$a->id.', '.$b->id.')');
+		$firstUser = $this->disposable('Paid');
+		$secondUser = $this->disposable('Paid2');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1000 WHERE rowid IN ('.$firstUser->id.', '.$secondUser->id.')');
 		$this->setConf('MAIN_GRANDTOTAL_LIST_SHOW', 1);
 		$modules = $this->ctx->conf->modules;
 		$this->ctx->conf->modules['salaries'] = 'salaries';

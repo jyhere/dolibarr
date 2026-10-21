@@ -200,8 +200,8 @@ final class User implements Exposable, HasNotes
 		];
 	}
 
-	private static function iso(?\DateTimeImmutable $d): ?string
+	private static function iso(?\DateTimeImmutable $date): ?string
 	{
-		return $d?->format(DATE_ATOM);
+		return $date?->format(DATE_ATOM);
 	}
 }

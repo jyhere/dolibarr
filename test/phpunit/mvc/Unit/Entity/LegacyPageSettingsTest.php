@@ -11,11 +11,11 @@ final class LegacyPageSettingsTest extends TestCase
 {
 	public function testHoldsTheValues(): void
 	{
-		$s = new LegacyPageSettings(['companies'], ['thirdpartynote', 'globalcard'], ['id' => 3]);
+		$settings = new LegacyPageSettings(['companies'], ['thirdpartynote', 'globalcard'], ['id' => 3]);
 
-		self::assertSame(['companies'], $s->translationDomains);
-		self::assertSame(['thirdpartynote', 'globalcard'], $s->hookContexts);
-		self::assertSame(['id' => 3], $s->doActionsParams);
+		self::assertSame(['companies'], $settings->translationDomains);
+		self::assertSame(['thirdpartynote', 'globalcard'], $settings->hookContexts);
+		self::assertSame(['id' => 3], $settings->doActionsParams);
 		self::assertSame([], (new LegacyPageSettings([], []))->doActionsParams);
 	}
 

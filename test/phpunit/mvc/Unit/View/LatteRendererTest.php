@@ -37,11 +37,11 @@ final class LatteRendererTest extends TestCase
 
 	public function testAddGlobalIsVisibleAndParamsOverride(): void
 	{
-		$r = $this->renderer();
-		$r->addGlobal('site', 'S');
-		$r->addGlobal('who', 'global');
-		self::assertSame('S-global', trim($r->render('test:globals', [])));
-		self::assertSame('S-param', trim($r->render('test:globals', ['who' => 'param'])));
+		$renderer = $this->renderer();
+		$renderer->addGlobal('site', 'S');
+		$renderer->addGlobal('who', 'global');
+		self::assertSame('S-global', trim($renderer->render('test:globals', [])));
+		self::assertSame('S-param', trim($renderer->render('test:globals', ['who' => 'param'])));
 	}
 
 	public function testHasRightAndLegacyHookDefault(): void

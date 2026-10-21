@@ -54,31 +54,31 @@ final class NotesModule implements ModuleInterface
 		return [];
 	}
 
-	public function services(Container $c): void
+	public function services(Container $container): void
 	{
-		$this->container = $c;
-		$c->set(NotesRepository::class, static fn (Container $c): NotesRepository => new NotesRepository(self::get($c, Connection::class)));
-		$c->set(NotesChrome::class, static fn (Container $c): NotesChrome => new NotesChrome(self::get($c, LegacyContext::class)));
-		$c->set(NoteTriggerBridge::class, static fn (Container $c): NoteTriggerBridge => new NoteTriggerBridge(
-			self::get($c, LegacyTriggers::class),
-			self::get($c, LegacyContext::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Logger::class),
-			self::get($c, EntityRegistry::class)
+		$this->container = $container;
+		$container->set(NotesRepository::class, static fn (Container $container): NotesRepository => new NotesRepository(self::get($container, Connection::class)));
+		$container->set(NotesChrome::class, static fn (Container $container): NotesChrome => new NotesChrome(self::get($container, LegacyContext::class)));
+		$container->set(NoteTriggerBridge::class, static fn (Container $container): NoteTriggerBridge => new NoteTriggerBridge(
+			self::get($container, LegacyTriggers::class),
+			self::get($container, LegacyContext::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, Logger::class),
+			self::get($container, EntityRegistry::class)
 		));
-		$c->set(NotesController::class, static fn (Container $c): NotesController => new NotesController(
-			self::get($c, EntityRegistry::class),
-			self::get($c, EntityServices::class),
-			self::get($c, CurrentUser::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, NotesRepository::class),
-			self::get($c, NotesChrome::class),
-			self::get($c, EventDispatcher::class),
-			self::get($c, Connection::class),
-			self::get($c, FlashBag::class),
-			self::get($c, Translator::class),
-			self::get($c, UrlGenerator::class)
+		$container->set(NotesController::class, static fn (Container $container): NotesController => new NotesController(
+			self::get($container, EntityRegistry::class),
+			self::get($container, EntityServices::class),
+			self::get($container, CurrentUser::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, NotesRepository::class),
+			self::get($container, NotesChrome::class),
+			self::get($container, EventDispatcher::class),
+			self::get($container, Connection::class),
+			self::get($container, FlashBag::class),
+			self::get($container, Translator::class),
+			self::get($container, UrlGenerator::class)
 		));
 	}
 
@@ -87,12 +87,12 @@ final class NotesModule implements ModuleInterface
 	 *
 	 * @throws \LogicException When called before services()
 	 */
-	public function listeners(EventDispatcher $d): void
+	public function listeners(EventDispatcher $dispatcher): void
 	{
 		if ($this->container === null) {
 			throw new \LogicException(self::class.'::services() must be called before listeners()');
 		}
-		self::get($this->container, NoteTriggerBridge::class)->register($d);
+		self::get($this->container, NoteTriggerBridge::class)->register($dispatcher);
 	}
 
 	/**
@@ -117,9 +117,9 @@ final class NotesModule implements ModuleInterface
 	 * @return T
 	 * @throws \LogicException When the service has an unexpected type
 	 */
-	private static function get(Container $c, string $id): object
+	private static function get(Container $container, string $id): object
 	{
-		$service = $c->get($id);
+		$service = $container->get($id);
 		if (!$service instanceof $id) {
 			throw new \LogicException('Service '.$id.' has an unexpected type');
 		}

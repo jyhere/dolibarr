@@ -15,7 +15,7 @@ use Dolibarr\Module\User\View\RightsChrome;
  */
 final class RightsRepository
 {
-	public function __construct(private readonly Connection $c, private readonly RightsChrome $chrome, private readonly Config $config)
+	public function __construct(private readonly Connection $connection, private readonly RightsChrome $chrome, private readonly Config $config)
 	{
 	}
 
@@ -34,7 +34,7 @@ final class RightsRepository
 		$inherited = array_fill_keys([...($byEntity[0] ?? []), ...($entity !== 0 ? ($byEntity[$entity] ?? []) : [])], true);
 
 		$sql = 'SELECT r.id, r.libelle as label, r.module, r.module_origin, r.perms, r.subperms, r.module_position, r.right_position, r.bydefault, r.family, r.family_position';
-		$sql .= ' FROM '.$this->c->prefix().'rights_def as r';
+		$sql .= ' FROM '.$this->connection->prefix().'rights_def as r';
 		$sql .= " WHERE r.libelle NOT LIKE 'tou%'";
 		$sql .= ' AND r.entity = '.$entity;
 		if (!$advancedPerms) {
@@ -44,7 +44,7 @@ final class RightsRepository
 
 		// l.562-589: the family and the positions completed, then the sort key
 		$rows = [];
-		foreach ($this->c->fetchAll($sql) as $obj) {
+		foreach ($this->connection->fetchAll($sql) as $obj) {
 			$family = (string) ($obj->family ?? '');
 			$family = $family === '' ? 'other' : (isset(RightsChrome::FAMILY_POSITIONS[$family]) ? $family : 'external');
 			$familyPosition = (string) ($obj->family_position ?? '');
@@ -58,7 +58,7 @@ final class RightsRepository
 			$rows[] = ['position' => $familyPosition.'_'.$modulePosition.'_'.$obj->id, 'familyPosition' => (int) $familyPosition, 'modulePosition' => $modulePosition, 'obj' => $obj];
 		}
 		// l.595: dol_sort_array($arrayofpermission, 'position'), an asort() of the keys: stable, string order
-		usort($rows, static fn (array $a, array $b): int => $a['position'] <=> $b['position']);
+		usort($rows, static fn (array $left, array $right): int => $left['position'] <=> $right['position']);
 
 		$reception = $this->config->isModuleEnabled('reception');
 		// Grouped by module: perms.php prints a break line at each change of module (l.640), so it would repeat a
@@ -99,7 +99,7 @@ final class RightsRepository
 	public function userRights(int $userId, int $entity): array
 	{
 		$ids = [];
-		foreach ($this->c->fetchAll('SELECT ur.fk_id FROM '.$this->c->prefix().'user_rights as ur WHERE ur.entity = '.$entity.' AND ur.fk_user = '.$userId) as $row) {
+		foreach ($this->connection->fetchAll('SELECT ur.fk_id FROM '.$this->connection->prefix().'user_rights as ur WHERE ur.entity = '.$entity.' AND ur.fk_user = '.$userId) as $row) {
 			$ids[] = (int) $row->fk_id;
 		}
 
@@ -114,7 +114,7 @@ final class RightsRepository
 	 */
 	public function groupRightsByEntity(int $userId, int $entity): array
 	{
-		$prefix = $this->c->prefix();
+		$prefix = $this->connection->prefix();
 		$sql = 'SELECT DISTINCT gr.fk_id, gu.entity';
 		$sql .= ' FROM '.$prefix.'usergroup_rights as gr, '.$prefix.'usergroup_user as gu';
 		$sql .= ' WHERE gr.entity = '.$entity;
@@ -125,7 +125,7 @@ final class RightsRepository
 		$sql .= ' AND gu.fk_user = '.$userId;
 
 		$byEntity = [];
-		foreach ($this->c->fetchAll($sql) as $row) {
+		foreach ($this->connection->fetchAll($sql) as $row) {
 			$byEntity[(int) $row->entity][] = (int) $row->fk_id;
 		}
 

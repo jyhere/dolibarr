@@ -51,7 +51,7 @@ final class RightsCurrentUser implements CurrentUser
 
 	public function hasRight(string $module, string $perm, string $subperm = ''): bool
 	{
-		$normalize = static fn (string $p): string => ['lire' => 'read', 'creer' => 'write', 'create' => 'write', 'supprimer' => 'delete'][$p] ?? $p;
+		$normalize = static fn (string $permission): string => ['lire' => 'read', 'creer' => 'write', 'create' => 'write', 'supprimer' => 'delete'][$permission] ?? $permission;
 		$key = $module.'.'.$normalize($perm).($subperm === '' ? '' : '.'.$normalize($subperm));
 		foreach ($this->rights as $right) {
 			$parts = array_map($normalize, explode('.', $right));

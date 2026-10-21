@@ -12,7 +12,7 @@ final class LegacyTriggersTest extends TestCase
 {
 	public function testTriggersRunReturnsNonNegativeForUserLogout(): void
 	{
-		$t = new LegacyTriggers(LegacyContext::fromGlobals());
-		self::assertGreaterThanOrEqual(0, $t->run('USER_LOGOUT', $GLOBALS['user'], $GLOBALS['user']));
+		$triggers = new LegacyTriggers(LegacyContext::fromGlobals());
+		self::assertGreaterThanOrEqual(0, $triggers->run('USER_LOGOUT', $GLOBALS['user'], $GLOBALS['user']));
 	}
 }

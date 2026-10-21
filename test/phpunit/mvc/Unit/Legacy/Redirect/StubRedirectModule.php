@@ -29,11 +29,11 @@ final class StubRedirectModule implements ModuleInterface
 		return $this->controllers;
 	}
 
-	public function services(Container $c): void
+	public function services(Container $container): void
 	{
 	}
 
-	public function listeners(EventDispatcher $d): void
+	public function listeners(EventDispatcher $dispatcher): void
 	{
 	}
 

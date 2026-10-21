@@ -15,12 +15,12 @@ final class EntityRegistry
 	/**
 	 * @throws \LogicException When the slug is already registered (two modules would silently override each other)
 	 */
-	public function register(EntityDefinition $d): void
+	public function register(EntityDefinition $definition): void
 	{
-		if (isset($this->definitions[$d->slug])) {
-			throw new \LogicException('Entity slug '.$d->slug.' is already registered');
+		if (isset($this->definitions[$definition->slug])) {
+			throw new \LogicException('Entity slug '.$definition->slug.' is already registered');
 		}
-		$this->definitions[$d->slug] = $d;
+		$this->definitions[$definition->slug] = $definition;
 	}
 
 	/**

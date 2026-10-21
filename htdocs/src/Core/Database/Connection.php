@@ -18,9 +18,9 @@ final class Connection
 		return MAIN_DB_PREFIX;
 	}
 
-	public function escape(string $v): string
+	public function escape(string $value): string
 	{
-		return $this->db->escape($v);
+		return $this->db->escape($value);
 	}
 
 	/**

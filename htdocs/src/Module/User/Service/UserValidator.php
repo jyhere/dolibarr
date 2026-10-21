@@ -13,7 +13,7 @@ use Dolibarr\Core\Translator;
  */
 final class UserValidator
 {
-	public function __construct(private readonly Translator $t, private readonly Config $config)
+	public function __construct(private readonly Translator $translator, private readonly Config $config)
 	{
 	}
 
@@ -25,24 +25,24 @@ final class UserValidator
 	 */
 	public function validate(UserInput $in, bool $isCreate, int $currentUsersCount): array
 	{
-		$this->t->load('errors');
+		$this->translator->load('errors');
 		$errors = [];
 
 		if (self::isEmpty($in->lastname)) {
-			$errors[] = $this->t->trans('NameNotDefined');
+			$errors[] = $this->translator->trans('NameNotDefined');
 		}
 		if (self::isEmpty($in->login)) {
-			$errors[] = $this->t->trans('LoginNotDefined');
+			$errors[] = $this->translator->trans('LoginNotDefined');
 		}
 
 		$limit = $this->config->limitUsers();
 		if ($isCreate && $limit > 0 && $currentUsersCount >= $limit) {
-			$errors[] = $this->t->trans('YourQuotaOfUsersIsReached');
+			$errors[] = $this->translator->trans('YourQuotaOfUsersIsReached');
 		}
 
 		if ($in->signature === 'ErrorTooManyLinksIntoHTMLString') {
 			// restricthtml swaps a signature with too many images for this literal: refuse, never store it.
-			$errors[] = $this->t->trans('ErrorTooManyLinksIntoHTMLString');
+			$errors[] = $this->translator->trans('ErrorTooManyLinksIntoHTMLString');
 		}
 
 		if ($in->extraFieldsError !== null) {
@@ -51,13 +51,13 @@ final class UserValidator
 
 		$badChars = $this->config->loginBadCharUnauthorized();
 		if (!self::isEmpty($in->login) && $badChars !== '' && preg_match('/['.preg_quote($badChars, '/').']/', $in->login) === 1) {
-			$errors[] = $this->t->trans('ErrorBadCharIntoLoginName', $this->t->transnoentities('Login'));
+			$errors[] = $this->translator->trans('ErrorBadCharIntoLoginName', $this->translator->transnoentities('Login'));
 		}
 
 		if ($this->config->string('USER_MAIL_REQUIRED') !== '' && $this->config->string('USER_MAIL_REQUIRED') !== '0'
 			&& filter_var($in->email ?? '', FILTER_VALIDATE_EMAIL) === false) {
 			// The email posted goes into a flash message (HTML)
-			$errors[] = $this->t->transHtml('ErrorBadEMail', $in->email ?? '');
+			$errors[] = $this->translator->transHtml('ErrorBadEMail', $in->email ?? '');
 		}
 
 		return $errors;

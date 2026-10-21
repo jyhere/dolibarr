@@ -9,6 +9,10 @@ Run from the parent directory (where `docker-compose.yml` lives):
 
 The route cache lives in `DOL_DATA_ROOT/cache/routes.php` and the legacy redirect table in `DOL_DATA_ROOT/cache/legacy_redirects.php`: delete both on every deploy in prod mode (see below).
 
+## Naming convention
+
+Variables, parameters and properties use descriptive names, in PHP code and in Latte templates alike: `$response`, `$user`, `$form`, never `$r`, `$u`, `$f`. Only two exceptions are allowed: `$i`/`$j` as loop counters, and `$e` for the exception caught by a `catch`. The unit test `ReadableNamesTest` enforces the rule on `htdocs/src` and `test/phpunit/mvc`.
+
 ## Apache
 
 An Apache 2.4 service (`httpd:2.4` + `mod_proxy_fcgi` to the same `php-fpm`) is available as an alternative to nginx, on port 8481:

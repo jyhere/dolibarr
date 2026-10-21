@@ -24,8 +24,8 @@ final class LegacyRedirectBootstrapTest extends TestCase
 
 	protected function tearDown(): void
 	{
-		foreach (glob($this->dir.'/cache/*') ?: [] as $f) {
-			unlink($f);
+		foreach (glob($this->dir.'/cache/*') ?: [] as $file) {
+			unlink($file);
 		}
 		@rmdir($this->dir.'/cache');
 		@rmdir($this->dir);
@@ -90,8 +90,8 @@ final class LegacyRedirectBootstrapTest extends TestCase
 		$main = (string) file_get_contents($root.'/main.inc.php');
 		self::assertMatchesRegularExpression("/if \\(PHP_VERSION_ID >= 80200 && !defined\\(\\s*'DOL_MVC_FRONT'\\s*\\)[^\\n]*legacy_redirect\\.inc\\.php/", $main);
 		$app = (string) file_get_contents($root.'/app.php');
-		$define = preg_match("/define\\(\\s*'DOL_MVC_FRONT'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
-		$require = preg_match("/require\\s+__DIR__\\s*\\.\\s*'\\/main\\.inc\\.php'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
+		$define = preg_match("/define\\(\\s*'DOL_MVC_FRONT'/", $app, $matches, PREG_OFFSET_CAPTURE) === 1 ? $matches[0][1] : false;
+		$require = preg_match("/require\\s+__DIR__\\s*\\.\\s*'\\/main\\.inc\\.php'/", $app, $matches, PREG_OFFSET_CAPTURE) === 1 ? $matches[0][1] : false;
 		self::assertNotFalse($define);
 		self::assertNotFalse($require);
 		self::assertLessThan($require, $define);

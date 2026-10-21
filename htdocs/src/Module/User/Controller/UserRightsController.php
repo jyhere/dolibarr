@@ -46,7 +46,7 @@ final class UserRightsController
 		private readonly CurrentUser $me,
 		private readonly LegacyHooks $hooks,
 		private readonly LegacyObjectLoader $legacy,
-		private readonly Translator $t,
+		private readonly Translator $translator,
 		private readonly UserCardChrome $tabs,
 		private readonly RightsChrome $chrome,
 		private readonly RightsRepository $rights,
@@ -64,11 +64,11 @@ final class UserRightsController
 	 * @throws AccessDeniedException When the current user may not read the user or his rights
 	 */
 	#[Route('/user/{id}/rights', methods: ['GET'], name: 'user_rights', requirements: ['id' => '\d+'])]
-	public function show(Request $r, int $id): ViewModel
+	public function show(Request $request, int $id): ViewModel
 	{
 		[$user, $settings, $legacyUser] = $this->prepare($id);
 		// l.107-111: a GET runs doActions; its standard actions are POSTed to update()
-		$action = $this->param($r, 'action', 'aZ09');
+		$action = $this->param($request, 'action', 'aZ09');
 		$doActions = $this->doActions($settings, $legacyUser, $action);
 
 		// l.100: always the current entity
@@ -92,7 +92,7 @@ final class UserRightsController
 		$header = $this->executeHook('insertExtraHeader', ['permsgroupbyentity' => $byEntity], $legacyUser, $action);
 
 		// l.553-554 and l.622-651: a module is collapsed by forbreakperms_<module>, else by the cookie (numbers of the collapsed modules)
-		$cookie = preg_replace('/^,/', '', $r->cookie('DOLUSER_PERMS_HIDE_GRP') ?? '') ?? '';
+		$cookie = preg_replace('/^,/', '', $request->cookie('DOLUSER_PERMS_HIDE_GRP') ?? '') ?? '';
 		$collapsed = $cookie === '' ? [] : explode(',', $cookie);
 
 		$modules = [];
@@ -101,7 +101,7 @@ final class UserRightsController
 		foreach ($catalog as $module => $rights) {
 			$j++;
 			$moduleMeta = $meta[$module];
-			$hidden = $r->isSet('forbreakperms_'.$module) ? $r->getInt('forbreakperms_'.$module) !== 0 : in_array((string) $j, $collapsed, true);
+			$hidden = $request->isSet('forbreakperms_'.$module) ? $request->getInt('forbreakperms_'.$module) !== 0 : in_array((string) $j, $collapsed, true);
 			$rows = [];
 			foreach ($rights as $right) {
 				$asAdmin = $targetIsAdmin && $moduleMeta['adminAllowed'];
@@ -123,7 +123,7 @@ final class UserRightsController
 				'hidden' => $hidden,
 				'rights' => $rows,
 			];
-			$exposed[] = ['module' => $module, 'rights' => array_map(static fn (RightDefinition $d): array => $d->toArray(), $rights)];
+			$exposed[] = ['module' => $module, 'rights' => array_map(static fn (RightDefinition $definition): array => $definition->toArray(), $rights)];
 		}
 
 		// l.958-962
@@ -134,11 +134,11 @@ final class UserRightsController
 
 		return (new ViewModel('user:user_rights', [
 			'outputBeforeHeader' => $doActions->output,
-			'title' => $personName.' - '.$this->t->trans('Permissions'),
+			'title' => $personName.' - '.$this->translator->trans('Permissions'),
 			'bodyCss' => 'mod-user page-card_perms',
 			'formAction' => $this->urls->generate('user_rights_post', ['id' => $id]),
 			'chrome' => $chrome,
-			'f' => $fragments,
+			'fragments' => $fragments,
 			'canEdit' => $canEdit,
 			'meIsAdmin' => $meIsAdmin,
 			'targetIsAdmin' => $targetIsAdmin,
@@ -157,42 +157,42 @@ final class UserRightsController
 	 * @throws AccessDeniedException When the current user may not read the user, or not edit his rights
 	 */
 	#[Route('/user/{id}/rights', methods: ['POST'], name: 'user_rights_post', requirements: ['id' => '\d+'])]
-	public function update(Request $r, int $id): Response
+	public function update(Request $request, int $id): Response
 	{
 		[$user, $settings, $legacyUser] = $this->prepare($id);
 		// l.134-138: the query string is kept, page_y included (added to the .reposition links by lib_foot.js.php l.230-245)
 		$query = ['id' => $id];
-		$updatedModule = $this->param($r, 'updatedmodulename', 'alpha');
+		$updatedModule = $this->param($request, 'updatedmodulename', 'alpha');
 		if ($updatedModule !== '') {
 			$query['updatedmodulename'] = $updatedModule;
 		}
-		$pageY = $r->getInt('page_y');
+		$pageY = $request->getInt('page_y');
 		if ($pageY > 0) {
 			$query['page_y'] = $pageY;
 		}
 		$back = new RedirectResponse($this->urls->generate('user_rights', $query));
 
 		// Invalid CSRF token (main.inc.php l.456-478, its warning already set): doActions with an empty action, nothing written
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
 			$this->doActions($settings, $legacyUser, '');
 
 			return $back;
 		}
 
 		// l.107-113: the standard actions only when doActions returns 0
-		$action = $this->param($r, 'action', 'aZ09');
+		$action = $this->param($request, 'action', 'aZ09');
 		if ($this->doActions($settings, $legacyUser, $action)->code !== 0) {
 			return $back;
 		}
-		if (!in_array($action, self::ACTIONS, true) || $this->param($r, 'confirm', 'alpha') !== 'yes') {
+		if (!in_array($action, self::ACTIONS, true) || $this->param($request, 'confirm', 'alpha') !== 'yes') {
 			return $back;
 		}
 		if (!$this->perms->canEditRights($user)) {
 			throw new AccessDeniedException();
 		}
 
-		$rightId = $r->getInt('rights');
-		$module = $this->param($r, 'module', 'alpha');
+		$rightId = $request->getInt('rights');
+		$module = $this->param($request, 'module', 'alpha');
 		try {
 			// l.117 and l.145; the service reloads the rights and the menu of the current user when they are his (l.122-128)
 			if ($action === 'addrights') {
@@ -231,7 +231,7 @@ final class UserRightsController
 
 		$settings = $this->tabs->legacyPageSettings('rights');
 		foreach ([...$settings->translationDomains, 'errors'] as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init($settings->hookContexts);
 
@@ -269,9 +269,9 @@ final class UserRightsController
 		return $result;
 	}
 
-	private function param(Request $r, string $name, string $filter): string
+	private function param(Request $request, string $name, string $filter): string
 	{
-		$value = $r->get($name, $filter);
+		$value = $request->get($name, $filter);
 
 		return is_string($value) ? $value : '';
 	}

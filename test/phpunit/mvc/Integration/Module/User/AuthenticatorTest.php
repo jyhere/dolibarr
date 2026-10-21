@@ -28,14 +28,14 @@ final class AuthenticatorTest extends TestCase
 
 	public function testAttemptWithGoodPasswordSucceedsAndBadFails(): void
 	{
-		$a = $this->authenticator();
-		$ok = $a->attempt(self::env('DOLIBARR_ADMIN_LOGIN'), self::env('DOLIBARR_ADMIN_PASSWORD'), 1);
+		$authenticator = $this->authenticator();
+		$ok = $authenticator->attempt(self::env('DOLIBARR_ADMIN_LOGIN'), self::env('DOLIBARR_ADMIN_PASSWORD'), 1);
 		self::assertTrue($ok->ok());
 		self::assertFalse($ok->needsTotp());
 		self::assertSame(self::env('DOLIBARR_ADMIN_LOGIN'), $ok->login());
 		self::assertSame('dolibarr', $ok->authMode());
 
-		$ko = $a->attempt('admin', 'wrong', 1);
+		$ko = $authenticator->attempt('admin', 'wrong', 1);
 		self::assertFalse($ko->ok());
 		self::assertFalse($ko->needsTotp());
 	}

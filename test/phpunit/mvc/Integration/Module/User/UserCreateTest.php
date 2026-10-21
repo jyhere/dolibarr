@@ -115,12 +115,12 @@ final class UserCreateTest extends TestCase
 		self::assertNull($values->dateStartValidity);
 		self::assertSame('/user/list.php', $vm->data['backtopage']);
 		self::assertSame((int) $this->ctx->conf->entity, $vm->data['entity']);
-		$f = $vm->data['f'];
-		self::assertIsArray($f);
-		self::assertStringContainsString('name="fk_user"', $f['supervisor']);
-		self::assertStringContainsString('id="password"', $f['passwordField']);
-		self::assertStringContainsString('name="datestartvalidityday"', $f['dateStartValidity']);
-		self::assertStringContainsString('name="save"', $f['buttons']);
+		$fields = $vm->data['fragments'];
+		self::assertIsArray($fields);
+		self::assertStringContainsString('name="fk_user"', $fields['supervisor']);
+		self::assertStringContainsString('id="password"', $fields['passwordField']);
+		self::assertStringContainsString('name="datestartvalidityday"', $fields['dateStartValidity']);
+		self::assertStringContainsString('name="save"', $fields['buttons']);
 	}
 
 	public function testCreatePersistsAndRedirectsToCard(): void

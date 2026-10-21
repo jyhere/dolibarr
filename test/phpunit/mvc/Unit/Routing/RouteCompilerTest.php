@@ -17,7 +17,7 @@ final class RouteCompilerTest extends TestCase
 	public function testCompilesStaticAndDynamicRoutes(): void
 	{
 		$defs = (new RouteCompiler())->compile([FakeController::class]);
-		$byName = array_column(array_map(static fn(RouteDefinition $d): array => $d->toArray(), $defs), null, 'name');
+		$byName = array_column(array_map(static fn(RouteDefinition $definition): array => $definition->toArray(), $defs), null, 'name');
 		self::assertNull($byName['user_list']['regex']);
 		self::assertSame('#^/user/(?P<id>\d+)$#', $byName['user_show']['regex']);
 		self::assertSame(['id'], $byName['user_show']['variables']);
@@ -31,10 +31,10 @@ final class RouteCompilerTest extends TestCase
 
 	public function testCachedArrayWithoutConstantsDefaultsToNone(): void
 	{
-		$a = (new RouteCompiler())->compile([FakeController::class])[0]->toArray();
-		unset($a['constants']);
+		$data = (new RouteCompiler())->compile([FakeController::class])[0]->toArray();
+		unset($data['constants']);
 
-		self::assertSame([], RouteDefinition::fromArray($a)->constants);
+		self::assertSame([], RouteDefinition::fromArray($data)->constants);
 	}
 
 	public function testRepeatedAttributesDefaultNameRequirementAndEscaping(): void
@@ -49,8 +49,8 @@ final class RouteCompilerTest extends TestCase
 
 	public function testArrayRoundTrip(): void
 	{
-		foreach ((new RouteCompiler())->compile([FakeController::class]) as $d) {
-			self::assertEquals($d, RouteDefinition::fromArray($d->toArray()));
+		foreach ((new RouteCompiler())->compile([FakeController::class]) as $definition) {
+			self::assertEquals($definition, RouteDefinition::fromArray($definition->toArray()));
 		}
 	}
 
@@ -70,8 +70,8 @@ final class RouteCompilerTest extends TestCase
 	public function testMethodsAreUppercased(): void
 	{
 		$byName = [];
-		foreach ((new RouteCompiler())->compile([MethodsController::class]) as $d) {
-			$byName[$d->name] = $d;
+		foreach ((new RouteCompiler())->compile([MethodsController::class]) as $definition) {
+			$byName[$definition->name] = $definition;
 		}
 		self::assertSame(['GET', 'POST'], $byName['lower']->methods);
 		self::assertSame(['HEAD'], $byName['probe_head']->methods);

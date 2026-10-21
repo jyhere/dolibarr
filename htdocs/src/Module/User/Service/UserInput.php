@@ -100,7 +100,7 @@ final class UserInput
 	 * @param User|null      $existing The user being edited, null on a creation
 	 * @param UserFormFields $fields   The rows the form shows to the current user for that user
 	 */
-	public static function fromRequest(Request $r, UserPermissionChecker $perms, ?User $existing, Config $config, UserFormFields $fields): self
+	public static function fromRequest(Request $request, UserPermissionChecker $perms, ?User $existing, Config $config, UserFormFields $fields): self
 	{
 		$update = $existing !== null;
 		// A new user is asked to the checker as a user without id: it is not oneself, not external.
@@ -110,94 +110,94 @@ final class UserInput
 		$password = null;
 		$credentials = $perms->canChangeCredentials($target);
 		if (!$update || ($perms->canSetPassword($target) && $credentials)) {
-			$password = self::text($r, 'password', 'password');
+			$password = self::text($request, 'password', 'password');
 		}
 
 		// l.311 and l.522: the ref employee is protected against deletion when it is not in the form.
-		$refEmployee = $update && !$r->isSet('ref_employee') ? $existing->refEmployee : self::text($r, 'ref_employee');
+		$refEmployee = $update && !$request->isSet('ref_employee') ? $existing->refEmployee : self::text($request, 'ref_employee');
 
 		// l.392-414 and l.595-606: the superadmin flag and the entity are only meaningful to the controller.
-		$entity = $r->isSet('entity') ? (int) $r->getPost('entity', 'int', 0) : null;
+		$entity = $request->isSet('entity') ? (int) $request->getPost('entity', 'int', 0) : null;
 
 		// l.553-556 (update): the warehouse is only in the form with the stock module and MAIN_DEFAULT_WAREHOUSE_USER (l.1541).
-		$warehouseId = $fields->warehouse ? self::id($r, 'fk_warehouse') : $existing?->warehouseId;
+		$warehouseId = $fields->warehouse ? self::id($request, 'fk_warehouse') : $existing?->warehouseId;
 
 		// l.653 (update): the contact link (raw UPDATE of fk_socpeople/fk_soc) only runs when the form carries
 		// contactid, which it only does for an admin on another user (l.2557). Null tells the caller not to touch
 		// the link; toEntity() then keeps the stored ones.
 		$contactId = $companyId = null;
-		if ($update && $perms->canLinkCompany($target) && $r->isSet('contactid')) {
-			$contactId = self::id($r, 'contactid') ?? 0;
-			$companyId = self::id($r, 'socid') ?? 0;
+		if ($update && $perms->canLinkCompany($target) && $request->isSet('contactid')) {
+			$contactId = self::id($request, 'contactid') ?? 0;
+			$companyId = self::id($request, 'socid') ?? 0;
 		}
 
 		$salaryAllowed = $perms->canSeeSalary($target);
-		$money = static fn (string $name, ?float $current): ?float => $salaryAllowed ? self::money($r, $name) : $current;
+		$money = static fn (string $name, ?float $current): ?float => $salaryAllowed ? self::money($request, $name) : $current;
 
-		$color = $fields->color ? self::text($r, 'color') : null;
+		$color = $fields->color ? self::text($request, 'color') : null;
 		$color = $color === null ? null : str_replace('#', '', $color);
 
 		// l.311-314 and l.522-525: the national registration number is protected like the ref employee.
-		$nationalNumber = $update && !$r->isSet('national_registration_number')
+		$nationalNumber = $update && !$request->isSet('national_registration_number')
 			? $existing->nationalRegistrationNumber
-			: self::text($r, 'national_registration_number');
+			: self::text($request, 'national_registration_number');
 
-		$extra = $r->optionals('user', $update);
+		$extra = $request->optionals('user', $update);
 		$extraError = $extra[InputFilter::OPTIONALS_ERROR] ?? null;
 		unset($extra[InputFilter::OPTIONALS_ERROR]);
 
 		$categoryIds = null;
 		if ($fields->categories) {
-			$categories = $r->getPost('usercats', 'array:int', []);
+			$categories = $request->getPost('usercats', 'array:int', []);
 			$categoryIds = is_array($categories) ? array_values(array_map('intval', $categories)) : [];
 		}
 
 		return new self(
-			lastname: self::text($r, 'lastname') ?? '',
-			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) && $credentials ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
-			firstname: self::text($r, 'firstname'),
-			gender: self::text($r, 'gender', 'aZ09'),
-			civility: $fields->civility ? self::text($r, 'civility_code', 'aZ09') : $existing?->civility,
-			lang: $fields->language ? self::text($r, 'default_lang', 'aZ09') : $existing?->lang,
-			email: $credentials ? self::email($r) : $existing?->email,
-			job: self::text($r, 'job'),
-			officePhone: self::text($r, 'office_phone'),
-			officeFax: self::text($r, 'office_fax'),
-			userMobile: self::text($r, 'user_mobile'),
-			address: self::text($r, 'address'),
-			zip: self::text($r, 'zipcode'),
-			town: self::text($r, 'town'),
-			countryId: (int) $r->getPost('country_id', 'int', 0),
-			stateId: $fields->state ? (int) $r->getPost('state_id', 'int', 0) : $existing?->stateId,
-			signature: self::text($r, 'signature', 'restricthtml'),
-			notePublic: $update ? null : self::text($r, 'note_public', 'restricthtml'),
-			notePrivate: $update ? null : self::text($r, 'note_private', 'restricthtml'),
-			accountancyCode: $fields->accountancyCode ? self::text($r, 'accountancy_code') : $existing?->accountancyCode,
+			lastname: self::text($request, 'lastname') ?? '',
+			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) && $credentials ? (self::text($request, 'login') ?? '') : ($existing === null ? '' : $existing->login),
+			firstname: self::text($request, 'firstname'),
+			gender: self::text($request, 'gender', 'aZ09'),
+			civility: $fields->civility ? self::text($request, 'civility_code', 'aZ09') : $existing?->civility,
+			lang: $fields->language ? self::text($request, 'default_lang', 'aZ09') : $existing?->lang,
+			email: $credentials ? self::email($request) : $existing?->email,
+			job: self::text($request, 'job'),
+			officePhone: self::text($request, 'office_phone'),
+			officeFax: self::text($request, 'office_fax'),
+			userMobile: self::text($request, 'user_mobile'),
+			address: self::text($request, 'address'),
+			zip: self::text($request, 'zipcode'),
+			town: self::text($request, 'town'),
+			countryId: (int) $request->getPost('country_id', 'int', 0),
+			stateId: $fields->state ? (int) $request->getPost('state_id', 'int', 0) : $existing?->stateId,
+			signature: self::text($request, 'signature', 'restricthtml'),
+			notePublic: $update ? null : self::text($request, 'note_public', 'restricthtml'),
+			notePrivate: $update ? null : self::text($request, 'note_private', 'restricthtml'),
+			accountancyCode: $fields->accountancyCode ? self::text($request, 'accountancy_code') : $existing?->accountancyCode,
 			refEmployee: $refEmployee,
 			color: $fields->color ? $color : $existing?->color,
-			admin: $perms->canEditAdminFlag($target) ? (bool) $r->getPost('admin', 'int', 0) : ($existing->admin ?? false),
-			employee: (bool) $r->getPost('employee', 'int', 0),
-			supervisorId: $fields->hierarchy ? self::id($r, 'fk_user') : $existing?->supervisorId,
-			expenseValidatorId: $fields->expenseValidator ? self::id($r, 'fk_user_expense_validator') : $existing?->expenseValidatorId,
-			holidayValidatorId: $fields->holidayValidator ? self::id($r, 'fk_user_holiday_validator') : $existing?->holidayValidatorId,
+			admin: $perms->canEditAdminFlag($target) ? (bool) $request->getPost('admin', 'int', 0) : ($existing->admin ?? false),
+			employee: (bool) $request->getPost('employee', 'int', 0),
+			supervisorId: $fields->hierarchy ? self::id($request, 'fk_user') : $existing?->supervisorId,
+			expenseValidatorId: $fields->expenseValidator ? self::id($request, 'fk_user_expense_validator') : $existing?->expenseValidatorId,
+			holidayValidatorId: $fields->holidayValidator ? self::id($request, 'fk_user_holiday_validator') : $existing?->holidayValidatorId,
 			warehouseId: $warehouseId,
 			salary: $money('salary', $existing?->salary),
 			salaryExtra: $money('salaryextra', $existing?->salaryExtra),
 			thm: $money('thm', $existing?->thm),
 			tjm: $money('tjm', $existing?->tjm),
 			weeklyHours: $money('weeklyhours', $existing?->weeklyHours),
-			dateEmployment: self::dateFromParts($r, 'dateemployment'),
-			dateEmploymentEnd: self::dateFromParts($r, 'dateemploymentend'),
-			dateStartValidity: self::dateFromParts($r, 'datestartvalidity'),
-			dateEndValidity: self::dateFromParts($r, 'dateendvalidity'),
-			birth: self::dateFromParts($r, 'dateofbirth'),
+			dateEmployment: self::dateFromParts($request, 'dateemployment'),
+			dateEmploymentEnd: self::dateFromParts($request, 'dateemploymentend'),
+			dateStartValidity: self::dateFromParts($request, 'datestartvalidity'),
+			dateEndValidity: self::dateFromParts($request, 'dateendvalidity'),
+			birth: self::dateFromParts($request, 'dateofbirth'),
 			extraFields: $extra,
 			password: $password,
 			categoryIds: $categoryIds,
 			contactId: $contactId,
 			companyId: $companyId,
-			forcePasswordChange: $fields->forcePasswordChange ? (bool) $r->getPost('forcepasswordchange', 'int', 0) : ($existing->forcePasswordChange ?? false),
-			superadmin: (bool) $r->getPost('superadmin', 'int', 0),
+			forcePasswordChange: $fields->forcePasswordChange ? (bool) $request->getPost('forcepasswordchange', 'int', 0) : ($existing->forcePasswordChange ?? false),
+			superadmin: (bool) $request->getPost('superadmin', 'int', 0),
 			entity: $entity,
 			nationalRegistrationNumber: $nationalNumber,
 			extraFieldsError: is_string($extraError) ? $extraError : null
@@ -280,11 +280,11 @@ final class UserInput
 	 * null unless day, month and year are all given and make a real date (year 1 to 9999). An impossible
 	 * date such as 30 February gives null, where legacy dol_mktime() normalises it; no message is raised.
 	 */
-	private static function dateFromParts(Request $r, string $name): ?\DateTimeImmutable
+	private static function dateFromParts(Request $request, string $name): ?\DateTimeImmutable
 	{
-		$day = $r->getInt($name.'day');
-		$month = $r->getInt($name.'month');
-		$year = $r->getInt($name.'year');
+		$day = $request->getInt($name.'day');
+		$month = $request->getInt($name.'month');
+		$year = $request->getInt($name.'year');
 		if ($day <= 0 || $month <= 0 || $year <= 0 || $year > 9999 || !checkdate($month, $day, $year)) {
 			return null;
 		}
@@ -295,9 +295,9 @@ final class UserInput
 	/**
 	 * A form text field, null when absent or empty.
 	 */
-	private static function text(Request $r, string $name, string $filter = 'alphanohtml'): ?string
+	private static function text(Request $request, string $name, string $filter = 'alphanohtml'): ?string
 	{
-		$value = $r->getPost($name, $filter, '');
+		$value = $request->getPost($name, $filter, '');
 
 		return is_string($value) && $value !== '' ? $value : null;
 	}
@@ -305,9 +305,9 @@ final class UserInput
 	/**
 	 * The email without any whitespace (card.php l.348).
 	 */
-	private static function email(Request $r): ?string
+	private static function email(Request $request): ?string
 	{
-		$value = self::text($r, 'email');
+		$value = self::text($request, 'email');
 		$value = $value === null ? null : preg_replace('/\s+/', '', $value);
 
 		return $value === null || $value === '' ? null : $value;
@@ -316,9 +316,9 @@ final class UserInput
 	/**
 	 * An id field: null unless positive (card.php l.362-364).
 	 */
-	private static function id(Request $r, string $name): ?int
+	private static function id(Request $request, string $name): ?int
 	{
-		$id = (int) $r->getPost($name, 'int', 0);
+		$id = (int) $request->getPost($name, 'int', 0);
 
 		return $id > 0 ? $id : null;
 	}
@@ -326,12 +326,12 @@ final class UserInput
 	/**
 	 * A money or hours field (GETPOSTFLOAT then price2num), null when empty (card.php l.371-380).
 	 */
-	private static function money(Request $r, string $name): ?float
+	private static function money(Request $request, string $name): ?float
 	{
-		if (self::text($r, $name) === null) {
+		if (self::text($request, $name) === null) {
 			return null;
 		}
 
-		return (float) $r->getPost($name, 'float', 0.0);
+		return (float) $request->getPost($name, 'float', 0.0);
 	}
 }

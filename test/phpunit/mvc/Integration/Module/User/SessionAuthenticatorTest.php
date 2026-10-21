@@ -72,8 +72,8 @@ final class SessionAuthenticatorTest extends TestCase
 		$dispatcher = new EventDispatcher();
 		(new LegacyTriggerBridge(new LegacyTriggers($ctx), $ctx, new LegacyObjectLoader(new Connection($ctx->db)), new Logger()))->register($dispatcher);
 		$received = [];
-		$dispatcher->addListener(UserLoggedIn::class, static function (UserLoggedIn $e) use (&$received): void {
-			$received[] = $e;
+		$dispatcher->addListener(UserLoggedIn::class, static function (UserLoggedIn $event) use (&$received): void {
+			$received[] = $event;
 		});
 
 		try {

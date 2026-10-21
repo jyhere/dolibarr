@@ -21,16 +21,16 @@ final class RouteMatcherTest extends TestCase
 
 	public function testMatchesStaticRoute(): void
 	{
-		$m = $this->matcher()->match('POST', '/login');
-		self::assertSame('login', $m->route->name);
-		self::assertSame([], $m->params);
+		$match = $this->matcher()->match('POST', '/login');
+		self::assertSame('login', $match->route->name);
+		self::assertSame([], $match->params);
 	}
 
 	public function testMatchesDynamicRouteAndExtractsParams(): void
 	{
-		$m = $this->matcher()->match('GET', '/user/42');
-		self::assertSame(['id' => '42'], $m->params);
-		self::assertSame('user_show', $m->route->name);
+		$match = $this->matcher()->match('GET', '/user/42');
+		self::assertSame(['id' => '42'], $match->params);
+		self::assertSame('user_show', $match->route->name);
 	}
 
 	public function testNonNumericIdIsNotFound(): void
@@ -68,15 +68,15 @@ final class RouteMatcherTest extends TestCase
 
 	public function testLowercaseDeclaredMethodsMatch(): void
 	{
-		$m = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
-		self::assertSame('lower', $m->match('post', '/lower')->route->name);
+		$matcher = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
+		self::assertSame('lower', $matcher->match('post', '/lower')->route->name);
 	}
 
 	public function testExplicitHeadRouteWinsOverTheGetFallback(): void
 	{
-		$m = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
-		self::assertSame('probe_head', $m->match('HEAD', '/probe')->route->name);
-		self::assertSame('probe_get', $m->match('GET', '/probe')->route->name);
+		$matcher = new RouteMatcher((new RouteCompiler())->compile([MethodsController::class]));
+		self::assertSame('probe_head', $matcher->match('HEAD', '/probe')->route->name);
+		self::assertSame('probe_get', $matcher->match('GET', '/probe')->route->name);
 	}
 
 	public function testHeadFallsBackToGet(): void

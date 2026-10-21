@@ -12,30 +12,30 @@ final class LegacyHooksTest extends TestCase
 {
 	public function testHooksWithoutModulesReturnCodeZero(): void
 	{
-		$h = new LegacyHooks($GLOBALS['hookmanager']);
-		$h->init(['usercard']);
-		$o = null;
-		$a = 'view';
-		$r = $h->execute('formObjectOptions', ['id' => 1], $o, $a);
-		self::assertSame(0, $r->code);
-		self::assertSame('', $r->print);
-		self::assertSame('', $r->output);
+		$hooks = new LegacyHooks($GLOBALS['hookmanager']);
+		$hooks->init(['usercard']);
+		$object = null;
+		$action = 'view';
+		$result = $hooks->execute('formObjectOptions', ['id' => 1], $object, $action);
+		self::assertSame(0, $result->code);
+		self::assertSame('', $result->print);
+		self::assertSame('', $result->output);
 	}
 
 	public function testEchoedOutputIsCapturedApartFromResPrint(): void
 	{
 		$hm = new \HookManager($GLOBALS['db']);
 		ScriptedHooks::register($hm, 'usercard', new ScriptedHooks(['formObjectOptions' => ['echo' => '<i>echoed</i>', 'print' => '<b>printed</b>', 'code' => 0]]));
-		$o = null;
-		$a = '';
+		$object = null;
+		$action = '';
 
 		ob_start();
-		$r = (new LegacyHooks($hm))->execute('formObjectOptions', [], $o, $a);
+		$result = (new LegacyHooks($hm))->execute('formObjectOptions', [], $object, $action);
 		$leaked = (string) ob_get_clean();
 
 		self::assertSame('', $leaked);
-		self::assertSame('<i>echoed</i>', $r->output);
-		self::assertSame('<b>printed</b>', $r->print);
+		self::assertSame('<i>echoed</i>', $result->output);
+		self::assertSame('<b>printed</b>', $result->print);
 	}
 
 	public function testOutputBufferIsClosedWhenTheHookThrows(): void
@@ -61,11 +61,11 @@ final class LegacyHooksTest extends TestCase
 				throw new \RuntimeException('boom');
 			}
 		});
-		$o = null;
-		$a = '';
+		$object = null;
+		$action = '';
 		$level = ob_get_level();
 		try {
-			(new LegacyHooks($hm))->execute('formObjectOptions', [], $o, $a);
+			(new LegacyHooks($hm))->execute('formObjectOptions', [], $object, $action);
 			self::fail('The exception must go through');
 		} catch (\RuntimeException $e) {
 			self::assertSame('boom', $e->getMessage());
@@ -77,12 +77,12 @@ final class LegacyHooksTest extends TestCase
 	{
 		$hm = new \HookManager($GLOBALS['db']);
 		ScriptedHooks::register($hm, 'usercard', new ScriptedHooks(['doActions' => ['code' => -1, 'error' => 'E0', 'errors' => ['E1', 'E2']]]));
-		$o = null;
-		$a = '';
+		$object = null;
+		$action = '';
 
-		$r = (new LegacyHooks($hm))->execute('doActions', [], $o, $a);
+		$result = (new LegacyHooks($hm))->execute('doActions', [], $object, $action);
 
-		self::assertTrue($r->failed());
-		self::assertSame(['E0', 'E1', 'E2'], $r->errors);
+		self::assertTrue($result->failed());
+		self::assertSame(['E0', 'E1', 'E2'], $result->errors);
 	}
 }

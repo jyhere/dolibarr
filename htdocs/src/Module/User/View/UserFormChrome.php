@@ -123,136 +123,136 @@ final class UserFormChrome
 		$formName = $mode === 'create' ? 'createuser' : 'updateuser';
 		$entity = (string) $conf->entity;
 		$exclude = [$values->id > 0 ? $values->id : null];
-		$f = [];
+		$fragments = [];
 
 		// l.1077-1079
-		$f['ficheHead'] = $this->capture(static fn () => dol_get_fiche_head([], '', '', 0, ''));
-		$f['focusJs'] = $this->capture(static fn () => dol_set_focus('#lastname'));
+		$fragments['ficheHead'] = $this->capture(static fn () => dol_get_fiche_head([], '', '', 0, ''));
+		$fragments['focusJs'] = $this->capture(static fn () => dol_set_focus('#lastname'));
 
 		if ($show['civility']) {
 			// l.1083
-			$f['civility'] = $this->capture(static fn () => $formcompany->select_civility((string) $values->civility, 'civility_code'));
+			$fragments['civility'] = $this->capture(static fn () => $formcompany->select_civility((string) $values->civility, 'civility_code'));
 		}
 
 		if ($show['admin']) {
 			// l.1172-1174
-			$f['adminLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Administrator'), $langs->trans('AdministratorDesc'), 1, 'help'));
-			$f['admin'] = $this->capture(static fn () => $form->selectyesno('admin', $values->admin ? '1' : '0', 1, false, 0, 1));
+			$fragments['adminLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Administrator'), $langs->trans('AdministratorDesc'), 1, 'help'));
+			$fragments['admin'] = $this->capture(static fn () => $form->selectyesno('admin', $values->admin ? '1' : '0', 1, false, 0, 1));
 			if ($show['superadmin']) {
-				$f['admin'] .= $this->superadmin($values->entity === 0 && $values->admin);
+				$fragments['admin'] .= $this->superadmin($values->entity === 0 && $values->admin);
 			}
 		}
 
 		// l.1206-1208
 		$arraygender = ['man' => $langs->trans('Genderman'), 'woman' => $langs->trans('Genderwoman'), 'other' => $langs->trans('Genderother')];
-		$f['gender'] = $this->capture(static fn () => $form->selectarray('gender', $arraygender, (string) $values->gender, 1));
+		$fragments['gender'] = $this->capture(static fn () => $form->selectarray('gender', $arraygender, (string) $values->gender, 1));
 
 		// l.1220-1257
 		$picto = img_picto('', 'user', 'class="pictofixedwidth"');
-		$f['supervisor'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->supervisorId ?? '', 'fk_user', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
+		$fragments['supervisor'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->supervisorId ?? '', 'fk_user', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
 		if ($show['expenseValidator']) {
-			$f['expenseValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserExpenseValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
-			$f['expenseValidator'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->expenseValidatorId ?? '', 'fk_user_expense_validator', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
+			$fragments['expenseValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserExpenseValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
+			$fragments['expenseValidator'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->expenseValidatorId ?? '', 'fk_user_expense_validator', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
 		}
 		if ($show['holidayValidator']) {
-			$f['holidayValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserHolidayValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
-			$f['holidayValidator'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->holidayValidatorId ?? '', 'fk_user_holiday_validator', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
+			$fragments['holidayValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserHolidayValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
+			$fragments['holidayValidator'] = $picto.$this->capture(static fn () => $form->select_dolusers($values->holidayValidatorId ?? '', 'fk_user_holiday_validator', 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'maxwidth300 widthcentpercentminusx'));
 		}
 
 		// l.1262-1264
-		$f['internal'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Internal'), $langs->trans('InternalExternalDesc'), 1, 'help', '', 0, 2));
+		$fragments['internal'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Internal'), $langs->trans('InternalExternalDesc'), 1, 'help', '', 0, 2));
 
 		// l.1270-1274
-		$f['dateStartValidity'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateStartValidity), 'datestartvalidity', 0, 0, 1, 'formdatestartvalidity', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('from')));
-		$f['dateEndValidity'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEndValidity), 'dateendvalidity', 0, 0, 1, 'formdateendvalidity', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('to')));
+		$fragments['dateStartValidity'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateStartValidity), 'datestartvalidity', 0, 0, 1, 'formdatestartvalidity', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('from')));
+		$fragments['dateEndValidity'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEndValidity), 'dateendvalidity', 0, 0, 1, 'formdateendvalidity', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('to')));
 
-		$f['passwordField'] = $this->passwordField($object, $password ?? getRandomPassword(false));
+		$fragments['passwordField'] = $this->passwordField($object, $password ?? getRandomPassword(false));
 
 		// l.1364-1390
-		$f['addressLabel'] = $this->capture(static fn () => $form->editfieldkey('Address', 'address', '', $object, 0));
-		$f['zipLabel'] = $this->capture(static fn () => $form->editfieldkey('Zip', 'zipcode', '', $object, 0));
-		$f['zip'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->zip, 'zipcode', ['town', 'selectcountry_id', 'state_id'], 6));
-		$f['townLabel'] = $this->capture(static fn () => $form->editfieldkey('Town', 'town', '', $object, 0));
-		$f['town'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->town, 'town', ['zipcode', 'selectcountry_id', 'state_id']));
+		$fragments['addressLabel'] = $this->capture(static fn () => $form->editfieldkey('Address', 'address', '', $object, 0));
+		$fragments['zipLabel'] = $this->capture(static fn () => $form->editfieldkey('Zip', 'zipcode', '', $object, 0));
+		$fragments['zip'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->zip, 'zipcode', ['town', 'selectcountry_id', 'state_id'], 6));
+		$fragments['townLabel'] = $this->capture(static fn () => $form->editfieldkey('Town', 'town', '', $object, 0));
+		$fragments['town'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->town, 'town', ['zipcode', 'selectcountry_id', 'state_id']));
 		$countryId = $values->countryId !== null && $values->countryId > 0 ? $values->countryId : '';
-		$f['countryLabel'] = $this->capture(static fn () => $form->editfieldkey('Country', 'selectcountry_id', '', $object, 0));
-		$f['country'] = img_picto('', 'country', 'class="pictofixedwidth"')
+		$fragments['countryLabel'] = $this->capture(static fn () => $form->editfieldkey('Country', 'selectcountry_id', '', $object, 0));
+		$fragments['country'] = img_picto('', 'country', 'class="pictofixedwidth"')
 			.$this->capture(static fn () => $form->select_country($countryId, 'country_id'))
 			.($me !== null && !empty($me->admin) ? info_admin($langs->trans('YouCanChangeValuesForThisListFromDictionarySetup'), 1) : '');
 		if ($show['state']) {
 			// l.1393-1396
-			$f['stateLabel'] = $this->capture(static fn () => $form->editfieldkey('State', 'state_id', '', $object, 0));
-			$f['state'] = img_picto('', 'state', 'class="pictofixedwidth"')
+			$fragments['stateLabel'] = $this->capture(static fn () => $form->editfieldkey('State', 'state_id', '', $object, 0));
+			$fragments['state'] = img_picto('', 'state', 'class="pictofixedwidth"')
 				.$this->capture(static fn () => $formcompany->select_state_ajax('country_id', $values->stateId ?? 0, $countryId === '' ? 0 : $countryId, 'state_id'));
 		}
 
 		// l.1400-1434
 		$phoneCountry = $countryId === '' ? 0 : $countryId;
-		$f['officePhone'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officePhone, 'office_phone', $phoneCountry, 'object_phoning', 'maxwidth200 widthcentpercentminusx'));
-		$f['userMobile'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->userMobile, 'user_mobile', $phoneCountry, 'object_phoning_mobile', 'maxwidth200 widthcentpercentminusx'));
-		$f['officeFax'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officeFax, 'office_fax', $phoneCountry, 'object_phoning_fax', 'maxwidth200 widthcentpercentminusx'));
+		$fragments['officePhone'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officePhone, 'office_phone', $phoneCountry, 'object_phoning', 'maxwidth200 widthcentpercentminusx'));
+		$fragments['userMobile'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->userMobile, 'user_mobile', $phoneCountry, 'object_phoning_mobile', 'maxwidth200 widthcentpercentminusx'));
+		$fragments['officeFax'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officeFax, 'office_fax', $phoneCountry, 'object_phoning_fax', 'maxwidth200 widthcentpercentminusx'));
 		// l.1440
-		$f['emailPicto'] = img_picto('', 'object_email', 'class="pictofixedwidth"');
+		$fragments['emailPicto'] = img_picto('', 'object_email', 'class="pictofixedwidth"');
 
 		if ($show['color']) {
 			// l.1473
-			$f['color'] = $this->capture(static fn () => \FormOther::selectColor((string) $values->color, 'color', null, 1, [], 'hideifnotset'));
+			$fragments['color'] = $this->capture(static fn () => \FormOther::selectColor((string) $values->color, 'color', null, 1, [], 'hideifnotset'));
 		}
 		if ($show['categories']) {
 			// l.1479-1480: selectCategories() reads the posted usercats itself
 			require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
-			$f['categoriesLabel'] = $this->capture(static fn () => $form->editfieldkey('Categories', 'usercats', '', $object, 0));
-			$f['categories'] = $this->capture(static fn () => $form->selectCategories(\Categorie::TYPE_USER, 'usercats', $object));
+			$fragments['categoriesLabel'] = $this->capture(static fn () => $form->editfieldkey('Categories', 'usercats', '', $object, 0));
+			$fragments['categories'] = $this->capture(static fn () => $form->selectCategories(\Categorie::TYPE_USER, 'usercats', $object));
 		}
 		if ($show['language']) {
 			// l.1486-1488
-			$f['languageLabel'] = $this->capture(static fn () => $form->editfieldkey('DefaultLang', 'default_lang', '', $object, 0, 'string', '', 0, 0, 'id', $langs->trans('WarningNotLangOfInterface', $langs->transnoentitiesnoconv('UserGUISetup'))));
-			$f['language'] = img_picto('', 'language', 'class="pictofixedwidth"')
+			$fragments['languageLabel'] = $this->capture(static fn () => $form->editfieldkey('DefaultLang', 'default_lang', '', $object, 0, 'string', '', 0, 0, 'id', $langs->trans('WarningNotLangOfInterface', $langs->transnoentitiesnoconv('UserGUISetup'))));
+			$fragments['language'] = img_picto('', 'language', 'class="pictofixedwidth"')
 				.$this->capture(static fn () => $formadmin->select_language((string) $values->lang, 'default_lang', 0, [], 1, 0, 0, 'maxwidth300 widthcentpercentminusx'));
 		}
 
 		// l.1502-1503
-		$f['extrafields'] = $this->extrafields($object);
+		$fragments['extrafields'] = $this->extrafields($object);
 
 		// l.1506-1531
 		$acceptlocallinktomedia = (acceptLocalLinktoMedia() > 0 ? 1 : 0);
 		$signature = new \DolEditor('signature', (string) $values->signature, '', 138, 'dolibarr_notes', 'In', true, (bool) $acceptlocallinktomedia, !getDolGlobalString('FCKEDITOR_ENABLE_USERSIGN') ? 0 : 1, \ROWS_4, '90%');
-		$f['signature'] = $this->capture(static fn () => $signature->Create(1));
+		$fragments['signature'] = $this->capture(static fn () => $signature->Create(1));
 		$notePublic = new \DolEditor('note_public', (string) $values->notePublic, '', 100, 'dolibarr_notes', '', false, true, getDolGlobalString('FCKEDITOR_ENABLE_NOTE_PUBLIC'), \ROWS_3, '90%');
-		$f['notePublic'] = $this->capture(static fn () => $notePublic->Create());
+		$fragments['notePublic'] = $this->capture(static fn () => $notePublic->Create());
 		$notePrivate = new \DolEditor('note_private', (string) $values->notePrivate, '', 100, 'dolibarr_notes', '', false, true, getDolGlobalString('FCKEDITOR_ENABLE_NOTE_PRIVATE'), \ROWS_3, '90%');
-		$f['notePrivate'] = $this->capture(static fn () => $notePrivate->Create());
+		$fragments['notePrivate'] = $this->capture(static fn () => $notePrivate->Create());
 
 		if ($show['warehouse']) {
 			// l.1542-1543
 			require_once DOL_DOCUMENT_ROOT.'/product/class/html.formproduct.class.php';
 			$formproduct = new \FormProduct($db);
-			$f['warehouse'] = $this->capture(static fn () => $formproduct->selectWarehouses($values->warehouseId ?? '', 'fk_warehouse', 'warehouseopen', 1));
+			$fragments['warehouse'] = $this->capture(static fn () => $formproduct->selectWarehouses($values->warehouseId ?? '', 'fk_warehouse', 'warehouseopen', 1));
 		}
 
 		if ($show['salary']) {
 			// l.1554-1581
 			$langs->load('salaries');
-			$f['thmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('THM'), $langs->trans('THMDescription'), 1, 'help', 'classthm'));
-			$f['tjmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('TJM'), $langs->trans('TJMDescription'), 1, 'help', 'classtjm'));
-			$f['salaryPicto'] = img_picto('', 'salary', 'class="pictofixedwidth paddingright"');
+			$fragments['thmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('THM'), $langs->trans('THMDescription'), 1, 'help', 'classthm'));
+			$fragments['tjmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('TJM'), $langs->trans('TJMDescription'), 1, 'help', 'classtjm'));
+			$fragments['salaryPicto'] = img_picto('', 'salary', 'class="pictofixedwidth paddingright"');
 		}
 
 		// l.1594-1606
-		$f['dateEmployment'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEmployment), 'dateemployment', 0, 0, 1, 'formdateemployment', 1, 1, 0, '', '', '', '', 1, '', $langs->trans('from')));
-		$f['dateEmploymentEnd'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEmploymentEnd), 'dateemploymentend', 0, 0, 1, 'formdateemploymentend', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('to')));
+		$fragments['dateEmployment'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEmployment), 'dateemployment', 0, 0, 1, 'formdateemployment', 1, 1, 0, '', '', '', '', 1, '', $langs->trans('from')));
+		$fragments['dateEmploymentEnd'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->dateEmploymentEnd), 'dateemploymentend', 0, 0, 1, 'formdateemploymentend', 1, 0, 0, '', '', '', '', 1, '', $langs->trans('to')));
 		// l.1611
-		$f['dateOfBirth'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->birth), 'dateofbirth', 0, 0, 1, $formName, 1, 0, 0, '', '', '', '', 1, '', '', 'tzserver'));
+		$fragments['dateOfBirth'] = $this->capture(static fn () => $form->selectDate(self::timestamp($values->birth), 'dateofbirth', 0, 0, 1, $formName, 1, 0, 0, '', '', '', '', 1, '', '', 'tzserver'));
 
 		// l.1617-1619
-		$f['ficheEnd'] = $this->capture(static fn () => dol_get_fiche_end());
-		$f['buttons'] = $this->capture(static fn () => $form->buttonsSaveCancel('CreateUser'));
+		$fragments['ficheEnd'] = $this->capture(static fn () => dol_get_fiche_end());
+		$fragments['buttons'] = $this->capture(static fn () => $form->buttonsSaveCancel('CreateUser'));
 
 		// l.3360-3362, printed after the form
 		$usegenericrule = getDolGlobalString('USER_PASSWORD_GENERATED') == 'none' ? 1 : 0;
-		$f['passwordJs'] = $this->capture(static fn () => dolJSToSetRandomPassword('password', 'generate_password', $usegenericrule));
+		$fragments['passwordJs'] = $this->capture(static fn () => dolJSToSetRandomPassword('password', 'generate_password', $usegenericrule));
 
-		return $f;
+		return $fragments;
 	}
 
 	/**
@@ -281,7 +281,7 @@ final class UserFormChrome
 		$canEdit = $edit->canEdit;
 		$ldap = $values->isLdapManaged;
 		$domainUser = $ldap ? ' ('.$langs->trans('DomainUser').')' : '';
-		$f = [];
+		$fragments = [];
 
 		// l.1638-1643: rights of the edited user (read by the "force password change" row)
 		if (!getDolGlobalString('MULTICOMPANY_TRANSVERSE_MODE')) {
@@ -298,14 +298,14 @@ final class UserFormChrome
 				$head[$i][0] = $this->urls->generate('user_show', ['id' => $values->id]);
 			}
 		}
-		$f['ficheHead'] = $this->capture(static fn () => dol_get_fiche_head($head, 'user', $langs->trans('User'), 0, 'user'));
+		$fragments['ficheHead'] = $this->capture(static fn () => dol_get_fiche_head($head, 'user', $langs->trans('User'), 0, 'user'));
 
 		// l.2552-2611: internal or external, the third party and contact selectors for an admin on another user
 		if ($edit->canLinkCompany) {
 			$events = [['method' => 'getContacts', 'url' => dol_buildpath('/core/ajax/contacts.php?showempty=1&token='.currentToken(), 1), 'htmlname' => 'contactid', 'params' => ['add-customer-contact' => 'disabled']]];
 			$socid = $values->companyId !== null && $values->companyId > 0 ? $values->companyId : 0;
 			$contactId = $values->contactId !== null && $values->contactId > 0 ? $values->contactId : 0;
-			$f['company'] = img_picto('', 'company', 'class="pictofixedwidth"')
+			$fragments['company'] = img_picto('', 'company', 'class="pictofixedwidth"')
 				.$this->capture(static fn () => $form->select_company($socid, 'socid', '', '&nbsp;', 0, 0, $events, 0, 'widthcentpercentminusxx'.($socid > 0 || $contactId > 0 ? '  ' : ' ').'maxwidth300'))
 				.'<span class="clearbothonsmartphone"></span>'
 				.img_picto('', 'contact', 'class="pictofixedwidth"')
@@ -313,25 +313,25 @@ final class UserFormChrome
 				.($socid > 0 || $contactId > 0 ? $domainUser : '');
 		} else {
 			$type = $langs->trans($values->isExternal() ? 'External' : 'Internal');
-			$f['externalType'] = $this->capture(static fn () => $form->textwithpicto($type, $langs->trans('InternalExternalDesc'))).$domainUser;
+			$fragments['externalType'] = $this->capture(static fn () => $form->textwithpicto($type, $langs->trans('InternalExternalDesc'))).$domainUser;
 		}
 
 		// l.2613-2694: the admin flag
-		$f['adminLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Administrator'), $langs->trans('AdministratorDesc')));
-		$f['admin'] = $this->adminEdit($object, $values, $fields->admin);
+		$fragments['adminLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Administrator'), $langs->trans('AdministratorDesc')));
+		$fragments['admin'] = $this->adminEdit($object, $values, $fields->admin);
 
 		if ($show['civility'] && $canEdit && !$ldap) {
 			// l.2700
-			$f['civility'] = $this->capture(static fn () => $formcompany->select_civility((string) $values->civility, 'civility_code'));
+			$fragments['civility'] = $this->capture(static fn () => $formcompany->select_civility((string) $values->civility, 'civility_code'));
 		}
 
 		// l.2708-2716
 		$arraygender = ['man' => $langs->trans('Genderman'), 'woman' => $langs->trans('Genderwoman'), 'other' => $langs->trans('Genderother')];
-		$f['gender'] = $canEdit
+		$fragments['gender'] = $canEdit
 			? $this->capture(static fn () => $form->selectarray('gender', $arraygender, (string) $values->gender, 1))
 			: dol_escape_htmltag($arraygender[(string) $values->gender] ?? '');
 		// l.2720
-		$f['employeeLabel'] = $this->capture(static fn () => $form->editfieldkey('Employee', 'employee', '', $object, 0));
+		$fragments['employeeLabel'] = $this->capture(static fn () => $form->editfieldkey('Employee', 'employee', '', $object, 0));
 
 		if ($show['hierarchy']) {
 			// l.2735-2789
@@ -341,14 +341,14 @@ final class UserFormChrome
 			$select = fn (?int $selected, string $name): string => $canEdit
 				? $picto.$this->capture(static fn () => $form->select_dolusers($selected ?? '', $name, 1, $exclude, 0, '', '', $entity, 0, 0, '', 0, '', 'widthcentpercentminusx maxwidth300'))
 				: $this->userLink($selected ?? 0);
-			$f['supervisor'] = $select($values->supervisorId, 'fk_user');
+			$fragments['supervisor'] = $select($values->supervisorId, 'fk_user');
 			if ($show['expenseValidator']) {
-				$f['expenseValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserExpenseValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
-				$f['expenseValidator'] = $select($values->expenseValidatorId, 'fk_user_expense_validator');
+				$fragments['expenseValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserExpenseValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
+				$fragments['expenseValidator'] = $select($values->expenseValidatorId, 'fk_user_expense_validator');
 			}
 			if ($show['holidayValidator']) {
-				$f['holidayValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserHolidayValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
-				$f['holidayValidator'] = $select($values->holidayValidatorId, 'fk_user_holiday_validator');
+				$fragments['holidayValidatorLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('ForceUserHolidayValidator'), $langs->trans('ValidatorIsSupervisorByDefault'), 1, 'help'));
+				$fragments['holidayValidator'] = $select($values->holidayValidatorId, 'fk_user_holiday_validator');
 			}
 		}
 
@@ -356,121 +356,121 @@ final class UserFormChrome
 		$date = fn (?\DateTimeImmutable $value, string $name, string $formName, int $nowLink, string $label, string $tz = 'auto'): string => $canEdit
 			? $this->capture(static fn () => $form->selectDate(self::timestamp($value), $name, 0, 0, 1, $formName, 1, $nowLink, 0, '', '', '', '', 1, '', $label, $tz))
 			: dol_print_date(self::timestamp($value), 'day', $tz);
-		$f['dateStartValidity'] = $date($values->dateStartValidity, 'datestartvalidity', 'formdatestartvalidity', 0, $langs->trans('from'));
-		$f['dateEndValidity'] = $date($values->dateEndValidity, 'dateendvalidity', 'formdateendvalidity', 0, $langs->trans('to'));
+		$fragments['dateStartValidity'] = $date($values->dateStartValidity, 'datestartvalidity', 'formdatestartvalidity', 0, $langs->trans('from'));
+		$fragments['dateEndValidity'] = $date($values->dateEndValidity, 'dateendvalidity', 'formdateendvalidity', 0, $langs->trans('to'));
 
 		// l.2821-2873
-		$f['forcePass'] = $this->forcePasswordEdit($object, $canEdit, $values->forcePasswordChange);
-		$f['passwordField'] = $this->passwordFieldEdit($object, $edit, $show);
+		$fragments['forcePass'] = $this->forcePasswordEdit($object, $canEdit, $values->forcePasswordChange);
+		$fragments['passwordField'] = $this->passwordFieldEdit($object, $edit, $show);
 
 		// l.2908-2961
-		$f['addressLabel'] = $this->capture(static fn () => $form->editfieldkey('Address', 'address', '', $object, 0));
-		$f['zipLabel'] = $this->capture(static fn () => $form->editfieldkey('Zip', 'zipcode', '', $object, 0));
-		$f['townLabel'] = $this->capture(static fn () => $form->editfieldkey('Town', 'town', '', $object, 0));
-		$f['countryLabel'] = $this->capture(static fn () => $form->editfieldkey('Country', 'selectcountry_id', '', $object, 0));
+		$fragments['addressLabel'] = $this->capture(static fn () => $form->editfieldkey('Address', 'address', '', $object, 0));
+		$fragments['zipLabel'] = $this->capture(static fn () => $form->editfieldkey('Zip', 'zipcode', '', $object, 0));
+		$fragments['townLabel'] = $this->capture(static fn () => $form->editfieldkey('Town', 'town', '', $object, 0));
+		$fragments['countryLabel'] = $this->capture(static fn () => $form->editfieldkey('Country', 'selectcountry_id', '', $object, 0));
 		$countryId = $values->countryId ?? 0;
 		if ($canEdit) {
-			$f['zip'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->zip, 'zipcode', ['town', 'selectcountry_id', 'state_id'], 6));
-			$f['town'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->town, 'town', ['zipcode', 'selectcountry_id', 'state_id']));
-			$f['country'] = img_picto('', 'country', 'class="pictofixedwidth"')
+			$fragments['zip'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->zip, 'zipcode', ['town', 'selectcountry_id', 'state_id'], 6));
+			$fragments['town'] = $this->capture(static fn () => $formcompany->select_ziptown((string) $values->town, 'town', ['zipcode', 'selectcountry_id', 'state_id']));
+			$fragments['country'] = img_picto('', 'country', 'class="pictofixedwidth"')
 				.$this->capture(static fn () => $form->select_country($countryId > 0 ? $countryId : '', 'country_id'))
 				.($me !== null && !empty($me->admin) ? info_admin($langs->trans('YouCanChangeValuesForThisListFromDictionarySetup'), 1) : '');
 		} else {
-			$f['country'] = img_picto('', 'country', 'class="pictofixedwidth"').getCountry($countryId, '0');
+			$fragments['country'] = img_picto('', 'country', 'class="pictofixedwidth"').getCountry($countryId, '0');
 		}
 		if ($show['state']) {
 			// l.2953-2961
-			$f['stateLabel'] = $this->capture(static fn () => $form->editfieldkey('State', 'state_id', '', $object, 0));
-			$f['state'] = $canEdit
+			$fragments['stateLabel'] = $this->capture(static fn () => $form->editfieldkey('State', 'state_id', '', $object, 0));
+			$fragments['state'] = $canEdit
 				? img_picto('', 'state', 'class="pictofixedwidth"').$this->capture(static fn () => $formcompany->select_state_ajax('country_id', $values->stateId ?? 0, $countryId, 'state_id'))
 				: dol_escape_htmltag((string) $object->state);
 		}
 
 		// l.2964-2997
 		if ($canEdit && !$ldap) {
-			$f['officePhone'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officePhone, 'office_phone', $countryId, 'phoning', 'maxwidth200 widthcentpercentminusx'));
-			$f['userMobile'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->userMobile, 'user_mobile', $countryId, 'phoning_mobile', 'maxwidth200 widthcentpercentminusx'));
-			$f['officeFax'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officeFax, 'office_fax', $countryId, 'phoning_fax', 'maxwidth200 widthcentpercentminusx'));
+			$fragments['officePhone'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officePhone, 'office_phone', $countryId, 'phoning', 'maxwidth200 widthcentpercentminusx'));
+			$fragments['userMobile'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->userMobile, 'user_mobile', $countryId, 'phoning_mobile', 'maxwidth200 widthcentpercentminusx'));
+			$fragments['officeFax'] = $this->capture(static fn () => $form->showPhoneInput((string) $values->officeFax, 'office_fax', $countryId, 'phoning_fax', 'maxwidth200 widthcentpercentminusx'));
 		} else {
-			$f['officePhonePicto'] = img_picto('', 'phoning', 'class="pictofixedwidth"');
-			$f['userMobilePicto'] = img_picto('', 'phoning_mobile', 'class="pictofixedwidth"');
-			$f['officeFaxPicto'] = img_picto('', 'phoning_fax', 'class="pictofixedwidth"');
+			$fragments['officePhonePicto'] = img_picto('', 'phoning', 'class="pictofixedwidth"');
+			$fragments['userMobilePicto'] = img_picto('', 'phoning_mobile', 'class="pictofixedwidth"');
+			$fragments['officeFaxPicto'] = img_picto('', 'phoning_fax', 'class="pictofixedwidth"');
 		}
 		// l.3003
-		$f['emailPicto'] = img_picto('', 'object_email', 'class="pictofixedwidth"');
+		$fragments['emailPicto'] = img_picto('', 'object_email', 'class="pictofixedwidth"');
 
 		if ($show['warehouse']) {
 			// l.3041-3047; the "add a warehouse" link comes back to this form
 			require_once DOL_DOCUMENT_ROOT.'/product/class/html.formproduct.class.php';
 			$formproduct = new \FormProduct($db);
 			$back = $this->urls->generate('user_edit', ['id' => $values->id]);
-			$f['warehouse'] = $this->capture(static fn () => $formproduct->selectWarehouses($values->warehouseId ?? '', 'fk_warehouse', 'warehouseopen', 1))
+			$fragments['warehouse'] = $this->capture(static fn () => $formproduct->selectWarehouses($values->warehouseId ?? '', 'fk_warehouse', 'warehouseopen', 1))
 				.' <a href="'.DOL_URL_ROOT.'/product/stock/card.php?action=create&token='.newToken().'&backtopage='.urlencode($back).'"><span class="fa fa-plus-circle valignmiddle paddingleft" title="'.$langs->trans('AddWarehouse').'"></span></a>';
 		}
 		if ($show['color']) {
 			// l.3065-3072
-			$f['color'] = $canEdit
+			$fragments['color'] = $canEdit
 				? $this->capture(static fn () => \FormOther::selectColor((string) $values->color, 'color', null, 1, [], 'hideifnotset'))
 				: $this->capture(static fn () => $formother->showColor((string) $values->color, ''));
 		}
 		if ($show['categories']) {
 			// l.3085-3094
 			require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
-			$f['categoriesLabel'] = $this->capture(static fn () => $form->editfieldkey('Categories', 'usercats', '', $object, 0));
-			$f['categories'] = $canEdit
+			$fragments['categoriesLabel'] = $this->capture(static fn () => $form->editfieldkey('Categories', 'usercats', '', $object, 0));
+			$fragments['categories'] = $canEdit
 				? $this->capture(static fn () => $form->selectCategories(\Categorie::TYPE_USER, 'usercats', $object))
 				: $this->capture(static fn () => $form->showCategories($values->id, \Categorie::TYPE_USER, 1));
 		}
 		if ($show['language']) {
 			// l.3097-3102
-			$f['languageLabel'] = $this->capture(static fn () => $form->editfieldkey('DefaultLang', 'default_lang', '', $object, 0, 'string', '', 0, 0, 'id', $langs->trans('WarningNotLangOfInterface', $langs->transnoentitiesnoconv('UserGUISetup'))));
-			$f['language'] = img_picto('', 'language', 'class="pictofixedwidth"')
+			$fragments['languageLabel'] = $this->capture(static fn () => $form->editfieldkey('DefaultLang', 'default_lang', '', $object, 0, 'string', '', 0, 0, 'id', $langs->trans('WarningNotLangOfInterface', $langs->transnoentitiesnoconv('UserGUISetup'))));
+			$fragments['language'] = img_picto('', 'language', 'class="pictofixedwidth"')
 				.$this->capture(static fn () => $formadmin->select_language((string) $values->lang, 'default_lang', 0, [], '1', 0, 0, 'widthcentpercentminusx maxwidth300'));
 		}
 		// l.3105-3108
-		$f['status'] = $this->capture(static fn () => $object->getLibStatut(4));
+		$fragments['status'] = $this->capture(static fn () => $object->getLibStatut(4));
 		if ($show['member']) {
 			// l.3131-3146
-			$f['member'] = $this->member($object);
+			$fragments['member'] = $this->member($object);
 		}
 
 		// l.3160-3170
-		$f['extrafields'] = $this->extrafieldsEdit($object, $canEdit);
+		$fragments['extrafields'] = $this->extrafieldsEdit($object, $canEdit);
 
 		// l.3173-3187
 		if ($canEdit) {
 			$acceptlocallinktomedia = (acceptLocalLinktoMedia() > 0 ? 1 : 0);
 			$signature = new \DolEditor('signature', (string) $values->signature, '', 138, 'dolibarr_notes', 'In', false, (bool) $acceptlocallinktomedia, !getDolGlobalString('FCKEDITOR_ENABLE_USERSIGN') ? 0 : 1, \ROWS_4, '90%');
-			$f['signature'] = $this->capture(static fn () => $signature->Create(1));
+			$fragments['signature'] = $this->capture(static fn () => $signature->Create(1));
 		} else {
-			$f['signature'] = dol_htmlentitiesbr((string) $values->signature).(!empty($values->signature) ? dolGetSignatureQualityBadge($values->signature, $langs) : '');
+			$fragments['signature'] = dol_htmlentitiesbr((string) $values->signature).(!empty($values->signature) ? dolGetSignatureQualityBadge($values->signature, $langs) : '');
 		}
 
 		if ($show['salary']) {
 			// l.3222-3262
 			$langs->load('salaries');
-			$f['salaryPicto'] = img_picto('', 'salary', 'class="pictofixedwidth paddingright"');
-			$f['thmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('THM'), $langs->trans('THMDescription'), 1, 'help', 'classthm'));
-			$f['tjmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('TJM'), $langs->trans('TJMDescription'), 1, 'help', 'classthm'));
+			$fragments['salaryPicto'] = img_picto('', 'salary', 'class="pictofixedwidth paddingright"');
+			$fragments['thmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('THM'), $langs->trans('THMDescription'), 1, 'help', 'classthm'));
+			$fragments['tjmLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('TJM'), $langs->trans('TJMDescription'), 1, 'help', 'classthm'));
 			if (!$canEdit) {
-				$f['thm'] = $values->thm !== null ? price($values->thm, 0, $langs, 1, -1, -1, $conf->currency) : '';
-				$f['tjm'] = $values->tjm !== null ? price($values->tjm, 0, $langs, 1, -1, -1, $conf->currency) : '';
+				$fragments['thm'] = $values->thm !== null ? price($values->thm, 0, $langs, 1, -1, -1, $conf->currency) : '';
+				$fragments['tjm'] = $values->tjm !== null ? price($values->tjm, 0, $langs, 1, -1, -1, $conf->currency) : '';
 			}
 		}
 
 		// l.3265-3297
-		$f['dateEmployment'] = $date($values->dateEmployment, 'dateemployment', 'formdateemployment', 1, $langs->trans('from'));
-		$f['dateEmploymentEnd'] = $date($values->dateEmploymentEnd, 'dateemploymentend', 'formdateemploymentend', 0, $langs->trans('to'));
-		$f['dateOfBirth'] = $date($values->birth, 'dateofbirth', 'updateuser', 0, '', 'tzserver');
+		$fragments['dateEmployment'] = $date($values->dateEmployment, 'dateemployment', 'formdateemployment', 1, $langs->trans('from'));
+		$fragments['dateEmploymentEnd'] = $date($values->dateEmploymentEnd, 'dateemploymentend', 'formdateemploymentend', 0, $langs->trans('to'));
+		$fragments['dateOfBirth'] = $date($values->birth, 'dateofbirth', 'updateuser', 0, '', 'tzserver');
 
 		// l.3301
-		$f['ficheEnd'] = $this->capture(static fn () => dol_get_fiche_end());
+		$fragments['ficheEnd'] = $this->capture(static fn () => dol_get_fiche_end());
 
 		// l.3360-3362, printed after the form
 		$usegenericrule = getDolGlobalString('USER_PASSWORD_GENERATED') == 'none' ? 1 : 0;
-		$f['passwordJs'] = $this->capture(static fn () => dolJSToSetRandomPassword('password', 'generate_password', $usegenericrule));
+		$fragments['passwordJs'] = $this->capture(static fn () => dolJSToSetRandomPassword('password', 'generate_password', $usegenericrule));
 
-		return $f;
+		return $fragments;
 	}
 
 	/**
@@ -650,10 +650,10 @@ final class UserFormChrome
 	 */
 	private function userLink(int $id): string
 	{
-		$u = new \User($this->ctx->db);
-		$u->fetch($id);
+		$linked = new \User($this->ctx->db);
+		$linked->fetch($id);
 
-		return $this->capture(static fn () => $u->getNomUrl(-1));
+		return $this->capture(static fn () => $linked->getNomUrl(-1));
 	}
 
 	/**

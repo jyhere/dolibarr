@@ -17,17 +17,17 @@ interface UserWriter
 	 * @return int Id of the new user
 	 * @throws ValidationException
 	 */
-	public function insert(User $u, int $creatorId): int;
+	public function insert(User $user, int $creatorId): int;
 
 	/**
 	 * The admin flag and the login are copied as given: callers must apply
-	 * UserPermissionChecker::canEditAdminFlag() and canEditLogin() when building $u.
+	 * UserPermissionChecker::canEditAdminFlag() and canEditLogin() when building $user.
 	 * (The legacy update() ignores admin for a non-admin actor but writes login unconditionally.)
-	 * The company and the contact of $u are not written: linkToContact() does it.
+	 * The company and the contact of $user are not written: linkToContact() does it.
 	 *
 	 * @throws ValidationException
 	 */
-	public function update(User $u, int $actorId): void;
+	public function update(User $user, int $actorId): void;
 
 	/**
 	 * Whether $clearPassword is the stored password of the user, the test \User::update() makes before

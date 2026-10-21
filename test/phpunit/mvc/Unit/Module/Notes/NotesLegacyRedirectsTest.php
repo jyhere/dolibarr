@@ -15,11 +15,11 @@ final class NotesLegacyRedirectsTest extends TestCase
 {
 	public function testUserNoteGoesToTheGenericEntityNoteRoute(): void
 	{
-		$r = UserLegacyRedirectsTest::redirector();
-		self::assertSame('/user/9/note', $r->resolve('GET', 'user/note.php', ['id' => '9'], []));
-		self::assertSame('/user/9/note?action=editnote_private', $r->resolve('GET', 'user/note.php', ['id' => '9', 'action' => 'editnote_private'], []));
-		self::assertNull($r->resolve('GET', 'user/note.php', ['id' => '9', 'action' => 'setnote_private'], []));
-		self::assertNull($r->resolve('POST', 'user/note.php', ['id' => '9'], []));
+		$redirector = UserLegacyRedirectsTest::redirector();
+		self::assertSame('/user/9/note', $redirector->resolve('GET', 'user/note.php', ['id' => '9'], []));
+		self::assertSame('/user/9/note?action=editnote_private', $redirector->resolve('GET', 'user/note.php', ['id' => '9', 'action' => 'editnote_private'], []));
+		self::assertNull($redirector->resolve('GET', 'user/note.php', ['id' => '9', 'action' => 'setnote_private'], []));
+		self::assertNull($redirector->resolve('POST', 'user/note.php', ['id' => '9'], []));
 	}
 
 	public function testNotesModuleDeclaresNoRule(): void

@@ -30,19 +30,19 @@ final class LegacyUserWriter implements UserWriter
 	/**
 	 * user/card.php l.288-475 (action add): create() then the minor fields through its inner update().
 	 */
-	public function insert(User $u, int $creatorId): int
+	public function insert(User $user, int $creatorId): int
 	{
-		$o = new \User($this->ctx->db);
-		$this->fill($o, $u);
-		$o->entity = $u->entity;
-		$o->array_options = $u->extraFields;
+		$legacyUser = new \User($this->ctx->db);
+		$this->fill($legacyUser, $user);
+		$legacyUser->entity = $user->entity;
+		$legacyUser->array_options = $user->extraFields;
 
-		$result = $o->create($this->actor($creatorId));
+		$result = $legacyUser->create($this->actor($creatorId));
 		if ($result <= 0) {
-			$messages = self::messages($o);
+			$messages = self::messages($legacyUser);
 			if ($result === -6 && $messages === []) {
 				$this->ctx->langs->load('errors');
-				$messages = [$this->ctx->langs->trans('ErrorLoginAlreadyExists', $u->login)];
+				$messages = [$this->ctx->langs->trans('ErrorLoginAlreadyExists', $user->login)];
 			}
 			throw new ValidationException($messages === [] ? [$this->ctx->langs->trans('Error')] : $messages);
 		}
@@ -62,34 +62,34 @@ final class LegacyUserWriter implements UserWriter
 	 * ErrorUpdateCanceledDueToDuplicatedUniqueValue; the duplicate login that update() detects itself
 	 * keeps its own message (ErrorLoginAlreadyExists), as on the card.
 	 */
-	public function update(User $u, int $actorId): void
+	public function update(User $user, int $actorId): void
 	{
-		$o = $this->fetch($u->id);
-		$o->oldcopy = clone $o;
-		$socid = $o->socid;
-		$contactId = $o->contact_id;
-		$this->fill($o, $u);
-		$o->socid = $socid;
-		$o->contact_id = $contactId;
-		$o->entity = $u->entity;
-		$o->array_options = array_merge(is_array($o->array_options) ? $o->array_options : [], $u->extraFields);
+		$legacyUser = $this->fetch($user->id);
+		$legacyUser->oldcopy = clone $legacyUser;
+		$socid = $legacyUser->socid;
+		$contactId = $legacyUser->contact_id;
+		$this->fill($legacyUser, $user);
+		$legacyUser->socid = $socid;
+		$legacyUser->contact_id = $contactId;
+		$legacyUser->entity = $user->entity;
+		$legacyUser->array_options = array_merge(is_array($legacyUser->array_options) ? $legacyUser->array_options : [], $user->extraFields);
 
-		if ($o->update($this->actor($actorId)) < 0) {
+		if ($legacyUser->update($this->actor($actorId)) < 0) {
 			// card.php tests $db->errno(), the code of the last statement (lasterrno() may be an older one)
 			if ($this->ctx->db->errno() === 'DB_ERROR_RECORD_ALREADY_EXISTS') {
 				$this->ctx->langs->load('users');
-				throw new ValidationException([$this->ctx->langs->trans('ErrorUpdateCanceledDueToDuplicatedUniqueValue', $u->login)]);
+				throw new ValidationException([$this->ctx->langs->trans('ErrorUpdateCanceledDueToDuplicatedUniqueValue', $user->login)]);
 			}
-			$this->fail($o);
+			$this->fail($legacyUser);
 		}
 	}
 
 	public function isCurrentPassword(int $id, string $clearPassword): bool
 	{
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/security.lib.php';
-		$o = $this->fetch($id);
+		$legacyUser = $this->fetch($id);
 
-		return $clearPassword === (string) $o->pass_indatabase || dol_verifyHash($clearPassword, (string) $o->pass_indatabase_crypted);
+		return $clearPassword === (string) $legacyUser->pass_indatabase || dol_verifyHash($clearPassword, (string) $legacyUser->pass_indatabase_crypted);
 	}
 
 	/**
@@ -97,9 +97,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function setStatus(int $id, bool $enabled): void
 	{
-		$o = $this->fetch($id);
-		if ($o->setstatus($enabled ? 1 : 0) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->setstatus($enabled ? 1 : 0) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -108,11 +108,11 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function delete(int $id, int $actorId): void
 	{
-		$o = $this->fetch($id);
-		$o->oldcopy = clone $o;
-		if ($o->delete($this->actor($actorId)) < 0) {
+		$legacyUser = $this->fetch($id);
+		$legacyUser->oldcopy = clone $legacyUser;
+		if ($legacyUser->delete($this->actor($actorId)) < 0) {
 			$this->ctx->langs->load('errors');
-			throw new ValidationException(array_merge([$this->ctx->langs->trans('ErrorUserCannotBeDelete')], self::messages($o)));
+			throw new ValidationException(array_merge([$this->ctx->langs->trans('ErrorUserCannotBeDelete')], self::messages($legacyUser)));
 		}
 	}
 
@@ -122,10 +122,10 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function setPassword(int $id, string $clearPassword, bool $changeLater, int $actorId): string
 	{
-		$o = $this->fetch($id);
-		$result = $o->setPassword($this->actor($actorId), $clearPassword, $changeLater ? 1 : 0);
+		$legacyUser = $this->fetch($id);
+		$result = $legacyUser->setPassword($this->actor($actorId), $clearPassword, $changeLater ? 1 : 0);
 		if (is_int($result) && $result < 0) {
-			$this->fail($o);
+			$this->fail($legacyUser);
 		}
 		if (!is_string($result) || $result === '') {
 			// card.php l.784 shows "ErrorFailedToSetNewPassword", a key no lang file defines
@@ -140,10 +140,10 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function sendPassword(int $id, string $clearPassword): void
 	{
-		$o = $this->fetch($id);
-		$actor = $this->ctx->user ?? $o;
-		if ($o->send_password($actor, $clearPassword) <= 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		$actor = $this->ctx->user ?? $legacyUser;
+		if ($legacyUser->send_password($actor, $clearPassword) <= 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -152,9 +152,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function addRights(int $id, ?int $rightId, ?string $module, int $entity): void
 	{
-		$o = $this->fetch($id);
-		if ($o->addrights($rightId ?? 0, $module ?? '', '', $entity) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->addrights($rightId ?? 0, $module ?? '', '', $entity) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -163,9 +163,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function delRights(int $id, ?int $rightId, ?string $module, int $entity): void
 	{
-		$o = $this->fetch($id);
-		if ($o->delrights($rightId ?? 0, $module ?? '', '', $entity) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->delrights($rightId ?? 0, $module ?? '', '', $entity) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -174,9 +174,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function setInGroup(int $id, int $groupId, int $entity): void
 	{
-		$o = $this->fetch($id);
-		if ($o->setInGroup($groupId, $entity) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->setInGroup($groupId, $entity) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -185,9 +185,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function removeFromGroup(int $id, int $groupId, int $entity): void
 	{
-		$o = $this->fetch($id);
-		if ($o->removeFromGroup($groupId, $entity) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->removeFromGroup($groupId, $entity) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -196,9 +196,9 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	public function setCategories(int $id, array $categoryIds): void
 	{
-		$o = $this->fetch($id);
-		if ($o->setCategories($categoryIds) < 0) {
-			$this->fail($o);
+		$legacyUser = $this->fetch($id);
+		if ($legacyUser->setCategories($categoryIds) < 0) {
+			$this->fail($legacyUser);
 		}
 	}
 
@@ -273,57 +273,57 @@ final class LegacyUserWriter implements UserWriter
 	 * Copies the entity onto the legacy properties that user/card.php sets before create()/update().
 	 * Dates become Unix timestamps ('' when empty), as dol_mktime() gives them to the card.
 	 */
-	private function fill(\User $o, User $u): void
+	private function fill(\User $legacyUser, User $user): void
 	{
-		$o->login = $u->login;
-		$o->lastname = $u->lastname ?? '';
-		$o->firstname = $u->firstname ?? '';
-		$o->admin = $u->admin ? 1 : 0;
-		$o->employee = $u->employee ? 1 : 0;
-		$o->gender = $u->gender ?? '';
-		$o->civility_code = $u->civility ?? '';
-		$o->job = $u->job ?? '';
-		$o->email = $u->email ?? '';
-		$o->personal_email = $u->personalEmail ?? '';
-		$o->office_phone = $u->officePhone ?? '';
-		$o->office_fax = $u->officeFax ?? '';
-		$o->user_mobile = $u->userMobile ?? '';
-		$o->personal_mobile = $u->personalMobile ?? '';
-		$o->address = $u->address ?? '';
-		$o->zip = $u->zip ?? '';
-		$o->town = $u->town ?? '';
-		$o->state_id = $u->stateId ?? 0;
-		$o->country_id = $u->countryId ?? 0;
-		$o->socid = $u->companyId;
-		$o->contact_id = $u->contactId;
-		$o->fk_member = $u->memberId;
-		$o->fk_user = $u->supervisorId ?? 0;
-		$o->fk_user_expense_validator = $u->expenseValidatorId ?? 0;
-		$o->fk_user_holiday_validator = $u->holidayValidatorId ?? 0;
-		$o->datestartvalidity = self::timestamp($u->dateStartValidity);
-		$o->dateendvalidity = self::timestamp($u->dateEndValidity);
-		$o->birth = self::timestamp($u->birth);
-		$o->lang = $u->lang ?? '';
-		$o->color = $u->color ?? '';
-		$o->photo = $u->photo ?? '';
-		$o->signature = $u->signature ?? '';
-		$o->note_public = $u->notePublic ?? '';
-		$o->note_private = $u->notePrivate ?? '';
-		$o->ref_employee = $u->refEmployee ?? '';
-		$o->ref_ext = $u->refExt ?? '';
+		$legacyUser->login = $user->login;
+		$legacyUser->lastname = $user->lastname ?? '';
+		$legacyUser->firstname = $user->firstname ?? '';
+		$legacyUser->admin = $user->admin ? 1 : 0;
+		$legacyUser->employee = $user->employee ? 1 : 0;
+		$legacyUser->gender = $user->gender ?? '';
+		$legacyUser->civility_code = $user->civility ?? '';
+		$legacyUser->job = $user->job ?? '';
+		$legacyUser->email = $user->email ?? '';
+		$legacyUser->personal_email = $user->personalEmail ?? '';
+		$legacyUser->office_phone = $user->officePhone ?? '';
+		$legacyUser->office_fax = $user->officeFax ?? '';
+		$legacyUser->user_mobile = $user->userMobile ?? '';
+		$legacyUser->personal_mobile = $user->personalMobile ?? '';
+		$legacyUser->address = $user->address ?? '';
+		$legacyUser->zip = $user->zip ?? '';
+		$legacyUser->town = $user->town ?? '';
+		$legacyUser->state_id = $user->stateId ?? 0;
+		$legacyUser->country_id = $user->countryId ?? 0;
+		$legacyUser->socid = $user->companyId;
+		$legacyUser->contact_id = $user->contactId;
+		$legacyUser->fk_member = $user->memberId;
+		$legacyUser->fk_user = $user->supervisorId ?? 0;
+		$legacyUser->fk_user_expense_validator = $user->expenseValidatorId ?? 0;
+		$legacyUser->fk_user_holiday_validator = $user->holidayValidatorId ?? 0;
+		$legacyUser->datestartvalidity = self::timestamp($user->dateStartValidity);
+		$legacyUser->dateendvalidity = self::timestamp($user->dateEndValidity);
+		$legacyUser->birth = self::timestamp($user->birth);
+		$legacyUser->lang = $user->lang ?? '';
+		$legacyUser->color = $user->color ?? '';
+		$legacyUser->photo = $user->photo ?? '';
+		$legacyUser->signature = $user->signature ?? '';
+		$legacyUser->note_public = $user->notePublic ?? '';
+		$legacyUser->note_private = $user->notePrivate ?? '';
+		$legacyUser->ref_employee = $user->refEmployee ?? '';
+		$legacyUser->ref_ext = $user->refExt ?? '';
 		// '' writes NULL (card.php l.555-566); a null float would leave the column untouched
-		$o->thm = self::decimal($u->thm);
-		$o->tjm = self::decimal($u->tjm);
-		$o->salary = self::decimal($u->salary);
-		$o->salaryextra = self::decimal($u->salaryExtra);
-		$o->weeklyhours = self::decimal($u->weeklyHours);
-		$o->dateemployment = self::timestamp($u->dateEmployment);
-		$o->dateemploymentend = self::timestamp($u->dateEmploymentEnd);
-		$o->accountancy_code = $u->accountancyCode ?? '';
-		$o->fk_warehouse = $u->warehouseId ?? 0;
-		$o->national_registration_number = $u->nationalRegistrationNumber ?? '';
+		$legacyUser->thm = self::decimal($user->thm);
+		$legacyUser->tjm = self::decimal($user->tjm);
+		$legacyUser->salary = self::decimal($user->salary);
+		$legacyUser->salaryextra = self::decimal($user->salaryExtra);
+		$legacyUser->weeklyhours = self::decimal($user->weeklyHours);
+		$legacyUser->dateemployment = self::timestamp($user->dateEmployment);
+		$legacyUser->dateemploymentend = self::timestamp($user->dateEmploymentEnd);
+		$legacyUser->accountancy_code = $user->accountancyCode ?? '';
+		$legacyUser->fk_warehouse = $user->warehouseId ?? 0;
+		$legacyUser->national_registration_number = $user->nationalRegistrationNumber ?? '';
 		// Reset by setPassword(): see User::$forcePasswordChange
-		$o->force_pass_change = $u->forcePasswordChange ? 1 : 0;
+		$legacyUser->force_pass_change = $user->forcePasswordChange ? 1 : 0;
 	}
 
 	/**
@@ -331,13 +331,13 @@ final class LegacyUserWriter implements UserWriter
 	 */
 	private function fetch(int $id): \User
 	{
-		$o = new \User($this->ctx->db);
-		if ($id <= 0 || $o->fetch($id) <= 0) {
+		$legacyUser = new \User($this->ctx->db);
+		if ($id <= 0 || $legacyUser->fetch($id) <= 0) {
 			$this->ctx->langs->load('errors');
 			throw new ValidationException([$this->ctx->langs->trans('ErrorRecordNotFound')]);
 		}
 
-		return $o;
+		return $legacyUser;
 	}
 
 	/**
@@ -361,21 +361,21 @@ final class LegacyUserWriter implements UserWriter
 	/**
 	 * @throws ValidationException Always
 	 */
-	private function fail(\User $o): never
+	private function fail(\User $legacyUser): never
 	{
-		$messages = self::messages($o);
+		$messages = self::messages($legacyUser);
 		throw new ValidationException($messages === [] ? [$this->ctx->langs->trans('Error')] : $messages);
 	}
 
 	/**
 	 * @return list<string>
 	 */
-	private static function messages(\User $o): array
+	private static function messages(\User $legacyUser): array
 	{
 		$messages = [];
-		foreach (array_merge([$o->error], $o->errors) as $m) {
-			if (is_string($m) && $m !== '' && !in_array($m, $messages, true)) {
-				$messages[] = $m;
+		foreach (array_merge([$legacyUser->error], $legacyUser->errors) as $message) {
+			if (is_string($message) && $message !== '' && !in_array($message, $messages, true)) {
+				$messages[] = $message;
 			}
 		}
 
@@ -386,17 +386,17 @@ final class LegacyUserWriter implements UserWriter
 	 * UserRepository reads the stored wall clock as UTC while the legacy writes timestamps with
 	 * idate() in the server timezone: the wall clock is kept by reading it in the server timezone.
 	 */
-	private static function timestamp(?\DateTimeImmutable $d): int|string
+	private static function timestamp(?\DateTimeImmutable $date): int|string
 	{
-		if ($d === null) {
+		if ($date === null) {
 			return '';
 		}
 
-		return (new \DateTimeImmutable($d->format('Y-m-d H:i:s'), new \DateTimeZone(date_default_timezone_get())))->getTimestamp();
+		return (new \DateTimeImmutable($date->format('Y-m-d H:i:s'), new \DateTimeZone(date_default_timezone_get())))->getTimestamp();
 	}
 
-	private static function decimal(?float $v): string
+	private static function decimal(?float $value): string
 	{
-		return $v === null ? '' : (string) $v;
+		return $value === null ? '' : (string) $value;
 	}
 }

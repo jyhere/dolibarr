@@ -60,7 +60,7 @@ final class UserController
 		private readonly CurrentUser $me,
 		private readonly LegacyHooks $hooks,
 		private readonly LegacyObjectLoader $legacy,
-		private readonly Translator $t,
+		private readonly Translator $translator,
 		private readonly UserCardChrome $chrome,
 		private readonly FlashBag $flash,
 		private readonly UserService $service,
@@ -81,11 +81,11 @@ final class UserController
 	 * @throws AccessDeniedException When the current user may not read it
 	 */
 	#[Route('/user/{id}', name: 'user_show', requirements: ['id' => '\d+'])]
-	public function show(Request $r, int $id): ViewModel
+	public function show(Request $request, int $id): ViewModel
 	{
-		$dialog = $this->param($r, 'confirm', 'aZ09');
+		$dialog = $this->param($request, 'confirm', 'aZ09');
 
-		return $this->card($r, $id, array_key_exists($dialog, self::DIALOGS) ? $dialog : '');
+		return $this->card($request, $id, array_key_exists($dialog, self::DIALOGS) ? $dialog : '');
 	}
 
 	/**
@@ -95,9 +95,9 @@ final class UserController
 	 * @throws AccessDeniedException
 	 */
 	#[Route('/user/{id}/password', methods: ['GET'], name: 'user_password', requirements: ['id' => '\d+'])]
-	public function passwordForm(Request $r, int $id): ViewModel
+	public function passwordForm(Request $request, int $id): ViewModel
 	{
-		return $this->card($r, $id, $this->param($r, 'mode', 'alpha') === 'send' ? 'passwordsend' : 'password');
+		return $this->card($request, $id, $this->param($request, 'mode', 'alpha') === 'send' ? 'passwordsend' : 'password');
 	}
 
 	/**
@@ -108,10 +108,10 @@ final class UserController
 	 * @throws AccessDeniedException When the action posted has no button for the current user
 	 */
 	#[Route('/user/{id}/status', methods: ['POST'], name: 'user_status', requirements: ['id' => '\d+'])]
-	public function setStatus(Request $r, int $id): RedirectResponse
+	public function setStatus(Request $request, int $id): RedirectResponse
 	{
 		$user = $this->prepareAction($id);
-		$action = $this->standardAction($r, $user, true);
+		$action = $this->standardAction($request, $user, true);
 
 		if ($action === 'confirm_disable') {
 			if (!$this->perms->canDeactivate($user)) {
@@ -121,7 +121,7 @@ final class UserController
 				$this->writeOrFlash(fn () => $this->service->setStatus($id, false));
 			} elseif ($this->perms->canEnable($user) && !$this->perms->canDeleteAdminTarget($user)) {
 				// Allowed, not oneself, refused as an admin by a non-admin (card.php l.218-221)
-				$this->flash->error($this->t->trans('OnlyAdminUsersCanDisableAdminUsers'));
+				$this->flash->error($this->translator->trans('OnlyAdminUsersCanDisableAdminUsers'));
 			}
 		} elseif ($action === 'confirm_enable') {
 			if (!$this->perms->canReactivate($user)) {
@@ -130,7 +130,7 @@ final class UserController
 			// card.php l.235-241
 			$limit = $this->config->limitUsers();
 			if ($limit > 0 && $this->repo->countForQuota() >= $limit) {
-				$this->flash->error($this->t->trans('YourQuotaOfUsersIsReached'));
+				$this->flash->error($this->translator->trans('YourQuotaOfUsersIsReached'));
 			} else {
 				$this->writeOrFlash(fn () => $this->service->setStatus($id, true));
 			}
@@ -148,23 +148,23 @@ final class UserController
 	 * @throws AccessDeniedException When the current user has no DeleteUser button
 	 */
 	#[Route('/user/{id}/delete', methods: ['POST'], name: 'user_delete', requirements: ['id' => '\d+'])]
-	public function delete(Request $r, int $id): RedirectResponse
+	public function delete(Request $request, int $id): RedirectResponse
 	{
 		$user = $this->prepareAction($id);
 
-		if ($this->standardAction($r, $user, true) === 'confirm_delete') {
+		if ($this->standardAction($request, $user, true) === 'confirm_delete') {
 			if (!$this->perms->canSeeDeleteButton($user)) {
 				throw new AccessDeniedException();
 			}
 			if ($this->perms->canDelete($user)) {
 				if ($this->writeOrFlash(fn () => $this->service->delete($id))) {
-					$this->flash->success($this->t->trans('RecordDeleted'));
+					$this->flash->success($this->translator->trans('RecordDeleted'));
 
 					return new RedirectResponse($this->urls->generate('user_list').'?restore_lastsearch_values=1');
 				}
 			} elseif ($this->perms->canEnable($user)) {
 				// Allowed, not oneself: refused by an admin rule (card.php l.261-267)
-				$this->flash->error($this->t->trans($this->perms->canDeleteAdminTarget($user) ? 'OnlySuperAdminUsersCanDeleteSuperAdminUsers' : 'OnlyAdminUsersCanDeleteAdminUsers'));
+				$this->flash->error($this->translator->trans($this->perms->canDeleteAdminTarget($user) ? 'OnlySuperAdminUsersCanDeleteSuperAdminUsers' : 'OnlyAdminUsersCanDeleteAdminUsers'));
 			}
 		}
 
@@ -180,10 +180,10 @@ final class UserController
 	 * @throws AccessDeniedException When the action posted has no button for the current user
 	 */
 	#[Route('/user/{id}/password', methods: ['POST'], name: 'user_password_post', requirements: ['id' => '\d+'])]
-	public function setPassword(Request $r, int $id): RedirectResponse
+	public function setPassword(Request $request, int $id): RedirectResponse
 	{
 		$user = $this->prepareAction($id);
-		$action = $this->standardAction($r, $user, true);
+		$action = $this->standardAction($request, $user, true);
 		if (($action === 'confirm_password' || $action === 'confirm_passwordsend') && !$this->passwordButton($user, $action === 'confirm_passwordsend')) {
 			throw new AccessDeniedException();
 		}
@@ -193,11 +193,11 @@ final class UserController
 			if ($this->writeOrFlash(function () use ($id, &$clear): void {
 				$clear = $this->service->resetPassword($id, false);
 			})) {
-				$this->flash->warning($this->t->transHtml('PasswordChangedTo', $clear));
+				$this->flash->warning($this->translator->transHtml('PasswordChangedTo', $clear));
 			}
 		} elseif ($action === 'confirm_passwordsend' && $this->perms->canSendPassword($user)) {
 			if ($this->writeOrFlash(fn () => $this->service->resetPassword($id, true))) {
-				$this->flash->success($this->t->transHtml('PasswordChangedAndSentTo', (string) $user->email));
+				$this->flash->success($this->translator->transHtml('PasswordChangedAndSentTo', (string) $user->email));
 			}
 		}
 
@@ -226,17 +226,17 @@ final class UserController
 	 * @throws AccessDeniedException
 	 */
 	#[Route('/user/{id}/groups', methods: ['POST'], name: 'user_groups', requirements: ['id' => '\d+'])]
-	public function groups(Request $r, int $id): RedirectResponse
+	public function groups(Request $request, int $id): RedirectResponse
 	{
 		$user = $this->prepareAction($id);
-		$action = $this->standardAction($r, $user, false);
-		$group = $r->getInt('group');
+		$action = $this->standardAction($request, $user, false);
+		$group = $request->getInt('group');
 
 		if (($action === 'addgroup' || $action === 'removegroup') && $this->perms->canEditGroups($user) && $group > 0) {
 			try {
 				$this->writeOrFlash(fn () => $action === 'addgroup' ? $this->service->addToGroup($id, $group) : $this->service->removeFromGroup($id, $group));
 			} catch (NotFoundException) {
-				$this->flash->error($this->t->trans('ErrorRecordNotFound'));
+				$this->flash->error($this->translator->trans('ErrorRecordNotFound'));
 			}
 		}
 
@@ -249,13 +249,13 @@ final class UserController
 	 * @throws NotFoundException
 	 * @throws AccessDeniedException
 	 */
-	private function card(Request $r, int $id, string $dialog): ViewModel
+	private function card(Request $request, int $id, string $dialog): ViewModel
 	{
 		$user = $this->findReadable($id);
 
 		// card.php l.79
 		foreach (self::DOMAINS as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
 
@@ -267,7 +267,7 @@ final class UserController
 
 		$canSeeSalary = $this->perms->canSeeSalary($user);
 		if ($canSeeSalary) {
-			$this->t->load('salaries');
+			$this->translator->load('salaries');
 		}
 
 		$outputBeforeHeader = $hookFormObjectOptions = $hookMoreObjectBlock = $hookMoreActionsButtons = '';
@@ -281,7 +281,7 @@ final class UserController
 			$parameters = [
 				'id' => $id,
 				'socid' => $this->me->companyId(),
-				'group' => $r->getInt('group'),
+				'group' => $request->getInt('group'),
 				'caneditgroup' => $this->perms->canEditGroups($user),
 			];
 
@@ -322,13 +322,13 @@ final class UserController
 		if ($dialog !== '') {
 			// card.php l.1697-1719 pass $selectedchoice = 0: "No" is preselected
 			[$route, $title, $question, $confirmAction] = self::DIALOGS[$dialog];
-			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->t->transHtml($question, $user->login), $confirmAction, [], 'no');
+			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->translator->trans($title), $this->translator->transHtml($question, $user->login), $confirmAction, [], 'no');
 		}
 
 		return (new ViewModel('user:user_show', [
 			'outputBeforeHeader' => $outputBeforeHeader,
 			'confirmDialogHtml' => $confirmDialog,
-			'title' => $personName.' - '.$this->t->trans('Card'),
+			'title' => $personName.' - '.$this->translator->trans('Card'),
 			'bodyCss' => 'mod-user page-card',
 			'canSeeSalary' => $canSeeSalary,
 			'card' => $this->chrome->build($legacyUser, $user, $this->perms, $canSeeSalary, $this->repo->countInEntity()),
@@ -347,13 +347,13 @@ final class UserController
 	 * @throws AccessDeniedException When the current user may not create users
 	 */
 	#[Route('/user/new', methods: ['GET'], name: 'user_new')]
-	public function createForm(Request $r): ViewModel
+	public function createForm(Request $request): ViewModel
 	{
 		$this->prepareCreate();
 		// card.php l.98-102 and l.1278: no date, l.1214: employee checked by default, l.1068: current entity
 		$values = new User(0, $this->config->entity(), '', employee: true);
 
-		return $this->form($r, $values, null, false, $this->doActions($values, 'create'));
+		return $this->form($request, $values, null, false, $this->doActions($values, 'create'));
 	}
 
 	/**
@@ -363,33 +363,33 @@ final class UserController
 	 * @throws AccessDeniedException When the current user may not create users
 	 */
 	#[Route('/user/new', methods: ['POST'], name: 'user_new_post')]
-	public function create(Request $r): Response|ViewModel
+	public function create(Request $request): Response|ViewModel
 	{
 		$this->prepareCreate();
-		$backtopage = $this->param($r, 'backtopage');
-		$backtopageforcancel = $this->param($r, 'backtopageforcancel');
+		$backtopage = $this->param($request, 'backtopage');
+		$backtopageforcancel = $this->param($request, 'backtopageforcancel');
 		$urlRoot = $this->config->urlRoot();
 
 		// main.inc.php refused the CSRF token (l.456-478): $_POST is emptied, $_GET['action'] unset and its warning
 		// set. card.php then runs doActions with an empty action and no standard action: the same here, nothing
 		// is written and the form is redisplayed.
 		$blank = new User(0, $this->config->entity(), '', employee: true);
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
-			return $this->form($r, $blank, null, false, $this->doActions($blank, ''));
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return $this->form($request, $blank, null, false, $this->doActions($blank, ''));
 		}
 
 		// card.php l.185-191: doActions first; the standard actions (cancel included) only run when it returns 0.
 		// A hook that fails (< 0, its errors flashed) or replaces the action (> 0) vetoes the creation.
 		$doActions = $this->doActions($blank, 'add');
 		if ($doActions->code !== 0) {
-			$in = UserInput::fromRequest($r, $this->perms, null, $this->config, $this->formFields($blank, null));
+			$in = UserInput::fromRequest($request, $this->perms, null, $this->config, $this->formFields($blank, null));
 
-			return $this->form($r, $in->toEntity(null, $this->entityFor($in)), $in->password, $in->forcePasswordChange, $doActions);
+			return $this->form($request, $in->toEntity(null, $this->entityFor($in)), $in->password, $in->forcePasswordChange, $doActions);
 		}
 
 		// card.php l.192-212: cancel goes to backtopageforcancel, else backtopage, else the list (user_list)
 		// (a backtopage waiting for the new id is no target on a cancel)
-		if ($this->param($r, 'cancel', 'alpha') !== '') {
+		if ($this->param($request, 'cancel', 'alpha') !== '') {
 			$candidate = $backtopageforcancel !== ''
 				? $backtopageforcancel
 				: ($backtopage !== '' && !str_contains($backtopage, '__ID__') ? $backtopage : null);
@@ -397,7 +397,7 @@ final class UserController
 			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $this->urls->generate('user_list'));
 		}
 
-		$in = UserInput::fromRequest($r, $this->perms, null, $this->config, $this->formFields($blank, null));
+		$in = UserInput::fromRequest($request, $this->perms, null, $this->config, $this->formFields($blank, null));
 		$values = $in->toEntity(null, $this->entityFor($in));
 
 		$errors = $this->validator->validate($in, true, $this->repo->countForQuota());
@@ -405,7 +405,7 @@ final class UserController
 			// setOptionalsFromPost() has already queued its own message: not flashed twice
 			$this->flashErrors($errors, $in->extraFieldsError);
 
-			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
+			return $this->form($request, $values, $in->password, $in->forcePasswordChange, $doActions);
 		}
 
 		try {
@@ -414,7 +414,7 @@ final class UserController
 		} catch (ValidationException $e) {
 			$this->flashErrors($e->messages);
 
-			return $this->form($r, $values, $in->password, $in->forcePasswordChange, $doActions);
+			return $this->form($request, $values, $in->password, $in->forcePasswordChange, $doActions);
 		}
 
 		// card.php l.430-436: no message, backtopage with the new id, else the card
@@ -431,11 +431,11 @@ final class UserController
 	 * @throws AccessDeniedException When the current user may neither edit it nor set its password
 	 */
 	#[Route('/user/{id}/edit', methods: ['GET'], name: 'user_edit', requirements: ['id' => '\d+'])]
-	public function editForm(Request $r, int $id): ViewModel
+	public function editForm(Request $request, int $id): ViewModel
 	{
 		$existing = $this->prepareEdit($id);
 
-		return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($r, $existing, 'edit'));
+		return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($request, $existing, 'edit'));
 	}
 
 	/**
@@ -447,38 +447,38 @@ final class UserController
 	 * @throws AccessDeniedException When the current user may neither edit it nor set its password
 	 */
 	#[Route('/user/{id}/edit', methods: ['POST'], name: 'user_edit_post', requirements: ['id' => '\d+'])]
-	public function update(Request $r, int $id): Response|ViewModel
+	public function update(Request $request, int $id): Response|ViewModel
 	{
 		$existing = $this->prepareEdit($id);
 		$card = $this->urls->generate('user_show', ['id' => $id]);
 
 		// Invalid CSRF token (main.inc.php l.456-478): doActions with an empty action, nothing written
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
-			return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($r, $existing, ''));
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
+			return $this->editView($existing, $existing, $existing->forcePasswordChange, false, $this->doActionsEdit($request, $existing, ''));
 		}
 
 		// card.php l.185-191: the standard actions only when doActions returns 0
-		$doActions = $this->doActionsEdit($r, $existing, 'update');
+		$doActions = $this->doActionsEdit($request, $existing, 'update');
 		if ($doActions->code !== 0) {
-			$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
+			$in = UserInput::fromRequest($request, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
 
 			return $this->editView($existing, $in->toEntity($existing, $this->entityForUpdate($in, $existing)), $in->forcePasswordChange, true, $doActions);
 		}
 
 		// card.php l.203-212: backtopageforcancel, else backtopage, else the card
-		if ($this->param($r, 'cancel', 'alpha') !== '') {
-			$backtopageforcancel = $this->param($r, 'backtopageforcancel');
-			$candidate = $backtopageforcancel !== '' ? $backtopageforcancel : $this->param($r, 'backtopage');
+		if ($this->param($request, 'cancel', 'alpha') !== '') {
+			$backtopageforcancel = $this->param($request, 'backtopageforcancel');
+			$candidate = $backtopageforcancel !== '' ? $backtopageforcancel : $this->param($request, 'backtopage');
 
 			return new RedirectResponse(SafeRedirect::relativePath($candidate === '' ? null : $candidate, $this->config->urlRoot()) ?? $card);
 		}
 
 		// prepareEdit(): canModify() or canModifyForPassword()
 		if (!$this->perms->canModify($existing)) {
-			return $this->updatePasswordOnly($r, $existing, $doActions) ?? new RedirectResponse($card);
+			return $this->updatePasswordOnly($request, $existing, $doActions) ?? new RedirectResponse($card);
 		}
 
-		$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
+		$in = UserInput::fromRequest($request, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
 		$values = $in->toEntity($existing, $this->entityForUpdate($in, $existing));
 
 		$errors = $this->validator->validate($in, false, 0);
@@ -501,15 +501,15 @@ final class UserController
 		$after = $result->user;
 		// card.php l.665-668: the chosen contact has no third party, the posted one is dropped
 		if ($result->contactCompanyMismatch) {
-			$this->flash->warning($this->t->trans('WarningUserDifferentContactSocid'));
+			$this->flash->warning($this->translator->trans('WarningUserDifferentContactSocid'));
 		}
 		// card.php l.736-750
-		$this->flash->success($this->t->trans('UserModified'));
+		$this->flash->success($this->translator->trans('UserModified'));
 		if ($this->me->login() === $existing->login && $existing->login !== $after->login) {
-			$this->flash->warning($this->t->transnoentities('WarningYourLoginWasModifiedPleaseLogin'));
+			$this->flash->warning($this->translator->transnoentities('WarningYourLoginWasModifiedPleaseLogin'));
 		}
 		if ($result->passwordChanged && $after->login === $this->me->login()) {
-			$this->flash->warning($this->t->transnoentities('WarningYourPasswordWasModifiedPleaseLogin'));
+			$this->flash->warning($this->translator->transnoentities('WarningYourPasswordWasModifiedPleaseLogin'));
 		}
 
 		return new RedirectResponse($card);
@@ -520,9 +520,9 @@ final class UserController
 	 *
 	 * @return ViewModel|null The form again when the password is refused, null on success
 	 */
-	private function updatePasswordOnly(Request $r, User $existing, HookResult $doActions): ?ViewModel
+	private function updatePasswordOnly(Request $request, User $existing, HookResult $doActions): ?ViewModel
 	{
-		$clear = $r->getPost('password', 'password', '');
+		$clear = $request->getPost('password', 'password', '');
 		if (!is_string($clear) || $clear === '') {
 			return null;
 		}
@@ -548,7 +548,7 @@ final class UserController
 	{
 		$user = $this->findReadable($id);
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
 
@@ -580,19 +580,19 @@ final class UserController
 	 * posted action (card.php l.185-191) and only a 0 lets the standard action run; a confirmed action also
 	 * needs confirm=yes.
 	 */
-	private function standardAction(Request $r, User $user, bool $confirmed): string
+	private function standardAction(Request $request, User $user, bool $confirmed): string
 	{
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
-			$this->doActionsEdit($r, $user, '');
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
+			$this->doActionsEdit($request, $user, '');
 
 			return '';
 		}
-		$action = $this->param($r, 'action', 'aZ09');
-		if ($this->doActionsEdit($r, $user, $action)->code !== 0) {
+		$action = $this->param($request, 'action', 'aZ09');
+		if ($this->doActionsEdit($request, $user, $action)->code !== 0) {
 			return '';
 		}
 
-		return !$confirmed || $this->param($r, 'confirm', 'alpha') === 'yes' ? $action : '';
+		return !$confirmed || $this->param($request, 'confirm', 'alpha') === 'yes' ? $action : '';
 	}
 
 
@@ -630,7 +630,7 @@ final class UserController
 			throw new AccessDeniedException();
 		}
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
 
@@ -640,13 +640,13 @@ final class UserController
 	/**
 	 * card.php l.185-189 with the parameters of an existing user (l.82-86, l.122-127).
 	 */
-	private function doActionsEdit(Request $r, User $existing, string $action): HookResult
+	private function doActionsEdit(Request $request, User $existing, string $action): HookResult
 	{
 		$object = $this->formChrome->legacyObject($existing);
 		$result = $this->hooks->execute('doActions', [
 			'id' => $existing->id,
 			'socid' => $this->me->companyId(),
-			'group' => $r->getInt('group'),
+			'group' => $request->getInt('group'),
 			'caneditgroup' => $this->perms->canEditGroups($existing),
 		], $object, $action);
 		$this->flashHookErrors($result);
@@ -679,7 +679,7 @@ final class UserController
 	{
 		$canSeeSalary = $this->perms->canSeeSalary($existing);
 		if ($canSeeSalary) {
-			$this->t->load('salaries');
+			$this->translator->load('salaries');
 		}
 		$credentials = $this->perms->canChangeCredentials($existing);
 		$rights = new UserEditRights(
@@ -697,7 +697,7 @@ final class UserController
 
 		return new ViewModel('user:user_form', [
 			'outputBeforeHeader' => $doActions->output,
-			'title' => $personName.' - '.$this->t->trans('Card'),
+			'title' => $personName.' - '.$this->translator->trans('Card'),
 			'bodyCss' => 'mod-user page-card',
 			'mode' => 'edit',
 			'formAction' => $this->urls->generate('user_edit_post', ['id' => $existing->id]),
@@ -717,7 +717,7 @@ final class UserController
 			'show' => $this->formChrome->visibility($fields),
 			'titleHtml' => '',
 			'loginJs' => '',
-			'f' => $this->formChrome->fragments($values, 'edit', $fields, null, $rights),
+			'fragments' => $this->formChrome->fragments($values, 'edit', $fields, null, $rights),
 		]);
 	}
 
@@ -731,7 +731,7 @@ final class UserController
 		}
 		// card.php l.79, plus errors (validation messages)
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init(self::HOOK_CONTEXTS);
 	}
@@ -740,9 +740,9 @@ final class UserController
 	 * A GETPOST() string, '' when absent. backtopage and backtopageforcancel are kept raw for the hidden
 	 * fields, and checked by SafeRedirect when used.
 	 */
-	private function param(Request $r, string $name, string $filter = 'alphanohtml'): string
+	private function param(Request $request, string $name, string $filter = 'alphanohtml'): string
 	{
-		$value = $r->get($name, $filter);
+		$value = $request->get($name, $filter);
 
 		return is_string($value) ? $value : '';
 	}
@@ -787,15 +787,15 @@ final class UserController
 	/**
 	 * The form with $values: the defaults, or the posted values on a redisplay.
 	 */
-	private function form(Request $r, User $values, ?string $password, bool $forcePasswordChange, HookResult $doActions): ViewModel
+	private function form(Request $request, User $values, ?string $password, bool $forcePasswordChange, HookResult $doActions): ViewModel
 	{
 		$canSeeSalary = $this->perms->canSeeSalary($values);
 		if ($canSeeSalary) {
-			$this->t->load('salaries');
+			$this->translator->load('salaries');
 		}
 		$fields = $this->formFields($values, null);
 		// card.php l.981-985
-		$title = $this->t->trans($r->getInt('employee') > 0 ? 'NewEmployee' : 'NewUser');
+		$title = $this->translator->trans($request->getInt('employee') > 0 ? 'NewEmployee' : 'NewUser');
 
 		return new ViewModel('user:user_form', [
 			'outputBeforeHeader' => $doActions->output,
@@ -805,15 +805,15 @@ final class UserController
 			'formAction' => $this->urls->generate('user_new_post'),
 			'values' => $values,
 			'forcePasswordChange' => $forcePasswordChange,
-			'backtopage' => $this->param($r, 'backtopage'),
-			'backtopageforcancel' => $this->param($r, 'backtopageforcancel'),
+			'backtopage' => $this->param($request, 'backtopage'),
+			'backtopageforcancel' => $this->param($request, 'backtopageforcancel'),
 			'entity' => $this->config->entity(),
 			'canSeeSalary' => $canSeeSalary,
 			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
 			'show' => $this->formChrome->visibility($fields),
 			'titleHtml' => $this->formChrome->title($title),
 			'loginJs' => $this->formChrome->loginJs(),
-			'f' => $this->formChrome->fragments($values, 'create', $fields, $password),
+			'fragments' => $this->formChrome->fragments($values, 'create', $fields, $password),
 		]);
 	}
 

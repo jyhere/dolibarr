@@ -36,7 +36,7 @@ final class UserRepository implements EntityRepository
 		'force_pass_change',
 	];
 
-	public function __construct(private readonly Connection $c, private readonly int $entity)
+	public function __construct(private readonly Connection $connection, private readonly int $entity)
 	{
 	}
 
@@ -47,7 +47,7 @@ final class UserRepository implements EntityRepository
 
 	public function findByLogin(string $login): ?User
 	{
-		return $this->fetch("u.login = '".$this->c->escape($login)."'", ' ORDER BY u.entity DESC');
+		return $this->fetch("u.login = '".$this->connection->escape($login)."'", ' ORDER BY u.entity DESC');
 	}
 
 	/**
@@ -55,7 +55,7 @@ final class UserRepository implements EntityRepository
 	 */
 	public function countInEntity(): int
 	{
-		$row = $this->c->fetchOne('SELECT COUNT(u.rowid) as nb FROM '.$this->c->prefix().'user as u WHERE u.entity IN (0, '.$this->entity.')');
+		$row = $this->connection->fetchOne('SELECT COUNT(u.rowid) as nb FROM '.$this->connection->prefix().'user as u WHERE u.entity IN (0, '.$this->entity.')');
 
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
@@ -67,7 +67,7 @@ final class UserRepository implements EntityRepository
 	 */
 	public function countForQuota(): int
 	{
-		$row = $this->c->fetchOne('SELECT COUNT(rowid) as nb FROM '.$this->c->prefix().'user WHERE entity IN (0, '.$this->entity.') AND statut = 1');
+		$row = $this->connection->fetchOne('SELECT COUNT(rowid) as nb FROM '.$this->connection->prefix().'user WHERE entity IN (0, '.$this->entity.') AND statut = 1');
 
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
@@ -91,11 +91,11 @@ final class UserRepository implements EntityRepository
 	 * @param bool                                                  $withApiKey        Select the (encrypted) api_key, for the ApiKey column
 	 * @throws \Dolibarr\Core\Database\DatabaseException
 	 */
-	public function search(UserSearch $s, ?array $childIds, ?int $externalCompanyId, array $fragments = [], bool $withApiKey = false): UserPage
+	public function search(UserSearch $search, ?array $childIds, ?int $externalCompanyId, array $fragments = [], bool $withApiKey = false): UserPage
 	{
-		$p = $this->c->prefix();
-		$f = $s->filters;
-		$str = static fn (string $k): string => $s->filter($k);
+		$prefix = $this->connection->prefix();
+		$filters = $search->filters;
+		$str = static fn (string $key): string => $search->filter($key);
 
 		$select = 'SELECT DISTINCT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS))
 			.', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL
@@ -109,11 +109,11 @@ final class UserRepository implements EntityRepository
 			.($fragments['select'] ?? '');
 		$select = (string) preg_replace('/,\s*$/', '', $select);
 
-		$sql = ' FROM '.$p.'user as u'
-			.' LEFT JOIN '.$p.'user_extrafields as ef on (u.rowid = ef.fk_object)'
-			.' LEFT JOIN '.$p.'societe as s ON u.fk_soc = s.rowid'
-			.' LEFT JOIN '.$p.'user as u2 ON u.fk_user = u2.rowid'
-			.' LEFT JOIN '.$p.'c_country as co ON u.fk_country = co.rowid'
+		$sql = ' FROM '.$prefix.'user as u'
+			.' LEFT JOIN '.$prefix.'user_extrafields as ef on (u.rowid = ef.fk_object)'
+			.' LEFT JOIN '.$prefix.'societe as s ON u.fk_soc = s.rowid'
+			.' LEFT JOIN '.$prefix.'user as u2 ON u.fk_user = u2.rowid'
+			.' LEFT JOIN '.$prefix.'c_country as co ON u.fk_country = co.rowid'
 			.($fragments['from'] ?? '')
 			.' WHERE u.entity IN ('.getEntity('user').')';
 		if ($externalCompanyId !== null && $externalCompanyId > 0) {
@@ -139,7 +139,7 @@ final class UserRepository implements EntityRepository
 		$gender = $str('search_gender');
 		if ($gender !== '' && $gender !== '-1') {
 			// Not natural_search(): %man% would also find woman (l.460)
-			$sql .= " AND u.gender = '".$this->c->escape($gender)."'";
+			$sql .= " AND u.gender = '".$this->connection->escape($gender)."'";
 		}
 		$employee = $str('search_employee');
 		if (is_numeric($employee) && $employee >= 0) {
@@ -152,10 +152,10 @@ final class UserRepository implements EntityRepository
 			require_once DOL_DOCUMENT_ROOT.'/core/lib/phone.lib.php';
 		}
 		if ($str('search_phonepro') !== '') {
-			$sql .= dol_natural_search_phone($this->c->legacy(), 'u.office_phone', $str('search_phonepro'));
+			$sql .= dol_natural_search_phone($this->connection->legacy(), 'u.office_phone', $str('search_phonepro'));
 		}
 		if ($str('search_phonemobile') !== '') {
-			$sql .= dol_natural_search_phone($this->c->legacy(), 'u.user_mobile', $str('search_phonemobile'));
+			$sql .= dol_natural_search_phone($this->connection->legacy(), 'u.user_mobile', $str('search_phonemobile'));
 		}
 		if ($str('search_email') !== '') {
 			$sql .= natural_search('u.email', $str('search_email'));
@@ -174,9 +174,9 @@ final class UserRepository implements EntityRepository
 			$sql .= self::inInts('u.statut', $status);
 		}
 		if ($str('search_all') !== '') {
-			$sql .= natural_search(array_keys($s->searchAllFields), $str('search_all'));
+			$sql .= natural_search(array_keys($search->searchAllFields), $str('search_all'));
 		}
-		$sql .= $this->categorySql((int) $str('search_categ'), self::int($f['search_category_user_operator'] ?? 0));
+		$sql .= $this->categorySql((int) $str('search_categ'), self::int($filters['search_category_user_operator'] ?? 0));
 		if (UserSearch::positive($str('search_warehouse'))) {
 			$sql .= ' AND u.fk_warehouse = '.(int) $str('search_warehouse');
 		}
@@ -186,34 +186,34 @@ final class UserRepository implements EntityRepository
 		$sql .= $fragments['where'] ?? '';
 
 		$total = -1;
-		if ($s->countTotal) {
+		if ($search->countTotal) {
 			// l.538-539: the same query counted (DISTINCT dropped, as list.php's rewrite of the select)
-			$row = $this->c->fetchOne('SELECT COUNT(*) as nbtotalofrecords'.(string) preg_replace('/GROUP BY .*$/', '', $sql));
+			$row = $this->connection->fetchOne('SELECT COUNT(*) as nbtotalofrecords'.(string) preg_replace('/GROUP BY .*$/', '', $sql));
 			$total = $row === null ? 0 : self::int(get_object_vars($row)['nbtotalofrecords'] ?? 0);
-			if ($s->offset() > $total) {
-				$s = $s->firstPage();
+			if ($search->offset() > $total) {
+				$search = $search->firstPage();
 			}
 		}
 
-		$db = $this->c->legacy();
-		$listSql = $select.$sql.$db->order($s->sortField, $s->sortOrder);
-		$rows = $this->c->fetchAll($listSql.$db->plimit($s->limit + 1, $s->offset()));
-		$hasMore = count($rows) > $s->limit;
+		$db = $this->connection->legacy();
+		$listSql = $select.$sql.$db->order($search->sortField, $search->sortOrder);
+		$rows = $this->connection->fetchAll($listSql.$db->plimit($search->limit + 1, $search->offset()));
+		$hasMore = count($rows) > $search->limit;
 		$items = [];
-		foreach (array_slice($rows, 0, $s->limit) as $row) {
+		foreach (array_slice($rows, 0, $search->limit) as $row) {
 			$items[] = $this->listRow($row);
 		}
 
-		return new UserPage($items, $total, $s->page, $s->limit, $hasMore, $listSql, $select);
+		return new UserPage($items, $total, $search->page, $search->limit, $hasMore, $listSql, $select);
 	}
 
 	private function fetch(string $where, string $order = ''): ?User
 	{
 		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL
-			.' FROM '.$this->c->prefix().'user as u'
+			.' FROM '.$this->connection->prefix().'user as u'
 			.' WHERE '.$where.' AND u.entity IN (0, '.$this->entity.')'
 			.$order.' LIMIT 1';
-		$row = $this->c->fetchOne($sql);
+		$row = $this->connection->fetchOne($sql);
 
 		return $row === null ? null : $this->hydrate($row);
 	}
@@ -224,13 +224,13 @@ final class UserRepository implements EntityRepository
 	 */
 	private function categorySql(int $categ, int $operator): string
 	{
-		$p = $this->c->prefix();
+		$prefix = $this->connection->prefix();
 		if ($categ === -2) {
-			$criteria = 'NOT EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user)';
+			$criteria = 'NOT EXISTS (SELECT ck.fk_user FROM '.$prefix.'categorie_user as ck WHERE u.rowid = ck.fk_user)';
 		} elseif ($categ > 0) {
 			$criteria = $operator === 0
-				? ' EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie = '.$categ.')'
-				: ' EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie IN ('.$categ.'))';
+				? ' EXISTS (SELECT ck.fk_user FROM '.$prefix.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie = '.$categ.')'
+				: ' EXISTS (SELECT ck.fk_user FROM '.$prefix.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie IN ('.$categ.'))';
 		} else {
 			return '';
 		}
@@ -256,115 +256,115 @@ final class UserRepository implements EntityRepository
 
 	private function listRow(object $row): UserListRow
 	{
-		/** @var array<string, mixed> $r */
-		$r = get_object_vars($row);
+		/** @var array<string, mixed> $values */
+		$values = get_object_vars($row);
 
 		return new UserListRow(
 			$this->hydrate($row),
-			self::str($r['login2'] ?? null),
-			self::str($r['firstname2'] ?? null),
-			self::str($r['lastname2'] ?? null),
-			self::str($r['name'] ?? null),
-			self::str($r['country_code'] ?? null),
-			self::str($r['country_label'] ?? null),
-			self::date($r['date_modification'] ?? null),
-			$r
+			self::str($values['login2'] ?? null),
+			self::str($values['firstname2'] ?? null),
+			self::str($values['lastname2'] ?? null),
+			self::str($values['name'] ?? null),
+			self::str($values['country_code'] ?? null),
+			self::str($values['country_label'] ?? null),
+			self::date($values['date_modification'] ?? null),
+			$values
 		);
 	}
 
 	private function hydrate(object $row): User
 	{
-		/** @var array<string, mixed> $r */
-		$r = get_object_vars($row);
+		/** @var array<string, mixed> $values */
+		$values = get_object_vars($row);
 
 		return new User(
-			id: self::int($r['rowid'] ?? 0),
-			entity: self::int($r['entity'] ?? 0),
-			login: self::str($r['login'] ?? '') ?? '',
-			admin: self::int($r['admin'] ?? 0) > 0,
-			employee: self::int($r['employee'] ?? 0) > 0,
-			status: self::int($r['statut'] ?? 0),
-			lastname: self::str($r['lastname'] ?? null),
-			firstname: self::str($r['firstname'] ?? null),
-			gender: self::str($r['gender'] ?? null),
-			civility: self::str($r['civility'] ?? null),
-			job: self::str($r['job'] ?? null),
-			email: self::str($r['email'] ?? null),
-			officePhone: self::str($r['office_phone'] ?? null),
-			userMobile: self::str($r['user_mobile'] ?? null),
-			photo: self::str($r['photo'] ?? null),
-			lang: self::str($r['lang'] ?? null),
-			color: self::str($r['color'] ?? null),
-			dateStartValidity: self::date($r['datestartvalidity'] ?? null),
-			dateEndValidity: self::date($r['dateendvalidity'] ?? null),
-			hasApiKey: self::int($r['has_api_key'] ?? 0) === 1,
-			personalEmail: self::str($r['personal_email'] ?? null),
-			personalMobile: self::str($r['personal_mobile'] ?? null),
-			address: self::str($r['address'] ?? null),
-			zip: self::str($r['zip'] ?? null),
-			town: self::str($r['town'] ?? null),
-			stateId: self::nint($r['fk_state'] ?? null),
-			countryId: self::nint($r['fk_country'] ?? null),
-			birth: self::date($r['birth'] ?? null),
-			birthPlace: self::str($r['birth_place'] ?? null),
-			signature: self::str($r['signature'] ?? null),
-			dateLastLogin: self::date($r['datelastlogin'] ?? null),
-			datePreviousLogin: self::date($r['datepreviouslogin'] ?? null),
-			notePublic: self::str($r['note_public'] ?? null),
-			notePrivate: self::str($r['note_private'] ?? null),
-			companyId: self::nint($r['fk_soc'] ?? null),
-			contactId: self::nint($r['fk_socpeople'] ?? null),
-			memberId: self::nint($r['fk_member'] ?? null),
-			supervisorId: self::nint($r['fk_user'] ?? null),
-			expenseValidatorId: self::nint($r['fk_user_expense_validator'] ?? null),
-			holidayValidatorId: self::nint($r['fk_user_holiday_validator'] ?? null),
-			refEmployee: self::str($r['ref_employee'] ?? null),
-			refExt: self::str($r['ref_ext'] ?? null),
-			dateCreated: self::date($r['datec'] ?? null),
-			dateModified: self::date($r['tms'] ?? null),
-			salary: self::float($r['salary'] ?? null),
-			salaryExtra: self::float($r['salaryextra'] ?? null),
-			thm: self::float($r['thm'] ?? null),
-			tjm: self::float($r['tjm'] ?? null),
-			weeklyHours: self::float($r['weeklyhours'] ?? null),
-			dateEmployment: self::date($r['dateemployment'] ?? null),
-			dateEmploymentEnd: self::date($r['dateemploymentend'] ?? null),
-			officeFax: self::str($r['office_fax'] ?? null),
-			accountancyCode: self::str($r['accountancy_code'] ?? null),
-			warehouseId: self::nint($r['fk_warehouse'] ?? null),
-			nationalRegistrationNumber: self::str($r['national_registration_number'] ?? null),
-			isLdapManaged: self::int($r['is_ldap_managed'] ?? 0) === 1,
-			forcePasswordChange: self::int($r['force_pass_change'] ?? 0) > 0
+			id: self::int($values['rowid'] ?? 0),
+			entity: self::int($values['entity'] ?? 0),
+			login: self::str($values['login'] ?? '') ?? '',
+			admin: self::int($values['admin'] ?? 0) > 0,
+			employee: self::int($values['employee'] ?? 0) > 0,
+			status: self::int($values['statut'] ?? 0),
+			lastname: self::str($values['lastname'] ?? null),
+			firstname: self::str($values['firstname'] ?? null),
+			gender: self::str($values['gender'] ?? null),
+			civility: self::str($values['civility'] ?? null),
+			job: self::str($values['job'] ?? null),
+			email: self::str($values['email'] ?? null),
+			officePhone: self::str($values['office_phone'] ?? null),
+			userMobile: self::str($values['user_mobile'] ?? null),
+			photo: self::str($values['photo'] ?? null),
+			lang: self::str($values['lang'] ?? null),
+			color: self::str($values['color'] ?? null),
+			dateStartValidity: self::date($values['datestartvalidity'] ?? null),
+			dateEndValidity: self::date($values['dateendvalidity'] ?? null),
+			hasApiKey: self::int($values['has_api_key'] ?? 0) === 1,
+			personalEmail: self::str($values['personal_email'] ?? null),
+			personalMobile: self::str($values['personal_mobile'] ?? null),
+			address: self::str($values['address'] ?? null),
+			zip: self::str($values['zip'] ?? null),
+			town: self::str($values['town'] ?? null),
+			stateId: self::nint($values['fk_state'] ?? null),
+			countryId: self::nint($values['fk_country'] ?? null),
+			birth: self::date($values['birth'] ?? null),
+			birthPlace: self::str($values['birth_place'] ?? null),
+			signature: self::str($values['signature'] ?? null),
+			dateLastLogin: self::date($values['datelastlogin'] ?? null),
+			datePreviousLogin: self::date($values['datepreviouslogin'] ?? null),
+			notePublic: self::str($values['note_public'] ?? null),
+			notePrivate: self::str($values['note_private'] ?? null),
+			companyId: self::nint($values['fk_soc'] ?? null),
+			contactId: self::nint($values['fk_socpeople'] ?? null),
+			memberId: self::nint($values['fk_member'] ?? null),
+			supervisorId: self::nint($values['fk_user'] ?? null),
+			expenseValidatorId: self::nint($values['fk_user_expense_validator'] ?? null),
+			holidayValidatorId: self::nint($values['fk_user_holiday_validator'] ?? null),
+			refEmployee: self::str($values['ref_employee'] ?? null),
+			refExt: self::str($values['ref_ext'] ?? null),
+			dateCreated: self::date($values['datec'] ?? null),
+			dateModified: self::date($values['tms'] ?? null),
+			salary: self::float($values['salary'] ?? null),
+			salaryExtra: self::float($values['salaryextra'] ?? null),
+			thm: self::float($values['thm'] ?? null),
+			tjm: self::float($values['tjm'] ?? null),
+			weeklyHours: self::float($values['weeklyhours'] ?? null),
+			dateEmployment: self::date($values['dateemployment'] ?? null),
+			dateEmploymentEnd: self::date($values['dateemploymentend'] ?? null),
+			officeFax: self::str($values['office_fax'] ?? null),
+			accountancyCode: self::str($values['accountancy_code'] ?? null),
+			warehouseId: self::nint($values['fk_warehouse'] ?? null),
+			nationalRegistrationNumber: self::str($values['national_registration_number'] ?? null),
+			isLdapManaged: self::int($values['is_ldap_managed'] ?? 0) === 1,
+			forcePasswordChange: self::int($values['force_pass_change'] ?? 0) > 0
 		);
 	}
 
-	private static function int(mixed $v): int
+	private static function int(mixed $value): int
 	{
-		return is_numeric($v) ? (int) $v : 0;
+		return is_numeric($value) ? (int) $value : 0;
 	}
 
-	private static function nint(mixed $v): ?int
+	private static function nint(mixed $value): ?int
 	{
-		return is_numeric($v) ? (int) $v : null;
+		return is_numeric($value) ? (int) $value : null;
 	}
 
-	private static function float(mixed $v): ?float
+	private static function float(mixed $value): ?float
 	{
-		return is_numeric($v) ? (float) $v : null;
+		return is_numeric($value) ? (float) $value : null;
 	}
 
-	private static function str(mixed $v): ?string
+	private static function str(mixed $value): ?string
 	{
-		return is_scalar($v) ? (string) $v : null;
+		return is_scalar($value) ? (string) $value : null;
 	}
 
-	private static function date(mixed $v): ?\DateTimeImmutable
+	private static function date(mixed $value): ?\DateTimeImmutable
 	{
-		if (!is_string($v) || $v === '' || str_starts_with($v, '0000-00-00')) {
+		if (!is_string($value) || $value === '' || str_starts_with($value, '0000-00-00')) {
 			return null;
 		}
 		try {
-			return new \DateTimeImmutable($v, new \DateTimeZone('UTC'));
+			return new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
 		} catch (\Exception) {
 			return null;
 		}

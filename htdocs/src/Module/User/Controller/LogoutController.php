@@ -49,14 +49,14 @@ final class LogoutController
 	 * of the kernel render through the layout.
 	 */
 	#[Route('/logout', methods: ['GET', 'POST'], name: 'logout', constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED'])]
-	public function logout(Request $r): Response
+	public function logout(Request $request): Response
 	{
 		$urlRoot = $this->config->urlRoot();
 
 		// A present but invalid CSRF token: main.inc.php has emptied $_POST, set a warning message and
 		// errorcode=InvalidToken. The disconnection is cancelled (spec §8; legacy logout.php disconnects anyway).
 		// A GET without token, the legacy menu link, still disconnects.
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
 			return new RedirectResponse($urlRoot.'/index.php');
 		}
 
@@ -83,7 +83,7 @@ final class LogoutController
 		// l.84-100: url to go after the disconnection. GETPOST('urlfrom') applies its URL cleaning to the
 		// request value; the session value gets the same one through LegacyInput::urlParameter().
 		$sessionUrlfrom = $this->session->get('urlfrom', '');
-		$urlfrom = is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? LegacyInput::urlParameter($sessionUrlfrom) : self::text($r->get('urlfrom'));
+		$urlfrom = is_string($sessionUrlfrom) && $sessionUrlfrom !== '' ? LegacyInput::urlParameter($sessionUrlfrom) : self::text($request->get('urlfrom'));
 		$url = $urlRoot.'/index.php';
 		if ($urlfrom !== '') {
 			$url = SafeRedirect::relativePath($urlRoot.$urlfrom, $urlRoot) ?? $url;
@@ -93,7 +93,7 @@ final class LogoutController
 			$url = $gotoUrl;
 		}
 		foreach (self::MENU_FLAGS as $flag) {
-			if (!empty($r->get($flag))) {
+			if (!empty($request->get($flag))) {
 				$url .= (str_contains($url, '?') ? '&' : '?').$flag.'=1';
 			}
 		}
@@ -110,7 +110,7 @@ final class LogoutController
 		// l.118-122: destroy the session
 		$this->session->destroy();
 
-		if (!empty($r->get('noredirect'))) {
+		if (!empty($request->get('noredirect'))) {
 			return new HtmlResponse('');
 		}
 

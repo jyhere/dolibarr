@@ -42,8 +42,8 @@ final class EventDispatcher
 
 		foreach ($types as $type) {
 			$entries = $this->listeners[$type] ?? [];
-			usort($entries, static function (array $a, array $b): int {
-				return [$b['priority'], $a['sequence']] <=> [$a['priority'], $b['sequence']];
+			usort($entries, static function (array $left, array $right): int {
+				return [$right['priority'], $left['sequence']] <=> [$left['priority'], $right['sequence']];
 			});
 			foreach ($entries as $entry) {
 				$entry['listener']($event);

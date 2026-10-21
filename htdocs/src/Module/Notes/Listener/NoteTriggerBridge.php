@@ -26,9 +26,9 @@ final class NoteTriggerBridge
 	) {
 	}
 
-	public function register(EventDispatcher $d): void
+	public function register(EventDispatcher $dispatcher): void
 	{
-		$d->addListener(NoteUpdated::class, $this->onNoteUpdated(...));
+		$dispatcher->addListener(NoteUpdated::class, $this->onNoteUpdated(...));
 	}
 
 	/**
@@ -37,22 +37,22 @@ final class NoteTriggerBridge
 	 *
 	 * @throws \LogicException      Without a logged legacy user, or for an element no module declares
 	 */
-	public function onNoteUpdated(NoteUpdated $e): void
+	public function onNoteUpdated(NoteUpdated $event): void
 	{
-		if ($e->legacyTriggerFired) {
+		if ($event->legacyTriggerFired) {
 			return;
 		}
 		$actor = $this->ctx->user;
 		if ($actor === null) {
 			throw new \LogicException('A note trigger needs the logged legacy user');
 		}
-		$definition = $this->registry->findByElement($e->element);
+		$definition = $this->registry->findByElement($event->element);
 		if ($definition === null) {
-			throw new \LogicException('No entity type declared for the element '.$e->element);
+			throw new \LogicException('No entity type declared for the element '.$event->element);
 		}
-		$object = $this->loader->byElement($definition, $e->id);
+		$object = $this->loader->byElement($definition, $event->id);
 		if ($object === null) {
-			$this->log->warning('NoteTriggerBridge: '.$e->element.' '.$e->id.' not found, MODIFY trigger skipped');
+			$this->log->warning('NoteTriggerBridge: '.$event->element.' '.$event->id.' not found, MODIFY trigger skipped');
 
 			return;
 		}

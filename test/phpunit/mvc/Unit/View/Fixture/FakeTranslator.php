@@ -23,7 +23,7 @@ final class FakeTranslator implements Translator
 	 */
 	public function transHtml(string $key, string ...$args): string
 	{
-		return 'TH:'.$key.($args === [] ? '' : ':'.implode('|', array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args)));
+		return 'TH:'.$key.($args === [] ? '' : ':'.implode('|', array_map(static fn (string $argument): string => htmlspecialchars($argument, ENT_COMPAT, 'UTF-8'), $args)));
 	}
 
 	public function load(string $domain): void

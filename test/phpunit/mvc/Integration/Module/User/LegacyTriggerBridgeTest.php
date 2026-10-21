@@ -27,8 +27,8 @@ final class LegacyTriggerBridgeTest extends TestCase
 		$dispatcher = new EventDispatcher();
 		(new LegacyTriggerBridge(new LegacyTriggers($ctx), $ctx, new LegacyObjectLoader($connection), new Logger()))->register($dispatcher);
 		$spied = [];
-		$dispatcher->addListener(UserLoggedIn::class, static function (UserLoggedIn $e) use (&$spied): void {
-			$spied[] = $e;
+		$dispatcher->addListener(UserLoggedIn::class, static function (UserLoggedIn $event) use (&$spied): void {
+			$spied[] = $event;
 		});
 
 		try {

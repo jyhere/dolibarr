@@ -12,10 +12,10 @@ final class UserRepositoryTest extends TestCase
 {
 	public function testFindReturnsAdminUser(): void
 	{
-		$u = $this->repo()->find(1);
-		self::assertNotNull($u);
-		self::assertSame($GLOBALS['user']->login, $u->login);
-		self::assertTrue($u->admin);
+		$foundUser = $this->repo()->find(1);
+		self::assertNotNull($foundUser);
+		self::assertSame($GLOBALS['user']->login, $foundUser->login);
+		self::assertTrue($foundUser->admin);
 	}
 
 	public function testFindUnknownReturnsNull(): void
@@ -25,9 +25,9 @@ final class UserRepositoryTest extends TestCase
 
 	public function testFindByLoginMatchesEntity(): void
 	{
-		$u = $this->repo()->findByLogin($GLOBALS['user']->login);
-		self::assertNotNull($u);
-		self::assertSame(1, $u->id);
+		$foundUser = $this->repo()->findByLogin($GLOBALS['user']->login);
+		self::assertNotNull($foundUser);
+		self::assertSame(1, $foundUser->id);
 	}
 
 	public function testFindByLoginUnknownReturnsNull(): void
@@ -49,9 +49,9 @@ final class UserRepositoryTest extends TestCase
 
 	public function testHasApiKeyIsBooleanAndValueNeverLoaded(): void
 	{
-		$u = $this->repo()->find(1);
-		self::assertNotNull($u);
-		self::assertIsBool($u->hasApiKey);
+		$foundUser = $this->repo()->find(1);
+		self::assertNotNull($foundUser);
+		self::assertIsBool($foundUser->hasApiKey);
 	}
 
 	private function repo(): UserRepository

@@ -43,12 +43,12 @@ final class LegacyRedirectTest extends TestCase
 
 	public function testRulesAreIndexedByScriptInDeclarationOrder(): void
 	{
-		$a = new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id']);
-		$b = new LegacyRedirect('user/card.php', 'user_show', ['rowid' => 'id']);
-		$c = new LegacyRedirect('user/list.php', 'user_list');
-		$table = LegacyRedirectTable::fromModules([$this->module([$a, $c, $b])], $this->routes());
+		$byId = new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id']);
+		$byRowid = new LegacyRedirect('user/card.php', 'user_show', ['rowid' => 'id']);
+		$list = new LegacyRedirect('user/list.php', 'user_list');
+		$table = LegacyRedirectTable::fromModules([$this->module([$byId, $list, $byRowid])], $this->routes());
 
-		self::assertEquals([$a, $b], $table->forScript('user/card.php'));
+		self::assertEquals([$byId, $byRowid], $table->forScript('user/card.php'));
 		self::assertSame([], $table->forScript('other.php'));
 		self::assertEquals($table, LegacyRedirectTable::fromArray($table->toArray()));
 	}
