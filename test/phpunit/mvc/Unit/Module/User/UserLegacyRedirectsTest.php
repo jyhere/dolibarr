@@ -9,6 +9,7 @@ use Dolibarr\Core\Legacy\Redirect\LegacyRedirectTable;
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Module\Notes\NotesModule;
+use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Repository\UserSearch;
 use Dolibarr\Module\User\UserModule;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -90,6 +91,14 @@ final class UserLegacyRedirectsTest extends TestCase
 	public function testRule(string $script, array $query, ?string $expected): void
 	{
 		self::assertSame($expected, self::redirector()->resolve('GET', $script, $query, []), $script.' '.json_encode($query));
+	}
+
+	public function testLogoutRouteRunsEvenIfOnlyLoginAllowed(): void
+	{
+		$routes = array_column(array_map(static fn ($d): array => $d->toArray(), (new RouteCompiler())->compile([LogoutController::class])), null, 'name');
+
+		// user/logout.php defines it: the offline message of main.inc.php links to it (redirected to /logout)
+		self::assertSame(['EVEN_IF_ONLY_LOGIN_ALLOWED'], $routes['logout']['constants']);
 	}
 
 	public function testPostIsNeverRedirected(): void

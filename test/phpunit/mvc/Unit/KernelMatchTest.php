@@ -158,6 +158,24 @@ final class KernelMatchTest extends TestCase
 		self::assertSame(['NOREDIRECTBYMAINTOLOGIN'], BootstrapMode::constantsFor(BootstrapMode::PROTECTED));
 	}
 
+	public function testRouteConstantsAreAddedToTheModeConstants(): void
+	{
+		$result = $this->match('GET', '/d/fixture/out');
+		self::assertSame(['NOREDIRECTBYMAINTOLOGIN', 'EVEN_IF_ONLY_LOGIN_ALLOWED'], BootstrapMode::constantsForMatch($result['mode'], $result['matched']));
+
+		$result = $this->match('GET', '/d/fixture/42');
+		self::assertSame(['NOREDIRECTBYMAINTOLOGIN'], BootstrapMode::constantsForMatch($result['mode'], $result['matched']));
+
+		$result = $this->match('POST', '/d/fixture/out');
+		self::assertSame(BootstrapMode::constantsFor(BootstrapMode::PUBLIC), BootstrapMode::constantsForMatch($result['mode'], $result['matched']));
+	}
+
+	public function testAppDefinesTheConstantsOfTheMatchedRoute(): void
+	{
+		$app = (string) file_get_contents(__DIR__.'/../../../../htdocs/app.php');
+		self::assertStringContainsString("BootstrapMode::constantsForMatch(\$matchResult['mode'], \$matchResult['matched'])", $app);
+	}
+
 	public function testJsonSuffixIsNotStatic(): void
 	{
 		self::assertFalse(Kernel::isStaticAssetPath('/user/abc.json'));

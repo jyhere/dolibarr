@@ -29,9 +29,10 @@ final class RouteDefinitionsLoaderTest extends TestCase
 		$loader = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]);
 		$definitions = $loader->load();
 
-		self::assertSame(['fixture_public', 'fixture_show'], array_map(static fn ($d): string => $d->name, $definitions));
+		self::assertSame(['fixture_public', 'fixture_out', 'fixture_show'], array_map(static fn ($d): string => $d->name, $definitions));
 		self::assertFileExists($this->dataRoot.'/cache/routes.php');
 		self::assertEquals($definitions, (new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]))->load());
+		self::assertSame(['EVEN_IF_ONLY_LOGIN_ALLOWED', 'NOREDIRECTBYMAINTOLOGIN'], $loader->load()[1]->constants, 'route constants survive the cache');
 	}
 
 	public function testStampDependsOnVersionAndModules(): void
@@ -49,7 +50,7 @@ final class RouteDefinitionsLoaderTest extends TestCase
 		file_put_contents($this->dataRoot, 'a file, not a directory');
 		try {
 			$definitions = (new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]))->load();
-			self::assertCount(2, $definitions);
+			self::assertCount(3, $definitions);
 		} finally {
 			unlink($this->dataRoot);
 		}

@@ -32,7 +32,7 @@ $phpSelf = $kernel->phpSelfFor($matchResult);
 if ($phpSelf !== null) {
 	$_SERVER['PHP_SELF'] = $phpSelf;   // Before main.inc.php: legacy code (form actions, landing page guard, logs) reads it
 }
-foreach (\Dolibarr\Core\BootstrapMode::constantsFor($matchResult['mode']) as $const) {
+foreach (\Dolibarr\Core\BootstrapMode::constantsForMatch($matchResult['mode'], $matchResult['matched']) as $const) {
 	if (!defined($const)) {
 		define($const, '1');
 	}

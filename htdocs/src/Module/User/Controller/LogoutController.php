@@ -44,8 +44,11 @@ final class LogoutController
 
 	/**
 	 * GET stays for the legacy menu link, POST is the preferred method.
+	 * EVEN_IF_ONLY_LOGIN_ALLOWED as in logout.php: under MAIN_ONLY_LOGIN_ALLOWED the offline message of main.inc.php
+	 * links to logout.php, redirected here. NOREQUIREMENU/HTML/AJAX of logout.php are not set: the error pages
+	 * of the kernel render through the layout.
 	 */
-	#[Route('/logout', methods: ['GET', 'POST'], name: 'logout')]
+	#[Route('/logout', methods: ['GET', 'POST'], name: 'logout', constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED'])]
 	public function logout(Request $r): Response
 	{
 		$urlRoot = $this->config->urlRoot();
