@@ -114,6 +114,8 @@ token_from() { # <jar> <path>
 JSON=(-H 'Accept: application/json')
 
 echo "== Anonymous"
+# First a served route: app.php then creates cache/mvc_front_ok, without which no legacy page is redirected
+expect_code "login page 200 (arms the legacy redirects)" 200 "$BASE/login"
 expect_code "404 unknown route" 404 "$BASE/nexistepas"
 expect_code "404 unknown route json" 404 "${JSON[@]}" "$BASE/nexistepas"
 expect_grep "404 json body" '{"error":"not_found"}' 1 "${JSON[@]}" "$BASE/nexistepas"

@@ -13,6 +13,7 @@ use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Http\TextResponse;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyInputFilter;
+use Dolibarr\Core\Legacy\Redirect\FrontControllerMarker;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\ArgumentResolver;
 use Dolibarr\Core\Routing\MatchedRoute;
@@ -116,7 +117,8 @@ final class Kernel
 	}
 
 	/**
-	 * Answer the request once main.inc.php has been included. Any uncaught error is logged
+	 * Answer the request once main.inc.php has been included. A matched route first creates the marker
+	 * cache/mvc_front_ok (FrontControllerMarker) when missing. Any uncaught error is logged
 	 * and answered with a bare 500: its message (SQL, paths) never reaches the client.
 	 *
 	 * @param MatchResult $matchResult
@@ -125,6 +127,10 @@ final class Kernel
 	public function run(array $matchResult, mixed $mainIncResult): Response
 	{
 		$request = $this->requestForRun();
+		if ($matchResult['matched'] !== null) {
+			// A route reached app.php: the rewrite works, the legacy redirects may start (LegacyRedirectBootstrap)
+			(new FrontControllerMarker($this->dataRoot))->mark();
+		}
 		$responder = null;
 		try {
 			return $this->handle($matchResult, $mainIncResult, $request, $responder);

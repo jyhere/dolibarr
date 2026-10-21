@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Tests\Integration\Legacy;
 
+use Dolibarr\Core\Legacy\Redirect\FrontControllerMarker;
 use Dolibarr\Core\Legacy\Redirect\LegacyRedirect;
 use Dolibarr\Core\Legacy\Redirect\LegacyRedirectBootstrap;
 use Dolibarr\Tests\Unit\Legacy\Redirect\StubRedirectModule;
@@ -18,6 +19,7 @@ final class LegacyRedirectBootstrapTest extends TestCase
 	{
 		$this->dir = sys_get_temp_dir().'/mvc-redirect-'.bin2hex(random_bytes(4));
 		mkdir($this->dir, 0775, true);
+		(new FrontControllerMarker($this->dir))->mark(); // app.php has served a page
 	}
 
 	protected function tearDown(): void
@@ -53,6 +55,16 @@ final class LegacyRedirectBootstrapTest extends TestCase
 		// Second call served from the caches (dev freshness, then prod)
 		self::assertSame(DOL_URL_ROOT.'/user/5', $this->target(['id' => '5']));
 		self::assertSame(DOL_URL_ROOT.'/user/5', $this->target(['id' => '5'], true, null, true));
+	}
+
+	public function testNoRedirectBeforeTheFrontControllerHasServedAPage(): void
+	{
+		unlink($this->dir.'/cache/mvc_front_ok');
+		self::assertNull($this->target(['id' => '5']), 'a matching rule, but no marker: the front-controller rewrite may be missing');
+		self::assertNull($this->target(['id' => '5'], true, null, true));
+
+		(new FrontControllerMarker($this->dir))->mark();
+		self::assertSame(DOL_URL_ROOT.'/user/5', $this->target(['id' => '5']));
 	}
 
 	public function testDisabledByConfReturnsNull(): void

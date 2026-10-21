@@ -112,6 +112,7 @@ final class LegacyRedirectBootstrap
 
 	/**
 	 * Target URL of a legacy request, or null (legacy page served). Never throws.
+	 * Null as well until the front controller has created its marker (FrontControllerMarker), checked last.
 	 *
 	 * @param array<mixed>               $query    Legacy query parameters
 	 * @param array<string,string>       $headers  Request headers
@@ -169,7 +170,10 @@ final class LegacyRedirectBootstrap
 				}
 			}
 
-			return (new LegacyRedirector($table, new UrlGenerator($routes, DOL_URL_ROOT)))->resolve($method, $script, $query, $headers);
+			$target = (new LegacyRedirector($table, new UrlGenerator($routes, DOL_URL_ROOT)))->resolve($method, $script, $query, $headers);
+
+			// Only once app.php has served a route: without the front-controller rewrite the target would be a 404
+			return $target !== null && (new FrontControllerMarker($dataRoot))->exists() ? $target : null;
 		} catch (\Throwable $e) {
 			self::log('MVC legacy redirect: '.get_class($e).': '.$e->getMessage());
 
