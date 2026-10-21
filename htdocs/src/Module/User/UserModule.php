@@ -271,7 +271,7 @@ final class UserModule implements ModuleInterface
 				],
 				requirements: $id
 			),
-			new LegacyRedirect('user/card.php', 'user_new', actions: ['create'], carry: ['backtopage', 'backtopageforcancel', 'socid', 'search_employee', 'mainmenu', 'leftmenu']),
+			new LegacyRedirect('user/card.php', 'user_new', actions: ['create'], carry: ['backtopage', 'backtopageforcancel', 'socid', 'search_employee', 'mainmenu', 'leftmenu', 'employee']),
 			new LegacyRedirect(
 				'user/list.php',
 				'user_list',

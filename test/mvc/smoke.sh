@@ -485,6 +485,10 @@ expect_location_suffix "card.php?id=1&action=edit redirects to /user/1/edit" "/u
 expect_location_suffix "card.php?id=1&action=disable redirects to /user/1?confirm=disable" "/user/1?confirm=disable" -b "$J3" "$BASE/user/card.php?id=1&action=disable"
 expect_location_suffix "card.php?action=create redirects to /user/new" "/user/new" -b "$J3" "$BASE/user/card.php?action=create"
 expect_location_suffix "list.php?search_login=adm redirects to /user?search_login=adm" "/user?search_login=adm" -b "$J3" "$BASE/user/list.php?search_login=adm"
+# Parameters kept: employee on the creation rule, the global display/context parameters on every rule (lang among them)
+expect_location_suffix "card.php?action=create&employee=1 redirects to /user/new?employee=1" "/user/new?employee=1" -b "$J3" "$BASE/user/card.php?action=create&employee=1"
+expect_grep "card.php?action=create&employee=1 ends on the employee creation page" '<title>New employee</title>' 1 -L -b "$J3" "$BASE/user/card.php?action=create&employee=1&lang=en_US"
+expect_location_suffix "logout.php?noredirect=1&dol_use_jmobile=1 keeps dol_use_jmobile" "/logout?noredirect=1&dol_use_jmobile=1" -b "$J3" "$BASE/user/logout.php?noredirect=1&dol_use_jmobile=1"
 # Not redirected: the legacy page answers
 expect_code "card.php?id=1&action=presend stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=presend"
 expect_code "card.php without id stays legacy 200" 200 -b "$J3" "$BASE/user/card.php"

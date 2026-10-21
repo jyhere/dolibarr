@@ -11,6 +11,14 @@ use Dolibarr\Core\Routing\UrlGenerator;
  */
 final class LegacyRedirector
 {
+	/**
+	 * Display and context parameters read by main.inc.php on any page: carried by every rule, after its own carry.
+	 */
+	public const GLOBAL_CARRY = [
+		'dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile',
+		'optioncss', 'lang', 'mainmenu', 'leftmenu',
+	];
+
 	public function __construct(private readonly LegacyRedirectTable $table, private readonly UrlGenerator $urls)
 	{
 	}
@@ -18,6 +26,7 @@ final class LegacyRedirector
 	/**
 	 * Only GET/HEAD, never AJAX; the first rule of the script whose conditions all pass wins.
 	 * A parameter is "present" when set and not ''. Only scalar values are mapped or carried (arrays never are).
+	 * Carried: the rule's carry list, then GLOBAL_CARRY.
 	 *
 	 * @param array<mixed>  $query   Legacy query parameters
 	 * @param array<string,string> $headers Request headers
@@ -125,7 +134,7 @@ final class LegacyRedirector
 		}
 
 		$extra = [];
-		foreach ($rule->carry as $name) {
+		foreach (array_unique(array_merge($rule->carry, self::GLOBAL_CARRY)) as $name) {
 			if ($this->present($query, $name) && is_scalar($query[$name])) {
 				$extra[$name] = (string) $query[$name];
 			}

@@ -152,6 +152,35 @@ final class LegacyRedirectorTest extends TestCase
 		);
 	}
 
+	public function testGlobalParametersAreCarriedByEveryRule(): void
+	{
+		$query = ['id' => '5', 'foo' => 'bar'];
+		foreach (LegacyRedirector::GLOBAL_CARRY as $name) {
+			$query[$name] = 'v';
+		}
+		$url = (string) $this->redirector()->resolve('GET', 'user/card.php', $query, []);
+		parse_str((string) parse_url($url, PHP_URL_QUERY), $out);
+
+		self::assertSame(array_fill_keys(LegacyRedirector::GLOBAL_CARRY, 'v'), $out);
+		self::assertSame(
+			['dol_hide_topmenu', 'dol_hide_leftmenu', 'dol_optimize_smallscreen', 'dol_no_mouse_hover', 'dol_use_jmobile', 'optioncss', 'lang', 'mainmenu', 'leftmenu'],
+			LegacyRedirector::GLOBAL_CARRY
+		);
+	}
+
+	public function testGlobalCarryAfterTheRuleCarryWithoutDuplicates(): void
+	{
+		self::assertSame(
+			'/user/5?backtopage=%2Fx&dol_use_jmobile=1&lang=fr_FR&confirm=disable',
+			$this->redirector()->resolve('GET', 'user/card.php', ['id' => '5', 'action' => 'disable', 'lang' => 'fr_FR', 'dol_use_jmobile' => '1', 'backtopage' => '/x', 'optioncss' => ['x'], 'mainmenu' => ''], [])
+		);
+		$table = LegacyRedirectTable::fromModules([new StubRedirectModule([
+			new LegacyRedirect('user/list.php', 'user_list', carry: ['mainmenu', 'page']),
+		])], $this->routes());
+		$redirector = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
+		self::assertSame('/user?mainmenu=home&page=2&leftmenu=users', $redirector->resolve('GET', 'user/list.php', ['leftmenu' => 'users', 'page' => '2', 'mainmenu' => 'home'], []));
+	}
+
 	private function redirector(): LegacyRedirector
 	{
 		return new LegacyRedirector($this->table($this->rules()), new UrlGenerator($this->routes(), ''));
