@@ -1,14 +1,14 @@
 # Dolibarr MVC front controller rules for Apache (equivalent to the nginx configuration).
-# Requires: mod_rewrite, and "AllowOverride All" (or "AllowOverride FileInfo Indexes Options") on this directory:
-# FileInfo for the rewrite rules, Indexes for DirectoryIndex/DirectorySlash, Options for "Options -Indexes".
-# If AllowOverride is None, these rules are ignored: put them in the vhost (see dev/examples/apache/dolibarr-vhost.conf);
-# otherwise MVC URLs return 404 and /src/ is not blocked by a rule.
+# This file is inactive: copy it to .htaccess, or put the rules in the vhost (see dev/examples/apache/dolibarr-vhost.conf).
+# As a .htaccess it requires mod_rewrite and "AllowOverride All" or "AllowOverride FileInfo Indexes Options" on this
+# directory (FileInfo for the rewrite rules, Indexes for DirectoryIndex/DirectorySlash, Options for "Options -Indexes");
+# with AllowOverride None it is ignored: MVC URLs return 404 and /src/ is not blocked by a rule.
 # PHP must be executed by PHP-FPM (proxy:fcgi) or mod_php.
 
 Options -Indexes
 DirectoryIndex index.php
 # "/user" (MVC route, a directory without index.php) must reach app.php, not get mod_dir's 301 to "/user/"
-# (needs AllowOverride Indexes; in the vhost it needs no override)
+# (needs AllowOverride Indexes as a .htaccess; in the vhost it needs no override)
 DirectorySlash Off
 
 <IfModule mod_rewrite.c>
@@ -29,10 +29,14 @@ RewriteRule ^ - [R=404,L]
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [L]
 
-# 4. A directory with an index.php runs that script (never served raw)
+# 4. A directory with an index.php runs that script (never served raw). Relative substitutions, so that RewriteBase
+#    applies: the root has its own rule (an empty $1 would give the absolute "/index.php").
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteCond %{REQUEST_FILENAME}/index.php -f
-RewriteRule ^(.*?)/?$ /$1/index.php [L]
+RewriteRule ^$ index.php [L]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_FILENAME}/index.php -f
+RewriteRule ^(.+?)/?$ $1/index.php [L]
 
 # 5. Anything else (unknown path, directory without index.php, missing .php) goes to the MVC front controller.
 #    REQUEST_URI is preserved: the kernel routes on it.

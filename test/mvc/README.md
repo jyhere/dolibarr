@@ -16,9 +16,13 @@ An Apache 2.4 service (`httpd:2.4` + `mod_proxy_fcgi` to the same `php-fpm`) is 
 - Start: `docker compose --profile apache up -d --build apache`
 - Smoke: `bash dolibarr/test/mvc/smoke.sh http://127.0.0.1:8481 admin admin`
 
-`htdocs/.htaccess` reproduces the nginx rules with `mod_rewrite`: `/src/` is forbidden (403); a missing static asset is a plain 404 (no PHP); an existing file is served as is; a directory with an `index.php` runs it; anything else (including a missing `.php`) goes to `app.php` with `REQUEST_URI` preserved. `DirectorySlash Off` lets `/user` (a directory without `index.php`, but an MVC route) reach `app.php` instead of mod_dir's 301. The virtual host needs `AllowOverride All` (or `AllowOverride FileInfo Indexes Options`: FileInfo for the rewrite rules, Indexes for `DirectoryIndex`/`DirectorySlash`, Options for `Options -Indexes`) and `AcceptPathInfo On` (REST API `api/index.php/explorer/`). If `AllowOverride` is `None`, the `.htaccess` is ignored: MVC URLs return 404 and `/src/` is not blocked by a rule. Put the rules in the vhost instead, as in `dev/examples/apache/dolibarr-vhost.conf`.
+`htdocs/.htaccess.example` reproduces the nginx rules with `mod_rewrite`: `/src/` is forbidden (403); a missing static asset is a plain 404 (no PHP); an existing file is served as is; a directory with an `index.php` runs it; anything else (including a missing `.php`) goes to `app.php` with `REQUEST_URI` preserved. `DirectorySlash Off` lets `/user` (a directory without `index.php`, but an MVC route) reach `app.php` instead of mod_dir's 301.
 
-Dolibarr in a subdirectory (`DOL_URL_ROOT` not empty): uncomment and adapt `RewriteBase` in `.htaccess`.
+The file is inactive as shipped (an active `.htaccess` would change the behaviour of every existing Apache install on upgrade). To enable it, either copy it to `htdocs/.htaccess`, which needs `AllowOverride All` (or `AllowOverride FileInfo Indexes Options`: FileInfo for the rewrite rules, Indexes for `DirectoryIndex`/`DirectorySlash`, Options for `Options -Indexes`), or put the rules in the vhost, as in `dev/examples/apache/dolibarr-vhost.conf` (no override needed). The vhost also needs `AcceptPathInfo On` (REST API `api/index.php/explorer/`). Without the rules, MVC URLs return 404 and `/src/` is not blocked by a rule.
+
+The test container (`docker/apache/vhost.conf` in the parent directory) `Include`s `htdocs/.htaccess.example` in its `<Directory>` with `AllowOverride None`: the example file itself is what the Apache smoke tests (the source volume is read-only, so it is not copied).
+
+Dolibarr in a subdirectory (`DOL_URL_ROOT` not empty, e.g. `/dolibarr`): uncomment and adapt `RewriteBase` (the substitutions are relative, so they follow it). Checked with an `Alias /dolibarr` vhost: `/dolibarr/`, `/dolibarr/admin/` run their `index.php`, `/dolibarr/src/` is 403, unknown paths reach `app.php`.
 
 Caveat: `$dolibarr_main_url_root` in the test `conf.php` is `http://127.0.0.1:8480`, so some absolute links built by Dolibarr point to port 8480 when browsing the Apache instance on 8481. The smoke test compares paths/suffixes only, so it is unaffected.
 
