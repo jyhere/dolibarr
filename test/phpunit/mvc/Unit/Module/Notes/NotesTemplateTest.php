@@ -83,7 +83,7 @@ final class NotesTemplateTest extends TestCase
 			}
 		};
 
-		return $renderer->render('notes:notes', [
+		return self::withoutIndentation($renderer->render('notes:notes', [
 			'layout' => $layout,
 			'outputBeforeHeader' => '<!--before-->',
 			'title' => '',
@@ -98,6 +98,14 @@ final class NotesTemplateTest extends TestCase
 				'privateKey' => $private ? '<i data-frag="privateKey"></i>' : null,
 				'privateVal' => $private ? '<i data-frag="privateVal"></i>' : null,
 			],
-		]);
+		]));
+	}
+
+	/**
+	 * The templates are indented for reading: the assertions compare the markup, not the leading tabs.
+	 */
+	private static function withoutIndentation(string $html): string
+	{
+		return (string) preg_replace('/^[\t ]+/m', '', $html);
 	}
 }
