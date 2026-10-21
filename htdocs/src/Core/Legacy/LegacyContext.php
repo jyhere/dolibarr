@@ -63,6 +63,16 @@ final class LegacyContext
 	}
 
 	/**
+	 * The global $mc of the multicompany module (its getInfo() gives the label of an entity), null without it.
+	 */
+	public function multicompany(): ?object
+	{
+		$mc = $GLOBALS['mc'] ?? null;
+
+		return is_object($mc) ? $mc : null;
+	}
+
+	/**
 	 * The global $menumanager set by main.inc.php, null when no menu is loaded (NOREQUIREMENU, CLI).
 	 */
 	public function menuManager(): ?object

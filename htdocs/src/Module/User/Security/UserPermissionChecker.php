@@ -354,6 +354,16 @@ final class UserPermissionChecker implements EntityPermissions
 		return $this->me->isAdmin() || $this->me->hasRight('user', 'user', 'write');
 	}
 
+	/**
+	 * \User::getAllChildIds(1) of the current user (list.php l.251): the users under him, himself included.
+	 *
+	 * @return list<int>
+	 */
+	public function subordinateIds(): array
+	{
+		return $this->subordinateIds;
+	}
+
 	public function isSelf(User $target): bool
 	{
 		return $this->me->id() === $target->id;

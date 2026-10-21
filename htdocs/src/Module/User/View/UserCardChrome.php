@@ -394,7 +394,7 @@ final class UserCardChrome implements EntityTabs
 	 */
 	private function banner(\User $object, bool $canList, string $morehtmlref): string
 	{
-		$linkback = $canList ? '<a href="'.DOL_URL_ROOT.'/user/list.php?restore_lastsearch_values=1">'.$this->ctx->langs->trans('BackToList').'</a>' : '';
+		$linkback = $canList ? '<a href="'.$this->urls->generate('user_list').'?restore_lastsearch_values=1">'.$this->ctx->langs->trans('BackToList').'</a>' : '';
 
 		$this->ctx->form();
 		ob_start();

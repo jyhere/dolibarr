@@ -254,6 +254,22 @@ final class LegacyUserWriter implements UserWriter
 	}
 
 	/**
+	 * actions_changeselectedfields.inc.php l.33-48: dol_set_user_param() on the current user, which also updates
+	 * his $user->conf for the rest of the request.
+	 */
+	public function saveListFields(string $varpage, string $fields): void
+	{
+		$user = $this->ctx->user;
+		if ($user === null) {
+			throw new ValidationException([$this->ctx->langs->trans('Error')]);
+		}
+		require_once DOL_DOCUMENT_ROOT.'/core/lib/functions2.lib.php';
+		if (dol_set_user_param($this->ctx->db, $this->ctx->conf, $user, ['MAIN_SELECTEDFIELDS_'.$varpage => $fields]) < 0) {
+			throw new ValidationException([$this->ctx->langs->trans('Error')]);
+		}
+	}
+
+	/**
 	 * Copies the entity onto the legacy properties that user/card.php sets before create()/update().
 	 * Dates become Unix timestamps ('' when empty), as dol_mktime() gives them to the card.
 	 */

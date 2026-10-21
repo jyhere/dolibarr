@@ -103,4 +103,12 @@ interface UserWriter
 	 * Reloads the permissions (and the menu) of the logged user, after a change on his own rights.
 	 */
 	public function reloadOwnRights(): void;
+
+	/**
+	 * Saves the columns the current user chose for a list (actions_changeselectedfields.inc.php): the personal
+	 * constant MAIN_SELECTEDFIELDS_<varpage>, '' to go back to the defaults.
+	 *
+	 * @throws ValidationException
+	 */
+	public function saveListFields(string $varpage, string $fields): void;
 }

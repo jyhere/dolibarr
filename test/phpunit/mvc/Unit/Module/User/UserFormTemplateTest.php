@@ -9,6 +9,7 @@ use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\View\DolibarrExtension;
 use Dolibarr\Core\View\LatteRenderer;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Tests\Unit\View\Fixture\FakeCurrentUser;
 use Dolibarr\Tests\Unit\View\Fixture\FakeTranslator;
@@ -77,7 +78,7 @@ final class UserFormTemplateTest extends TestCase
 		preg_match_all("/\\\$show\\['(\\w+)'\\]/", $source, $m);
 		$show = array_fill_keys($m[1], true);
 
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$renderer = new LatteRenderer(
 			sys_get_temp_dir().'/latte-test-'.getmypid(),
 			['core' => dirname(self::TEMPLATE, 4).'/Core/templates', 'user' => dirname(self::TEMPLATE)],

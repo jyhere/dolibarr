@@ -72,6 +72,140 @@ final class UserRepository implements EntityRepository
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
 
+	/**
+	 * The user list, the query of htdocs/user/list.php l.398-559: the same SELECT (plus the columns the User entity
+	 * needs), joins, criteria, count and order, $limit + 1 rows read to know whether a next page exists.
+	 *
+	 * The SQL fragments of the criteria come from the legacy builders natural_search() and dol_natural_search_phone()
+	 * (they escape the value) and the entities from getEntity('user'), as in list.php. The IN () lists (status,
+	 * supervisor, country, tag) are rebuilt from the integers of the criterion, where list.php passes the sanitized
+	 * string: a hostile value ('1,,2', '1) OR (1') cannot make the query fail (Review Focus 4).
+	 *
+	 * @param ?list<int>                                            $childIds          Only these users (the employee list
+	 *                                                                                 without salaries->readall, l.524-526), null for all
+	 * @param ?int                                                  $externalCompanyId The company of an external current user (l.434-436)
+	 * @param array{select?: string, from?: string, where?: string} $fragments         Legacy SQL added at the places list.php
+	 *                                                                                 adds it: the extrafields columns and the resPrint of
+	 *                                                                                 printFieldListSelect (l.408-417), printFieldListFrom (l.428-432),
+	 *                                                                                 the extrafields criteria and printFieldListWhere (l.528-532)
+	 * @param bool                                                  $withApiKey        Select the (encrypted) api_key, for the ApiKey column
+	 * @throws \Dolibarr\Core\Database\DatabaseException
+	 */
+	public function search(UserSearch $s, ?array $childIds, ?int $externalCompanyId, array $fragments = [], bool $withApiKey = false): UserPage
+	{
+		$p = $this->c->prefix();
+		$f = $s->filters;
+		$str = static fn (string $k): string => $s->filter($k);
+
+		$select = 'SELECT DISTINCT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS))
+			.', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL
+			.($withApiKey ? ', u.api_key' : '')
+			.', u.statut as status, u.import_key'
+			.', GREATEST(u.tms, COALESCE(ef.tms, u.tms)) as date_modification, u.datec as date_creation'
+			.', u2.rowid as id2, u2.login as login2, u2.firstname as firstname2, u2.lastname as lastname2, u2.admin as admin2, u2.fk_soc as fk_soc2,'
+			.' u2.office_phone as ofice_phone2, u2.user_mobile as user_mobile2, u2.email as email2, u2.gender as gender2, u2.photo as photo2, u2.entity as entity2, u2.statut as status2'
+			.', s.nom as name, s.canvas'
+			.', co.code as country_code, co.label as country_label'
+			.($fragments['select'] ?? '');
+		$select = (string) preg_replace('/,\s*$/', '', $select);
+
+		$sql = ' FROM '.$p.'user as u'
+			.' LEFT JOIN '.$p.'user_extrafields as ef on (u.rowid = ef.fk_object)'
+			.' LEFT JOIN '.$p.'societe as s ON u.fk_soc = s.rowid'
+			.' LEFT JOIN '.$p.'user as u2 ON u.fk_user = u2.rowid'
+			.' LEFT JOIN '.$p.'c_country as co ON u.fk_country = co.rowid'
+			.($fragments['from'] ?? '')
+			.' WHERE u.entity IN ('.getEntity('user').')';
+		if ($externalCompanyId !== null && $externalCompanyId > 0) {
+			$sql .= ' AND u.fk_soc = '.$externalCompanyId;
+		}
+		if (UserSearch::positive($str('search_supervisor'))) {
+			$sql .= self::inInts('u.fk_user', $str('search_supervisor'));
+		}
+		if ($str('search_thirdparty') !== '') {
+			$sql .= natural_search(['s.nom'], $str('search_thirdparty'));
+		}
+		if (UserSearch::positive($str('search_warehouse'))) {
+			$sql .= natural_search(['u.fk_warehouse'], $str('search_warehouse'));
+		}
+		if ($str('search_rowid') !== '') {
+			$sql .= natural_search('u.rowid', $str('search_rowid'), 1);
+		}
+		foreach (['search_login' => 'u.login', 'search_lastname' => 'u.lastname', 'search_firstname' => 'u.firstname'] as $key => $column) {
+			if ($str($key) !== '') {
+				$sql .= natural_search($column, $str($key));
+			}
+		}
+		$gender = $str('search_gender');
+		if ($gender !== '' && $gender !== '-1') {
+			// Not natural_search(): %man% would also find woman (l.460)
+			$sql .= " AND u.gender = '".$this->c->escape($gender)."'";
+		}
+		$employee = $str('search_employee');
+		if (is_numeric($employee) && $employee >= 0) {
+			$sql .= ' AND u.employee = '.(int) $employee;
+		}
+		if ($str('search_accountancy_code') !== '') {
+			$sql .= natural_search('u.accountancy_code', $str('search_accountancy_code'));
+		}
+		if ($str('search_phonepro') !== '' || $str('search_phonemobile') !== '') {
+			require_once DOL_DOCUMENT_ROOT.'/core/lib/phone.lib.php';
+		}
+		if ($str('search_phonepro') !== '') {
+			$sql .= dol_natural_search_phone($this->c->legacy(), 'u.office_phone', $str('search_phonepro'));
+		}
+		if ($str('search_phonemobile') !== '') {
+			$sql .= dol_natural_search_phone($this->c->legacy(), 'u.user_mobile', $str('search_phonemobile'));
+		}
+		if ($str('search_email') !== '') {
+			$sql .= natural_search('u.email', $str('search_email'));
+		}
+		if ($str('search_country') !== '') {
+			$sql .= self::inInts('u.fk_country', $str('search_country'));
+		}
+		if ($str('search_api_key') !== '') {
+			$sql .= natural_search('u.api_key', $str('search_api_key'));
+		}
+		if ($str('search_job') !== '') {
+			$sql .= natural_search(['u.job'], $str('search_job'));
+		}
+		$status = $str('search_status');
+		if ($status !== '' && (!is_numeric($status) || (int) $status >= 0)) {
+			$sql .= self::inInts('u.statut', $status);
+		}
+		if ($str('search_all') !== '') {
+			$sql .= natural_search(array_keys($s->searchAllFields), $str('search_all'));
+		}
+		$sql .= $this->categorySql((int) $str('search_categ'), self::int($f['search_category_user_operator'] ?? 0));
+		if (UserSearch::positive($str('search_warehouse'))) {
+			$sql .= ' AND u.fk_warehouse = '.(int) $str('search_warehouse');
+		}
+		if ($childIds !== null) {
+			$sql .= ' AND u.rowid IN ('.($childIds === [] ? '0' : implode(',', array_map('intval', $childIds))).')';
+		}
+		$sql .= $fragments['where'] ?? '';
+
+		$total = -1;
+		if ($s->countTotal) {
+			// l.538-539: the same query counted (DISTINCT dropped, as list.php's rewrite of the select)
+			$row = $this->c->fetchOne('SELECT COUNT(*) as nbtotalofrecords'.(string) preg_replace('/GROUP BY .*$/', '', $sql));
+			$total = $row === null ? 0 : self::int(get_object_vars($row)['nbtotalofrecords'] ?? 0);
+			if ($s->offset() > $total) {
+				$s = $s->firstPage();
+			}
+		}
+
+		$db = $this->c->legacy();
+		$rows = $this->c->fetchAll($select.$sql.$db->order($s->sortField, $s->sortOrder).$db->plimit($s->limit + 1, $s->offset()));
+		$hasMore = count($rows) > $s->limit;
+		$items = [];
+		foreach (array_slice($rows, 0, $s->limit) as $row) {
+			$items[] = $this->listRow($row);
+		}
+
+		return new UserPage($items, $total, $s->page, $s->limit, $hasMore);
+	}
+
 	private function fetch(string $where, string $order = ''): ?User
 	{
 		$sql = 'SELECT '.implode(', ', array_map(static fn (string $col): string => 'u.'.$col, self::COLUMNS)).', '.self::HAS_API_KEY_SQL.', '.self::IS_LDAP_MANAGED_SQL
@@ -81,6 +215,60 @@ final class UserRepository implements EntityRepository
 		$row = $this->c->fetchOne($sql);
 
 		return $row === null ? null : $this->hydrate($row);
+	}
+
+	/**
+	 * list.php l.492-520 (with l.493: only search_categ is used): -2 is "without tag", an id a tag; the operator
+	 * 1 joins the criteria with OR.
+	 */
+	private function categorySql(int $categ, int $operator): string
+	{
+		$p = $this->c->prefix();
+		if ($categ === -2) {
+			$criteria = 'NOT EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user)';
+		} elseif ($categ > 0) {
+			$criteria = $operator === 0
+				? ' EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie = '.$categ.')'
+				: ' EXISTS (SELECT ck.fk_user FROM '.$p.'categorie_user as ck WHERE u.rowid = ck.fk_user AND ck.fk_categorie IN ('.$categ.'))';
+		} else {
+			return '';
+		}
+
+		return ' AND ('.$criteria.')';
+	}
+
+	/**
+	 * " AND $column IN (...)" of the integers of a comma list, as list.php's IN ($db->sanitize(...)) but never invalid.
+	 */
+	private static function inInts(string $column, string $list): string
+	{
+		$ids = [];
+		foreach (explode(',', $list) as $part) {
+			$part = trim($part);
+			if (preg_match('/^-?\d+$/', $part) === 1) {
+				$ids[] = (int) $part;
+			}
+		}
+
+		return ' AND '.$column.' IN ('.($ids === [] ? 'NULL' : implode(',', $ids)).')';
+	}
+
+	private function listRow(object $row): UserListRow
+	{
+		/** @var array<string, mixed> $r */
+		$r = get_object_vars($row);
+
+		return new UserListRow(
+			$this->hydrate($row),
+			self::str($r['login2'] ?? null),
+			self::str($r['firstname2'] ?? null),
+			self::str($r['lastname2'] ?? null),
+			self::str($r['name'] ?? null),
+			self::str($r['country_code'] ?? null),
+			self::str($r['country_label'] ?? null),
+			self::date($r['date_modification'] ?? null),
+			$r
+		);
 	}
 
 	private function hydrate(object $row): User

@@ -24,6 +24,7 @@ use Dolibarr\Core\View\Confirm;
 use Dolibarr\Module\User\Controller\LoginController;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Controller\UserRightsController;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Entity\User;
@@ -40,6 +41,7 @@ use Dolibarr\Module\User\View\LegacyLoginPage;
 use Dolibarr\Module\User\View\RightsChrome;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Module\User\View\UserFormChrome;
+use Dolibarr\Module\User\View\UserListChrome;
 
 final class UserModule implements ModuleInterface
 {
@@ -55,7 +57,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function controllers(): array
 	{
-		return [UserController::class, UserRightsController::class, LoginController::class, LogoutController::class];
+		return [UserController::class, UserListController::class, UserRightsController::class, LoginController::class, LogoutController::class];
 	}
 
 	/**
@@ -171,6 +173,19 @@ final class UserModule implements ModuleInterface
 			self::get($c, Config::class),
 			self::get($c, UrlGenerator::class),
 			self::get($c, Confirm::class)
+		));
+		$c->set(UserListChrome::class, static fn (Container $c): UserListChrome => new UserListChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
+		$c->set(UserListController::class, static fn (Container $c): UserListController => new UserListController(
+			self::get($c, UserRepository::class),
+			self::get($c, UserPermissionChecker::class),
+			self::get($c, CurrentUser::class),
+			self::get($c, LegacyHooks::class),
+			self::get($c, Translator::class),
+			self::get($c, UserListChrome::class),
+			self::get($c, FlashBag::class),
+			self::get($c, UserService::class),
+			self::get($c, Config::class),
+			self::get($c, UrlGenerator::class)
 		));
 		$c->set(RightsChrome::class, static fn (Container $c): RightsChrome => new RightsChrome(self::get($c, LegacyContext::class), self::get($c, Connection::class)));
 		$c->set(RightsRepository::class, static fn (Container $c): RightsRepository => new RightsRepository(

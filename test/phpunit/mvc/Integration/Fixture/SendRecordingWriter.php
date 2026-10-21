@@ -96,4 +96,9 @@ final class SendRecordingWriter implements UserWriter
 	{
 		$this->inner->reloadOwnRights();
 	}
+
+	public function saveListFields(string $varpage, string $fields): void
+	{
+		$this->inner->saveListFields($varpage, $fields);
+	}
 }

@@ -177,7 +177,7 @@ expect_grep "user/1 json no presentation flags" '"showActions"\|"bodyCss"\|"canS
 expect_grep "user/1.json login" '"login":"admin"' 1 -b "$J1" "$BASE/user/1.json"
 expect_grep "user/1?format=json login" '"login":"admin"' 1 -b "$J1" "$BASE/user/1?format=json"
 expect_code "user/abc 404" 404 -b "$J1" "$BASE/user/abc"
-expect_code "user 404 (list in plan 2)" 404 -b "$J1" "$BASE/user"
+expect_code "user list 200" 200 -b "$J1" "$BASE/user"
 expect_code "user/999999 404" 404 -b "$J1" "$BASE/user/999999"
 expect_code "login while logged in 302" 302 -b "$J1" "$BASE/login"
 
@@ -288,7 +288,7 @@ OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" 
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup_user WHERE fk_user = $AID AND fk_usergroup = $GID")" = "0" ] && ok "user removed from the group" || fail "user removed from the group" "row left"
 expect_grep "user/<id>?confirm=delete dialog posts to the delete route" "<form method=\"POST\" action=\"[^\"]*/user/$AID/delete\"" 1 -b "$J1" "$BASE/user/$AID?confirm=delete"
 TA="$(token_from "$J1" "/user/$AID")"
-expect_location_suffix "POST /user/<id>/delete 302 to the list" "/user/list.php?restore_lastsearch_values=1" -b "$J1" -c "$J1" -X POST \
+expect_location_suffix "POST /user/<id>/delete 302 to the list" "/user?restore_lastsearch_values=1" -b "$J1" -c "$J1" -X POST \
 	--data-urlencode "token=$TA" -d "action=confirm_delete&confirm=yes" "$BASE/user/$AID/delete"
 expect_code "user/<id> deleted 404" 404 -b "$J1" "$BASE/user/$AID"
 cleanup_smoke_users
@@ -373,6 +373,46 @@ expect_grep "every toggle form carries page_y" 'name="page_y" value=""' "$(curl 
 TR="$(token_from "$J1" "/user/$RID/rights")"
 expect_code "GET with the legacy action parameters 200" 200 -b "$J1" "$BASE/user/$RID/rights?action=addrights&confirm=yes&module=user&token=$TR"
 [ "$(smoke_sql "$USER_RIGHTS")" = "0" ] && ok "a GET writes no right" || fail "a GET writes no right" "rights added"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+CLEANUP_JAR=""
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+
+echo "== User list (/user)"
+CLEANUP_JAR="$J1"
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+expect_code "GET /user 200" 200 -b "$J1" "$BASE/user"
+expect_grep "user list has the search form" 'id="searchFormList"' 1 -b "$J1" "$BASE/user"
+GOT="$(curl -s -b "$J1" "$BASE/user")"
+case "$GOT" in *'<span class="nopadding usertext">admin</span>'*) ok "user list shows admin";; *) fail "user list shows admin" "not found";; esac
+case "$GOT" in *'href="/user/1?save_lastsearch_values=1"'*) ok "user list rows link to /user/<id>";; *) fail "user list rows link to /user/<id>" "no link";; esac
+case "$GOT" in *'href="/user/new?leftmenu="'*) ok "user list New user button points to /user/new";; *) fail "user list New user button" "no link";; esac
+expect_grep "search_login=zzz_nobody gives no row" 'class="oddeven row-with-select"' 0 -b "$J1" "$BASE/user?search_login=zzz_nobody"
+expect_grep "search_login=zzz_nobody says NoRecordFound" 'colspan="[0-9]*"><span class="opacitymedium">' 1 -b "$J1" "$BASE/user?search_login=zzz_nobody"
+expect_grep "user list json has the total" '"total":' 1 "${JSON[@]}" -b "$J1" "$BASE/user"
+expect_grep "user list json has no secret" '"pass\|api_key\|apiKey"' 0 "${JSON[@]}" -b "$J1" "$BASE/user"
+expect_code "hostile limit, page and sortfield 200" 200 -b "$J1" "$BASE/user?limit=0&page=-3&sortfield=u.pass_crypted&sortorder=DESC;"
+expect_code "hostile IN lists 200" 200 -b "$J1" "$BASE/user?search_status=1,,2&search_country=1)%20OR%20(1&search_supervisor=1,,2"
+expect_code "kanban view 200" 200 -b "$J1" "$BASE/user?mode=kanban"
+SMOKE_LOGIN="smoke_$(date +%s)$$l"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=Listed" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "smoke user for the list created";; *) fail "smoke user for the list" "$OUT";; esac
+LID="${OUT##*/}"
+SMOKE_IDS+=("$LID")
+expect_grep "search_login finds the smoke user" "data-rowid=\"$LID\"" 1 -b "$J1" "$BASE/user?search_login=$SMOKE_LOGIN"
+TL="$(token_from "$J1" /user)"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TL" -d "massaction=disable&confirmmassaction=Confirm&toselect[]=$LID&search_login=$SMOKE_LOGIN" "$BASE/user")"
+[ "$OUT" = "302" ] && ok "POST /user mass disable 302" || fail "POST /user mass disable" "$OUT"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = $LID")" = "0" ] && ok "mass disable disabled the user" || fail "mass disable disabled the user" "still enabled"
+expect_grep "card shows the mass-disabled user (Reactivate button)" "href=\"[^\"]*/user/$LID?confirm=enable\"" 1 -b "$J1" "$BASE/user/$LID"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&massaction=reactivate&confirmmassaction=Confirm&toselect[]=$LID" "$BASE/user")"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = $LID")" = "0" ] && ok "invalid token reactivates nothing ($OUT)" || fail "invalid token reactivates nothing" "enabled"
+TL="$(token_from "$J1" /user)"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TL" -d "massaction=disable&confirmmassaction=Confirm&toselect[]=1" "$BASE/user")"
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = 1")" = "1" ] && ok "mass disable refuses oneself ($OUT)" || fail "mass disable refuses oneself" "user 1 disabled"
 cleanup_smoke_users
 [ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
 CLEANUP_JAR=""

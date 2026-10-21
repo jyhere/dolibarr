@@ -11,6 +11,7 @@ use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\UserModule;
 use Dolibarr\Module\User\View\UserCardChrome;
 use PHPUnit\Framework\TestCase;
@@ -24,7 +25,7 @@ final class EntityContractTest extends TestCase
 	public function testUserNotePageSettingsAreTheOnesOfNotePhp(): void
 	{
 		$ctx = LegacyContext::fromGlobals();
-		$chrome = new UserCardChrome($ctx, new UrlGenerator((new RouteCompiler())->compile([UserController::class]), ''));
+		$chrome = new UserCardChrome($ctx, new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), ''));
 
 		$settings = $chrome->legacyPageSettings('note');
 

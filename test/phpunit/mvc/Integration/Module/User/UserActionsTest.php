@@ -22,6 +22,7 @@ use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\View\Confirm;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
@@ -194,7 +195,7 @@ final class UserActionsTest extends TestCase
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		// card.php l.277-279
-		self::assertSame(DOL_URL_ROOT.'/user/list.php?restore_lastsearch_values=1', $response->headers()['Location']);
+		self::assertSame('/user?restore_lastsearch_values=1', $response->headers()['Location']);
 		self::assertNull($this->repo()->find($target->id));
 		self::assertSame([$this->trans('RecordDeleted')], $_SESSION['dol_events']['mesgs'] ?? []);
 	}
@@ -533,7 +534,7 @@ final class UserActionsTest extends TestCase
 		$me ??= $this->legacyMe();
 		$config ??= new LegacyConfig($ctx);
 		$perms = new UserPermissionChecker($me, false, false, false, [], false, false, (int) $ctx->conf->entity);
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$loader = new LegacyObjectLoader($this->connection);
 		$translator = new LegacyTranslator($ctx->langs);
 		$hm = $ctx->hookmanager;

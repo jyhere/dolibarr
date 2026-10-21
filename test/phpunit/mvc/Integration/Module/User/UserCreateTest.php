@@ -23,6 +23,7 @@ use Dolibarr\Core\View\Confirm;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\View\ViewModel;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
@@ -181,7 +182,7 @@ final class UserCreateTest extends TestCase
 			'lastname' => 'Cancel', 'login' => $login, 'cancel' => 'Cancel', 'backtopage' => 'https://evil.example',
 		]));
 		self::assertInstanceOf(RedirectResponse::class, $response);
-		self::assertSame('/user/list.php', $response->headers()['Location']);
+		self::assertSame('/user', $response->headers()['Location']);
 	}
 
 	public function testDuplicateLoginRedisplaysFormWithError(): void
@@ -302,7 +303,7 @@ final class UserCreateTest extends TestCase
 		$me ??= new LegacyCurrentUser($legacyUser);
 		$config = new LegacyConfig($ctx);
 		$perms = new UserPermissionChecker($me, false, false, false, [], false, false, (int) $ctx->conf->entity);
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$loader = new LegacyObjectLoader($this->connection);
 		$translator = new LegacyTranslator($ctx->langs);
 		$hm = $ctx->hookmanager;

@@ -24,6 +24,7 @@ use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Core\View\ViewModel;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
@@ -568,7 +569,7 @@ final class UserUpdateTest extends TestCase
 		$me ??= $this->legacyMe();
 		$config = new LegacyConfig($ctx);
 		$perms = new UserPermissionChecker($me, false, false, false, [], false, false, (int) $ctx->conf->entity);
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$loader = new LegacyObjectLoader($this->connection);
 		$translator = new LegacyTranslator($ctx->langs);
 		$hm = $ctx->hookmanager;

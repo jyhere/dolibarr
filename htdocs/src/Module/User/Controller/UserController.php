@@ -148,7 +148,7 @@ final class UserController
 				if ($this->writeOrFlash(fn () => $this->service->delete($id))) {
 					$this->flash->success($this->t->trans('RecordDeleted'));
 
-					return new RedirectResponse($this->config->urlRoot().'/user/list.php?restore_lastsearch_values=1');
+					return new RedirectResponse($this->urls->generate('user_list').'?restore_lastsearch_values=1');
 				}
 			} elseif ($this->perms->canEnable($user)) {
 				// Allowed, not oneself: refused by an admin rule (card.php l.261-267)
@@ -357,14 +357,14 @@ final class UserController
 			return $this->form($r, $in->toEntity(null, $this->entityFor($in)), $in->password, $in->forcePasswordChange, $doActions);
 		}
 
-		// card.php l.192-212: cancel goes to backtopageforcancel, else backtopage, else the list
+		// card.php l.192-212: cancel goes to backtopageforcancel, else backtopage, else the list (user_list)
 		// (a backtopage waiting for the new id is no target on a cancel)
 		if ($this->param($r, 'cancel', 'alpha') !== '') {
 			$candidate = $backtopageforcancel !== ''
 				? $backtopageforcancel
 				: ($backtopage !== '' && !str_contains($backtopage, '__ID__') ? $backtopage : null);
 
-			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $urlRoot.'/user/list.php');
+			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $this->urls->generate('user_list'));
 		}
 
 		$in = UserInput::fromRequest($r, $this->perms, null, $this->config);

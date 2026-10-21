@@ -109,6 +109,53 @@ final class UserService
 	}
 
 	/**
+	 * Mass actions disable and reactivate of user/list.php l.318-372: the status of several users in one
+	 * transaction. A user already in that status is left as is (\User::setstatus() returns 0) and not counted.
+	 * With a quota ($limitUsers > 0), the active users counted after the change must stay under it (l.356-362,
+	 * checked on a disabling too, as there), else nothing is written.
+	 * The refusals of list.php (oneself, an admin) are the caller's, before the call.
+	 *
+	 * @param list<int> $ids
+	 * @return int The number of users changed (RecordsModified)
+	 * @throws ValidationException
+	 * @throws NotFoundException
+	 * @throws QuotaReachedException
+	 */
+	public function setStatuses(array $ids, bool $enabled, int $limitUsers): int
+	{
+		return $this->transactional(function () use ($ids, $enabled, $limitUsers): int {
+			$status = $enabled ? 1 : 0;
+			$toChange = [];
+			foreach ($ids as $id) {
+				if ($this->load($id)->status !== $status) {
+					$toChange[$id] = $id;
+				}
+			}
+			// The count list.php makes after the writes (getNbOfUsers('active') of the users of the entity, the
+			// ones find() loads), computed before them: nothing is written when the quota is reached.
+			if ($limitUsers > 0 && $this->repo->countForQuota() + ($enabled ? 1 : -1) * count($toChange) >= $limitUsers) {
+				throw new QuotaReachedException('Users quota reached');
+			}
+			foreach ($toChange as $id) {
+				$this->writer->setStatus($id, $enabled);
+				$this->events->dispatch(new UserStatusChanged($this->load($id), $enabled));
+			}
+
+			return count($toChange);
+		});
+	}
+
+	/**
+	 * The columns of a list chosen by the current user (user/list.php l.274, actions_changeselectedfields.inc.php).
+	 *
+	 * @throws ValidationException
+	 */
+	public function saveListFields(string $varpage, string $fields): void
+	{
+		$this->writer->saveListFields($varpage, $fields);
+	}
+
+	/**
 	 * @throws ValidationException
 	 * @throws NotFoundException
 	 */

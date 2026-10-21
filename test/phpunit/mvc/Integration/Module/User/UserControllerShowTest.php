@@ -18,6 +18,7 @@ use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\View\Confirm;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Entity\Visibility;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
@@ -166,7 +167,7 @@ final class UserControllerShowTest extends TestCase
 		$connection = new Connection($ctx->db);
 		$me = new LegacyCurrentUser($GLOBALS['user']);
 		$perms = new UserPermissionChecker($me, false, false, false, [1], false, false, (int) $ctx->conf->entity);
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$hm = $ctx->hookmanager;
 		if ($scripted !== null) {
 			$hm = new \HookManager($ctx->db);

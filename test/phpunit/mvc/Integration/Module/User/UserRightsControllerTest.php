@@ -22,6 +22,7 @@ use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Controller\UserRightsController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
@@ -327,7 +328,7 @@ final class UserRightsControllerTest extends TestCase
 			$this->setConf('MAIN_USE_ADVANCED_PERMS', 1);
 		}
 		$perms = new UserPermissionChecker($me, $advancedPerms, false, false, [], false, false, (int) $ctx->conf->entity);
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserRightsController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class, UserRightsController::class]), '');
 		$hm = $ctx->hookmanager;
 		if ($scripted !== null) {
 			$hm = new \HookManager($ctx->db);

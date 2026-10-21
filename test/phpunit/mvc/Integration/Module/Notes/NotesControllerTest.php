@@ -32,6 +32,7 @@ use Dolibarr\Module\Notes\Listener\NoteTriggerException;
 use Dolibarr\Module\Notes\Repository\NotesRepository;
 use Dolibarr\Module\Notes\View\NotesChrome;
 use Dolibarr\Module\User\Controller\UserController;
+use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
@@ -392,7 +393,7 @@ final class NotesControllerTest extends TestCase
 	{
 		$ctx = $this->ctx;
 		$me ??= $this->legacyMe();
-		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, NotesController::class]), '');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class, NotesController::class]), '');
 		$hm = $ctx->hookmanager;
 		if ($scripted !== null) {
 			$hm = new \HookManager($ctx->db);
