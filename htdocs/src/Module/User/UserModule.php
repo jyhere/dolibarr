@@ -16,6 +16,7 @@ use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Logger;
+use Dolibarr\Core\Legacy\Redirect\LegacyRedirect;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Session;
@@ -229,6 +230,14 @@ final class UserModule implements ModuleInterface
 	public function templateDirs(): array
 	{
 		return ['user' => __DIR__.'/templates'];
+	}
+
+	/**
+	 * @return list<LegacyRedirect>
+	 */
+	public function legacyRedirects(): array
+	{
+		return [];
 	}
 
 	/**

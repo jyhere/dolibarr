@@ -7,6 +7,7 @@ namespace Dolibarr\Tests\Unit\Fixture;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Legacy\Redirect\LegacyRedirect;
 use Dolibarr\Core\Module\ModuleInterface;
 
 final class FixtureModule implements ModuleInterface
@@ -44,6 +45,14 @@ final class FixtureModule implements ModuleInterface
 	 * @return array<string, string>
 	 */
 	public function templateDirs(): array
+	{
+		return [];
+	}
+
+	/**
+	 * @return list<LegacyRedirect>
+	 */
+	public function legacyRedirects(): array
 	{
 		return [];
 	}
