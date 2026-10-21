@@ -32,7 +32,11 @@ Old pages of a rewritten module redirect (302, GET only) to their MVC route, e.g
 
 How it works: each module declares `legacyRedirects()` (a list of `LegacyRedirect` rules: script, route name, parameter mapping, required parameters, handled `action` values, forbidden parameters, parameters to carry). The rules of all modules are compiled into `DOL_DATA_ROOT/cache/legacy_redirects.php`. A block at the top of `htdocs/main.inc.php` (`src/legacy_redirect.inc.php`) looks the request up before anything else runs. Any failure leaves the legacy page to run.
 
-It does NOT redirect: a POST (or any non-GET), an AJAX request, a request served by `app.php` (`DOL_MVC_FRONT`), the CLI, a page that defines `NOREDIRECTLEGACY`, and any URL whose `action` or parameters no rule covers (the legacy page answers, e.g. `card.php?action=clone`, `card.php` without `id`, `list.php` with `massaction`, a multi-select category filter, extrafield filters or `contextpage=employeelist`).
+Redirects start after the first page served by `app.php`: a matched route creates the empty marker `DOL_DATA_ROOT/cache/mvc_front_ok`, and no legacy page is redirected while it is missing. This requires the nginx `try_files` rule or the Apache rules (see above): without them the routes would answer 404, `app.php` never serves a route and the legacy pages keep working. Delete the marker if the rewrite is removed afterwards.
+
+Every rule also carries the display and context parameters read by `main.inc.php` (`LegacyRedirector::GLOBAL_CARRY`: `dol_hide_topmenu`, `dol_hide_leftmenu`, `dol_optimize_smallscreen`, `dol_no_mouse_hover`, `dol_use_jmobile`, `optioncss`, `lang`, `mainmenu`, `leftmenu`).
+
+It does NOT redirect: a POST (or any non-GET), an AJAX request, a request served by `app.php` (`DOL_MVC_FRONT`), the CLI, PHP < 8.2, a page that defines `NOREDIRECTLEGACY`, `id=0` (the `id` of `card.php`, `note.php`, `perms.php` must match `[1-9]\d*`), and any URL whose `action` or parameters no rule covers (the legacy page answers, e.g. `card.php?action=clone`, `card.php` without `id`, `list.php` with `massaction`, a multi-select category filter, extrafield filters or `contextpage=employeelist`).
 
 Switches:
 
@@ -56,7 +60,9 @@ public function legacyRedirects(): array
 
 Deploy: the caches are stamped by Dolibarr version and module list, not by rule content. After deploying a change of rules in prod mode, delete `documents/cache/routes.php` and `documents/cache/legacy_redirects.php`.
 
-Covered URLs: `user/card.php` (`id`; `action=edit|disable|enable|delete|password|passwordsend`; `action=create`), `user/list.php` (plain filters and sort), `user/note.php`, `user/perms.php`, `user/logout.php`. `smoke.sh` asserts them on nginx and Apache, with the cases that must not redirect, the absence of loops and the switch.
+Route constants: `#[Route(..., constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED'])]` makes `app.php` define those constants (to `1`) before `main.inc.php` for that route, as the legacy page did. The `logout` route uses it: under `MAIN_ONLY_LOGIN_ALLOWED`, the offline message links to `user/logout.php`, redirected to `/logout`, which must still disconnect.
+
+Covered URLs: `user/card.php` (`id`; `action=edit|disable|enable|delete|password|passwordsend`; `action=create`, with `employee`), `user/list.php` (plain filters and sort), `user/note.php`, `user/perms.php`, `user/logout.php`. `smoke.sh` asserts them on nginx and Apache, with the cases that must not redirect, the absence of loops, the switch and the logout under `MAIN_ONLY_LOGIN_ALLOWED` (set to a dummy login, then removed).
 
 ## MVC routes available
 

@@ -524,6 +524,24 @@ case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the hos
 OUT="$(curl -s -L --max-redirs 5 -o /dev/null -w '%{num_redirects} %{http_code}' -b "$J3" "$BASE/user/logout.php?noredirect=1")"
 [ "${OUT#* }" = "200" ] && ok "logout.php?noredirect=1 ends ($OUT)" || fail "logout loop" "$OUT"
 
+echo "== Logout while only other logins are allowed (MAIN_ONLY_LOGIN_ALLOWED)"
+newjar J4
+T4="$(token_from "$J4" /login)"
+curl -s -o /dev/null -b "$J4" -c "$J4" -X POST --data-urlencode "token=$T4" -d "actionlogin=login&loginfunction=loginfunction" \
+	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/login"
+expect_code "J4 logged in" 200 -b "$J4" "$BASE/user/1"
+restore_only_login() { smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_ONLY_LOGIN_ALLOWED' AND value = 'smoke_nobody'" > /dev/null || true; }
+trap 'restore_only_login; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_const WHERE name = 'MAIN_ONLY_LOGIN_ALLOWED'")" = "0" ] || fail "MAIN_ONLY_LOGIN_ALLOWED not set before the smoke" "already set"
+smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_ONLY_LOGIN_ALLOWED', 'smoke_nobody', 'chaine', 0, 1)" > /dev/null
+expect_grep "a non-allowed session gets the offline message" 'application is offline' 1 -b "$J4" "$BASE/user/1"
+expect_location_suffix "offline: user/logout.php redirects to /logout" "/logout" -b "$J4" -c "$J4" "$BASE/user/logout.php"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J4" -c "$J4" "$BASE/logout")"
+restore_only_login
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$OUT" = "302 $BASE/index.php" ] && ok "offline: /logout disconnects (302 to index.php, not the offline message)" || fail "offline logout" "$OUT"
+expect_code "J4 session destroyed (user/1 302)" 302 -b "$J4" "$BASE/user/1"
+
 echo "== Legacy login -> new world"
 newjar J2
 TLEG="$(token_from "$J2" /index.php)"
