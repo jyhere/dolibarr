@@ -418,6 +418,33 @@ cleanup_smoke_users
 CLEANUP_JAR=""
 trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 
+echo "== Non-admin without rights (Review Focus 1)"
+CLEANUP_JAR="$J1"
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+SMOKE_LOGIN="smoke_na_$(date +%s)$$"
+TN="$(token_from "$J1" /user/new)"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$TN" \
+	--data-urlencode "lastname=NonAdmin" --data-urlencode "login=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" \
+	-d "employee=1&entity=1" "$BASE/user/new")"
+case "$OUT" in "302 $BASE/user/"[0-9]*) ok "non-admin smoke user created";; *) fail "non-admin smoke user" "$OUT";; esac
+SMOKE_IDS+=("${OUT##*/}")
+newjar JN
+TNL="$(token_from "$JN" /login)"
+curl -s -o /dev/null -b "$JN" -c "$JN" -X POST --data-urlencode "token=$TNL" -d "actionlogin=login&loginfunction=loginfunction" \
+	--data-urlencode "username=$SMOKE_LOGIN" --data-urlencode "password=$SMOKE_PASSWORD" "$BASE/login"
+expect_grep "non-admin is logged in" 'name="username"' 0 -b "$JN" "$BASE/index.php"
+expect_code "non-admin GET /user/1/edit 403" 403 -b "$JN" "$BASE/user/1/edit"
+expect_code "non-admin GET /user 403 (no read right)" 403 -b "$JN" "$BASE/user"
+TNA="$(token_from "$JN" /index.php)"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$JN" -c "$JN" -X POST --data-urlencode "token=$TNA" -d "action=confirm_disable&confirm=yes" "$BASE/user/1/status")"
+case "$OUT" in 30?|403) ok "non-admin POST /user/1/status refused ($OUT)";; *) fail "non-admin POST /user/1/status" "$OUT";; esac
+[ "$(smoke_sql "SELECT statut FROM llx_user WHERE rowid = 1")" = "1" ] && ok "admin still enabled after the non-admin attempt" || fail "admin still enabled" "user 1 disabled"
+cleanup_smoke_users
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_user WHERE login LIKE 'smoke\\_%'")" = "0" ] && ok "smoke users removed" || fail "smoke users removed" "some left"
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_usergroup WHERE nom LIKE 'smoke\\_%'")" = "0" ] && ok "smoke groups removed" || fail "smoke groups removed" "some left"
+CLEANUP_JAR=""
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+
 echo "== Invalid CSRF token (spec §8): action cancelled, warning displayed"
 expect_location_suffix "POST /logout with an invalid token 302" "/index.php" -b "$J1" -c "$J1" -X POST -d "token=bogus" "$BASE/logout"
 expect_code "still logged in after the invalid token" 200 -b "$J1" "$BASE/user/1"

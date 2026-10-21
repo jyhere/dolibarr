@@ -21,3 +21,24 @@ An Apache 2.4 service (`httpd:2.4` + `mod_proxy_fcgi` to the same `php-fpm`) is 
 Dolibarr in a subdirectory (`DOL_URL_ROOT` not empty): uncomment and adapt `RewriteBase` in `.htaccess`.
 
 Caveat: `$dolibarr_main_url_root` in the test `conf.php` is `http://127.0.0.1:8480`, so some absolute links built by Dolibarr point to port 8480 when browsing the Apache instance on 8481. The smoke test compares paths/suffixes only, so it is unaffected.
+
+## MVC routes available
+
+| Method | Path | Legacy equivalent |
+|---|---|---|
+| GET | `/user` (list, filters, `.json`) | `user/list.php` |
+| POST | `/user` (mass actions) | `user/list.php` |
+| GET/POST | `/user/new` | `user/card.php?action=create` |
+| GET | `/user/{id}` (`.json` too) | `user/card.php?id=` |
+| GET/POST | `/user/{id}/edit` | `user/card.php?action=edit` |
+| POST | `/user/{id}/status` | `card.php` `confirm_disable`/`confirm_enable` |
+| GET/POST | `/user/{id}/password` | `card.php` `confirm_password` |
+| POST | `/user/{id}/groups` | `card.php` `addgroup`/`removegroup` |
+| POST | `/user/{id}/delete` | `card.php` `confirm_delete` |
+| GET/POST | `/{entity}/{id}/note` (e.g. `/user/1/note`) | `user/note.php` |
+| GET/POST | `/user/{id}/rights` | `user/perms.php` |
+| GET/POST | `/login`, `/logout` | `index.php`, `user/logout.php` |
+
+Every write is a POST with a CSRF token; an invalid token cancels the action and shows a warning. `smoke.sh` creates and removes its own `smoke_*` users and groups (it needs a SQL client: host `mysql` on port 33306, or `docker compose exec mysql`, or `SMOKE_MYSQL`).
+
+Run all suites (from the parent directory): unit, integration, PHPStan and smoke on nginx (8480) and Apache (8481) with the commands above; all must be green.
