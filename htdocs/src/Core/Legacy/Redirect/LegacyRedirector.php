@@ -102,6 +102,9 @@ final class LegacyRedirector
 			if (!is_scalar($value)) {
 				return null;
 			}
+			if (in_array(trim((string) $value), ['.', '..'], true)) {
+				return null;
+			}
 			$params[$target] = (string) $value;
 		}
 		foreach ($rule->fixedParams as $name => $value) {

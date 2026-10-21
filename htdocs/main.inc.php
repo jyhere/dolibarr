@@ -162,6 +162,11 @@ require_once 'master.inc.php';
  * @var Societe $mysoc
  */
 
+// MVC rewrite: redirect a legacy page to its rewritten route when one is declared (htdocs/src/legacy_redirect.inc.php)
+if (!defined('DOL_MVC_FRONT') && !defined('NOREDIRECTLEGACY') && PHP_SAPI !== 'cli' && is_readable(DOL_DOCUMENT_ROOT.'/src/legacy_redirect.inc.php')) {
+	require DOL_DOCUMENT_ROOT.'/src/legacy_redirect.inc.php';
+}
+
 '
 @phan-var-force Conf $conf
 @phan-var-force ?DoliDB $db

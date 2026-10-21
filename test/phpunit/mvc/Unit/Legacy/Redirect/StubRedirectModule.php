@@ -12,9 +12,10 @@ use Dolibarr\Core\Module\ModuleInterface;
 final class StubRedirectModule implements ModuleInterface
 {
 	/**
-	 * @param list<LegacyRedirect> $rules
+	 * @param list<LegacyRedirect>  $rules
+	 * @param list<class-string>    $controllers
 	 */
-	public function __construct(private readonly array $rules)
+	public function __construct(private readonly array $rules, private readonly array $controllers = [])
 	{
 	}
 
@@ -25,7 +26,7 @@ final class StubRedirectModule implements ModuleInterface
 
 	public function controllers(): array
 	{
-		return [];
+		return $this->controllers;
 	}
 
 	public function services(Container $c): void

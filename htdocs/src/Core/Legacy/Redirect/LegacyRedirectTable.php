@@ -57,6 +57,11 @@ final class LegacyRedirectTable
 						throw new \LogicException($where.'fixed parameter "'.$name.'" is not a variable of the route');
 					}
 				}
+				foreach ($rule->requirements as $name => $regex) {
+					if (@preg_match('~^(?:'.str_replace('~', '\~', $regex).')$~D', '') === false) {
+						throw new \LogicException($where.'invalid requirement regex for parameter "'.$name.'"');
+					}
+				}
 				$rules[] = $rule;
 			}
 		}

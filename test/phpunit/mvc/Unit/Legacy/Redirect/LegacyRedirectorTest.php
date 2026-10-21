@@ -108,6 +108,25 @@ final class LegacyRedirectorTest extends TestCase
 		self::assertSame('/user/7', $r->resolve('GET', 'z.php', [], []));
 	}
 
+	public function testHostileValuesNeverRedirect(): void
+	{
+		self::assertNull($this->redirector()->resolve('GET', 'user/card.php', ['id' => "5\n"], []));
+		self::assertNull($this->redirector()->resolve('GET', 'user/card.php', ['id' => '1/../x'], []));
+
+		$noRequirement = new LegacyRedirector($this->table([new LegacyRedirect('y.php', 'user_show', ['id' => 'id'])]), new UrlGenerator($this->routes(), ''));
+		self::assertNull($noRequirement->resolve('GET', 'y.php', ['id' => ['5']], []));
+		self::assertNull($noRequirement->resolve('GET', 'y.php', ['id' => '..'], []));
+		self::assertNull($noRequirement->resolve('GET', 'y.php', ['id' => ' . '], []));
+	}
+
+	public function testCarriedValueIsEncoded(): void
+	{
+		self::assertSame(
+			'/user/5?backtopage=a%0D%0Ab%2F%2Fevil',
+			$this->redirector()->resolve('GET', 'user/card.php', ['id' => '5', 'backtopage' => "a\r\nb//evil"], [])
+		);
+	}
+
 	private function redirector(): LegacyRedirector
 	{
 		return new LegacyRedirector($this->table($this->rules()), new UrlGenerator($this->routes(), ''));

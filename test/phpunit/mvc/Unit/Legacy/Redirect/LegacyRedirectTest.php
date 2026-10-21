@@ -34,6 +34,13 @@ final class LegacyRedirectTest extends TestCase
 		LegacyRedirectTable::fromModules([$this->module([new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id'], ['entity' => 'user'])])], $this->routes());
 	}
 
+	public function testInvalidRequirementRegexThrows(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessage('user/card.php');
+		LegacyRedirectTable::fromModules([$this->module([new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id'], requirements: ['id' => '(\d+'])])], $this->routes());
+	}
+
 	public function testRulesAreIndexedByScriptInDeclarationOrder(): void
 	{
 		$a = new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id']);
