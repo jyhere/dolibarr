@@ -277,9 +277,10 @@ final class UserModule implements ModuleInterface
 				'user_list',
 				forbidden: ['massaction', 'confirmmassaction', 'action', 'button_removefilter_x', 'button_removefilter.x', 'button_removefilter', 'formfilteraction', 'search_category_user_list'],
 				carry: $listCarry,
-				forbiddenValues: ['contextpage' => ['employeelist']]
+				forbiddenValues: ['contextpage' => ['employeelist']],
+				forbiddenPrefixes: ['search_options_']
 			),
-			new LegacyRedirect('user/note.php', 'entity_note', ['id' => 'id'], ['entity' => 'user'], ['id'], ['', 'editnote_public', 'editnote_private'], carry: ['action'], requirements: $id),
+			new LegacyRedirect('user/note.php', 'entity_note', ['id' => 'id'], ['entity' => 'user'], ['id'], ['', 'editnote_public', 'editnote_private'], carry: ['action', 'token'], requirements: $id),
 			new LegacyRedirect('user/perms.php', 'user_rights', ['id' => 'id'], required: ['id'], carry: ['updatedmodulename', 'page_y'], requirements: $id),
 			new LegacyRedirect('user/logout.php', 'logout', actions: null, forbidden: [], carry: ['urlfrom', 'noredirect']),
 		];

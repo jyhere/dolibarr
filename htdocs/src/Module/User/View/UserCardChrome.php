@@ -114,7 +114,7 @@ final class UserCardChrome implements EntityTabs
 		return new UserCardHtml(
 			confirmHtml: $this->confirmClone($object, $form),
 			tabsHtml: $this->tabs($object, 'user'),
-			bannerHtml: $this->banner($object, $perms->canList(), $this->cardMoreHtmlRef($object)),
+			bannerHtml: $this->banner($object, $perms->canList(), $this->cardMoreHtmlRef($object), 'user_show'),
 			tabsEndHtml: dol_get_fiche_end(),
 			loginHtml: showValueWithClipboardCPButton($object->login).$addadmin,
 			typeLabelHtml: $form->textwithpicto($langs->trans('Type'), $langs->trans('InternalExternalDesc')),
@@ -317,7 +317,7 @@ final class UserCardChrome implements EntityTabs
 
 		return [
 			'tabsHtml' => $this->tabs($legacyObject, $activeTab),
-			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref),
+			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref, $activeTab === 'rights' ? 'user_rights' : 'entity_note', $activeTab === 'rights' ? [] : ['entity' => 'user']),
 			'tabsEndHtml' => dol_get_fiche_end(),
 			'headerRowsHtml' => $activeTab === 'rights' ? $this->rightsHeaderRows($legacyObject) : $this->noteLoginRow($legacyObject),
 		];
@@ -391,8 +391,10 @@ final class UserCardChrome implements EntityTabs
 
 	/**
 	 * card.php l.1712-1750 and note.php l.112-131. dol_banner_tab() prints its output and needs the global $form.
+	 *
+	 * @param array<string,string> $fixed Route variables of $route other than id
 	 */
-	private function banner(\User $object, bool $canList, string $morehtmlref): string
+	private function banner(\User $object, bool $canList, string $morehtmlref, string $route, array $fixed = []): string
 	{
 		$linkback = $canList ? '<a href="'.$this->urls->generate('user_list').'?restore_lastsearch_values=1">'.$this->ctx->langs->trans('BackToList').'</a>' : '';
 
@@ -404,7 +406,31 @@ final class UserCardChrome implements EntityTabs
 			$html = (string) ob_get_clean();
 		}
 
-		return $html;
+		return $this->navigationLinks($html, $route, $fixed);
+	}
+
+	/**
+	 * Form::showrefnav() builds its previous/next links as $_SERVER['PHP_SELF'].'?id=N', and PHP_SELF is the route
+	 * path of the current tab: they are rewritten to the same tab of the other user (other query parameters kept).
+	 *
+	 * @param array<string,string> $fixed Route variables other than id
+	 */
+	private function navigationLinks(string $html, string $route, array $fixed): string
+	{
+		$self = (string) ($_SERVER['PHP_SELF'] ?? '');
+		if ($self === '') {
+			return $html;
+		}
+
+		return (string) preg_replace_callback(
+			'#href="'.preg_quote($self, '#').'\?id=(\d+)((?:&|&amp;)[^"]*)?"#',
+			function (array $m) use ($route, $fixed): string {
+				$query = isset($m[2]) ? ltrim(preg_replace('#^(&amp;|&)#', '', $m[2]) ?? '', '&') : '';
+
+				return 'href="'.$this->urls->generate($route, $fixed + ['id' => (int) $m[1]]).($query !== '' ? '?'.$query : '').'"';
+			},
+			$html
+		);
 	}
 
 	/**

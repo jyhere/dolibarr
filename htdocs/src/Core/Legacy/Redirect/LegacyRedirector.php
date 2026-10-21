@@ -78,6 +78,13 @@ final class LegacyRedirector
 				return null;
 			}
 		}
+		foreach ($rule->forbiddenPrefixes as $prefix) {
+			foreach ($query as $name => $value) {
+				if (str_starts_with((string) $name, $prefix) && $value !== '' && $value !== null) {
+					return null;
+				}
+			}
+		}
 		foreach ($rule->forbiddenValues as $name => $values) {
 			$value = $query[$name] ?? null;
 			if (is_scalar($value) && in_array(trim((string) $value), $values, true)) {

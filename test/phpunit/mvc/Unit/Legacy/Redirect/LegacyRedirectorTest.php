@@ -56,6 +56,19 @@ final class LegacyRedirectorTest extends TestCase
 		self::assertEquals($table, LegacyRedirectTable::fromArray($table->toArray()));
 	}
 
+	public function testForbiddenPrefixBlocksAnyMatchingKey(): void
+	{
+		$routes = (new RouteCompiler())->compile([FakeController::class]);
+		$table = LegacyRedirectTable::fromModules([new StubRedirectModule([
+			new LegacyRedirect('user/list.php', 'user_show', ['id' => 'id'], forbiddenPrefixes: ['search_options_']),
+		])], $routes);
+		$redirector = new LegacyRedirector($table, new UrlGenerator($routes, ''));
+
+		self::assertNull($redirector->resolve('GET', 'user/list.php', ['id' => '5', 'search_options_x' => '1'], []));
+		self::assertSame('/user/5', $redirector->resolve('GET', 'user/list.php', ['id' => '5', 'search_options_x' => '', 'search_x' => '1'], []));
+		self::assertEquals($table, LegacyRedirectTable::fromArray($table->toArray()));
+	}
+
 	public function testRequiredParamMissing(): void
 	{
 		self::assertNull($this->redirector()->resolve('GET', 'user/card.php', [], []));

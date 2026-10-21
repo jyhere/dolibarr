@@ -21,6 +21,7 @@ use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
+use Dolibarr\Module\Notes\Controller\NotesController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Controller\UserRightsController;
@@ -252,6 +253,37 @@ final class UserRightsControllerTest extends TestCase
 		$me = new RightsCurrentUser($actor->id, false, ['user.self_advance.readperms']);
 		$view = $this->controller($me, null, true)->show($this->request('GET', [], [], $actor->id), $actor->id);
 		self::assertFalse($view->data['canEdit']);
+	}
+
+	public function testBannerPreviousNextLinksTargetTheCurrentTabRoute(): void
+	{
+		$a = $this->disposable('NavA');
+		$b = $this->disposable('NavB');
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class, UserRightsController::class, NotesController::class]), '');
+		$chrome = new UserCardChrome($this->ctx, $urls);
+		$legacy = (new LegacyObjectLoader($this->connection))->user($a->id);
+		self::assertNotNull($legacy);
+		$oldSelf = $_SERVER['PHP_SELF'] ?? null;
+
+		try {
+			foreach (['rights' => '/user/'.$b->id.'/rights', 'note' => '/user/'.$b->id.'/note'] as $tab => $expected) {
+				$_SERVER['PHP_SELF'] = '/user/'.$a->id.($tab === 'rights' ? '/rights' : '/note');
+				$banner = $chrome->chrome($legacy, $a, $tab)['bannerHtml'];
+				self::assertStringContainsString('href="'.$expected.'"', $banner, $tab);
+				self::assertStringNotContainsString('href="'.$_SERVER['PHP_SELF'].'?id=', $banner, $tab);
+			}
+
+			$_SERVER['PHP_SELF'] = '/user/'.$a->id;
+			$card = $chrome->build($legacy, $a, new UserPermissionChecker($this->legacyMe(), false, false, false, [], false, false, (int) $this->ctx->conf->entity), false, 2)->bannerHtml;
+			self::assertStringContainsString('href="/user/'.$b->id.'"', $card);
+			self::assertStringNotContainsString('href="'.$_SERVER['PHP_SELF'].'?id=', $card);
+		} finally {
+			if ($oldSelf === null) {
+				unset($_SERVER['PHP_SELF']);
+			} else {
+				$_SERVER['PHP_SELF'] = $oldSelf;
+			}
+		}
 	}
 
 	private function assertRedirectsToRights(mixed $response, int $id, string $query): void
