@@ -24,14 +24,14 @@ final class SendRecordingWriter implements UserWriter
 	{
 	}
 
-	public function insert(User $u, int $creatorId): int
+	public function insert(User $user, int $creatorId): int
 	{
-		return $this->inner->insert($u, $creatorId);
+		return $this->inner->insert($user, $creatorId);
 	}
 
-	public function update(User $u, int $actorId): void
+	public function update(User $user, int $actorId): void
 	{
-		$this->inner->update($u, $actorId);
+		$this->inner->update($user, $actorId);
 	}
 
 	public function isCurrentPassword(int $id, string $clearPassword): bool

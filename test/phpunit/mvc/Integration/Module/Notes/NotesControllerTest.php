@@ -109,8 +109,8 @@ final class NotesControllerTest extends TestCase
 		$before = $this->countEvents('USER_MODIFY');
 		$spied = [];
 		$dispatcher = $this->dispatcher();
-		$dispatcher->addListener(NoteUpdated::class, static function (NoteUpdated $e) use (&$spied): void {
-			$spied[] = $e;
+		$dispatcher->addListener(NoteUpdated::class, static function (NoteUpdated $event) use (&$spied): void {
+			$spied[] = $event;
 		});
 
 		$response = $this->controller(null, null, $dispatcher)->update($this->post($target->id, ['action' => 'setnote_public', 'note_public' => 'Hello &amp; <b>world</b>']), 'user', $target->id);

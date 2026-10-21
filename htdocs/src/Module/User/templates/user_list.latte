@@ -4,15 +4,15 @@
 
 {block content}
 <form method="POST" id="searchFormList" action="{$formAction}">
-{if $s->optioncss !== ''}<input type="hidden" name="optioncss" value="{$s->optioncss}">{/if}
+{if $userSearch->optioncss !== ''}<input type="hidden" name="optioncss" value="{$userSearch->optioncss}">{/if}
 <input type="hidden" name="token" value="{token()}">
 <input type="hidden" name="formfilteraction" id="formfilteraction" value="list">
-<input type="hidden" name="sortfield" value="{$s->sortField}">
-<input type="hidden" name="sortorder" value="{$s->sortOrder}">
-<input type="hidden" name="page" value="{$s->page}">
-<input type="hidden" name="contextpage" value="{$s->contextpage}">
+<input type="hidden" name="sortfield" value="{$userSearch->sortField}">
+<input type="hidden" name="sortorder" value="{$userSearch->sortOrder}">
+<input type="hidden" name="page" value="{$userSearch->page}">
+<input type="hidden" name="contextpage" value="{$userSearch->contextpage}">
 <input type="hidden" name="page_y" value="">
-<input type="hidden" name="mode" value="{$s->mode}">
+<input type="hidden" name="mode" value="{$userSearch->mode}">
 {$titleBarHtml|noescape}
 {if $search['search_all'] !== ''}<input type="hidden" name="search_all" value="{$search['search_all']}">{/if}
 {$categoryWaysHtml|noescape}
@@ -23,19 +23,19 @@
 <div class="div-table-responsive">
 <table class="tagtable nobottomiftotal liste{if $moreForFilterHtml !== ''} listwithfilterbefore{/if}">
 <tr class="liste_titre_filter">
-{if $checkboxLeft}<td class="liste_titre center maxwidthsearch">{$w['buttonsLeft']|noescape}</td>{/if}
+{if $checkboxLeft}<td class="liste_titre center maxwidthsearch">{$widgets['buttonsLeft']|noescape}</td>{/if}
 {if $show['u.rowid'] ?? false}<td class="liste_titre"><input type="text" name="search_rowid" class="maxwidth50" value="{$search['search_rowid']}"></td>{/if}
 {if $show['u.login'] ?? false}<td class="liste_titre"><input type="text" name="search_login" class="maxwidth50" value="{$search['search_login']}"></td>{/if}
 {if $show['u.lastname'] ?? false}<td class="liste_titre"><input type="text" name="search_lastname" class="maxwidth50" value="{$search['search_lastname']}"></td>{/if}
 {if $show['u.firstname'] ?? false}<td class="liste_titre"><input type="text" name="search_firstname" class="maxwidth50" value="{$search['search_firstname']}"></td>{/if}
-{if $show['u.gender'] ?? false}<td class="liste_titre center">{$w['gender']|noescape}</td>{/if}
-{if $show['u.employee'] ?? false}<td class="liste_titre">{$w['employee']|noescape}</td>{/if}
-{if $show['u.fk_user'] ?? false}<td class="liste_titre">{$w['supervisor']|noescape}</td>{/if}
+{if $show['u.gender'] ?? false}<td class="liste_titre center">{$widgets['gender']|noescape}</td>{/if}
+{if $show['u.employee'] ?? false}<td class="liste_titre">{$widgets['employee']|noescape}</td>{/if}
+{if $show['u.fk_user'] ?? false}<td class="liste_titre">{$widgets['supervisor']|noescape}</td>{/if}
 {if $show['u.accountancy_code'] ?? false}<td class="liste_titre"><input type="text" name="search_accountancy_code" class="maxwidth50" value="{$search['search_accountancy_code']}"></td>{/if}
 {if $show['u.office_phone'] ?? false}<td class="liste_titre"><input type="text" name="search_phonepro" class="maxwidth50" value="{$search['search_phonepro']}"></td>{/if}
 {if $show['u.user_mobile'] ?? false}<td class="liste_titre"><input type="text" name="search_phonemobile" class="maxwidth50" value="{$search['search_phonemobile']}"></td>{/if}
 {if $show['u.email'] ?? false}<td class="liste_titre"><input type="text" name="search_email" class="maxwidth75" value="{$search['search_email']}"></td>{/if}
-{if $show['co.label'] ?? false}<td class="liste_titre">{$w['country']|noescape}</td>{/if}
+{if $show['co.label'] ?? false}<td class="liste_titre">{$widgets['country']|noescape}</td>{/if}
 {if $show['u.api_key'] ?? false}<td class="liste_titre"><input type="text" name="search_api_key" class="maxwidth50" value="{$search['search_api_key']}"></td>{/if}
 {if $show['u.fk_soc'] ?? false}<td class="liste_titre"><input type="text" name="search_thirdparty" class="maxwidth75" value="{$search['search_thirdparty']}"></td>{/if}
 {if $show['u.entity'] ?? false}<td class="liste_titre"></td>{/if}
@@ -51,15 +51,15 @@
 {if $show['u.datec'] ?? false}<td class="liste_titre"></td>{/if}
 {if $show['date_modification'] ?? false}<td class="liste_titre"></td>{/if}
 {if $show['u.import_key'] ?? false}<td class="liste_titre"></td>{/if}
-{if $show['u.statut'] ?? false}<td class="liste_titre center parentonrightofpage">{$w['status']|noescape}</td>{/if}
-{if !$checkboxLeft}<td class="liste_titre maxwidthsearch">{$w['buttonsRight']|noescape}</td>{/if}
+{if $show['u.statut'] ?? false}<td class="liste_titre center parentonrightofpage">{$widgets['status']|noescape}</td>{/if}
+{if !$checkboxLeft}<td class="liste_titre maxwidthsearch">{$widgets['buttonsRight']|noescape}</td>{/if}
 </tr>
 <tr class="liste_titre">
 {foreach $titlesBefore as $th}{$th|noescape}{/foreach}
 {$titleHookHtml|noescape}
 {foreach $titlesAfter as $th}{$th|noescape}{/foreach}
 </tr>
-{if $s->mode === 'kanban'}
+{if $userSearch->mode === 'kanban'}
 {if $rows !== []}
 <tr class="trkanban"><td colspan="{$kanbanColspan}"><div class="box-flex-container kanban">
 {foreach $rows as $row}{$row['kanbanHtml']|noescape}{/foreach}
@@ -67,40 +67,40 @@
 {/if}
 {else}
 {foreach $rows as $row}
-{var $u = $row['user']}
-{var $c = $row['cells']}
-<tr data-rowid="{$u->id}" class="oddeven row-with-select">
-{if $checkboxLeft}<td class="nowrap center">{if $row['selected'] >= 0}<input id="cb{$u->id}" class="flat checkforselect" type="checkbox" name="toselect[]" value="{$u->id}"{if $row['selected'] === 1} checked="checked"{/if}>{/if}</td>{/if}
-{if $show['u.rowid'] ?? false}<td class="nowraponall">{$u->id}</td>{/if}
-{if $show['u.login'] ?? false}<td class="nowraponall tdoverflowmax150">{$c['login']|noescape}</td>{/if}
+{var $rowUser = $row['user']}
+{var $cells = $row['cells']}
+<tr data-rowid="{$rowUser->id}" class="oddeven row-with-select">
+{if $checkboxLeft}<td class="nowrap center">{if $row['selected'] >= 0}<input id="cb{$rowUser->id}" class="flat checkforselect" type="checkbox" name="toselect[]" value="{$rowUser->id}"{if $row['selected'] === 1} checked="checked"{/if}>{/if}</td>{/if}
+{if $show['u.rowid'] ?? false}<td class="nowraponall">{$rowUser->id}</td>{/if}
+{if $show['u.login'] ?? false}<td class="nowraponall tdoverflowmax150">{$cells['login']|noescape}</td>{/if}
 {* list.php l.1154-1161: the title of the first name cell is the last name *}
-{if $show['u.lastname'] ?? false}<td class="tdoverflowmax150" title="{$u->lastname}">{$u->lastname}</td>{/if}
-{if $show['u.firstname'] ?? false}<td class="tdoverflowmax150" title="{$u->lastname}">{$u->firstname}</td>{/if}
-{if $show['u.gender'] ?? false}<td class="center">{if $u->gender === 'man'}<i class="fas fa-mars" title="{='Genderman'|trans}"></i>{elseif $u->gender === 'woman'}<i class="fas fa-venus" title="{='Genderwoman'|trans}"></i>{elseif $u->gender === 'other'}<i class="fas fa-transgender" title="{='Genderother'|trans}"></i>{/if}</td>{/if}
-{if $show['u.employee'] ?? false}<td class="center">{$c['employee']|noescape}</td>{/if}
-{if $show['u.fk_user'] ?? false}<td class="tdoverflowmax125">{$c['supervisor']|noescape}</td>{/if}
-{if $show['u.accountancy_code'] ?? false}<td>{$u->accountancyCode}</td>{/if}
-{if $show['u.office_phone'] ?? false}<td class="tdoverflowmax125">{$c['phone']|noescape}</td>{/if}
-{if $show['u.user_mobile'] ?? false}<td class="tdoverflowmax125">{$c['mobile']|noescape}</td>{/if}
-{if $show['u.email'] ?? false}<td class="tdoverflowmax150" title="{$u->email}">{$c['email']|noescape}</td>{/if}
+{if $show['u.lastname'] ?? false}<td class="tdoverflowmax150" title="{$rowUser->lastname}">{$rowUser->lastname}</td>{/if}
+{if $show['u.firstname'] ?? false}<td class="tdoverflowmax150" title="{$rowUser->lastname}">{$rowUser->firstname}</td>{/if}
+{if $show['u.gender'] ?? false}<td class="center">{if $rowUser->gender === 'man'}<i class="fas fa-mars" title="{='Genderman'|trans}"></i>{elseif $rowUser->gender === 'woman'}<i class="fas fa-venus" title="{='Genderwoman'|trans}"></i>{elseif $rowUser->gender === 'other'}<i class="fas fa-transgender" title="{='Genderother'|trans}"></i>{/if}</td>{/if}
+{if $show['u.employee'] ?? false}<td class="center">{$cells['employee']|noescape}</td>{/if}
+{if $show['u.fk_user'] ?? false}<td class="tdoverflowmax125">{$cells['supervisor']|noescape}</td>{/if}
+{if $show['u.accountancy_code'] ?? false}<td>{$rowUser->accountancyCode}</td>{/if}
+{if $show['u.office_phone'] ?? false}<td class="tdoverflowmax125">{$cells['phone']|noescape}</td>{/if}
+{if $show['u.user_mobile'] ?? false}<td class="tdoverflowmax125">{$cells['mobile']|noescape}</td>{/if}
+{if $show['u.email'] ?? false}<td class="tdoverflowmax150" title="{$rowUser->email}">{$cells['email']|noescape}</td>{/if}
 {if $show['co.label'] ?? false}<td class="tdoverflowmax150">{$row['countryLabel']}</td>{/if}
-{if $show['u.api_key'] ?? false}<td class="tdoverflowmax125" title="{$c['apiKeyTitle']}">{$c['apiKey']|noescape}</td>{/if}
-{if $show['u.fk_soc'] ?? false}<td class="tdoverflowmax150">{$c['company']|noescape}</td>{/if}
-{if ($show['u.entity'] ?? false) && $c['entity'] !== null}<td class="tdoverflowmax100" title="{$c['entity']}">{$c['entity']}</td>{/if}
-{if $show['u.ref_employee'] ?? false}<td class="tdoverflowmax100" title="{$u->refEmployee}">{$u->refEmployee}</td>{/if}
-{if $show['u.national_registration_number'] ?? false}<td class="tdoverflowmax100" title="{$u->nationalRegistrationNumber}">{$u->nationalRegistrationNumber}</td>{/if}
-{if $show['u.job'] ?? false}<td class="tdoverflowmax100" title="{$u->job}">{$u->job}</td>{/if}
-{if $show['u.salary'] ?? false}<td class="nowraponall right amount">{$c['salary']|noescape}</td>{/if}
-{if $show['u.thm'] ?? false}<td class="nowraponall right amount">{$c['thm']|noescape}</td>{/if}
-{if ($show['u.datelastlogin'] ?? false) && !$privacy}<td class="nowraponall center">{$c['lastLogin']|noescape}</td>{/if}
-{if ($show['u.datepreviouslogin'] ?? false) && !$privacy}<td class="nowraponall center">{$c['previousLogin']|noescape}</td>{/if}
-{$c['extraFields']|noescape}
+{if $show['u.api_key'] ?? false}<td class="tdoverflowmax125" title="{$cells['apiKeyTitle']}">{$cells['apiKey']|noescape}</td>{/if}
+{if $show['u.fk_soc'] ?? false}<td class="tdoverflowmax150">{$cells['company']|noescape}</td>{/if}
+{if ($show['u.entity'] ?? false) && $cells['entity'] !== null}<td class="tdoverflowmax100" title="{$cells['entity']}">{$cells['entity']}</td>{/if}
+{if $show['u.ref_employee'] ?? false}<td class="tdoverflowmax100" title="{$rowUser->refEmployee}">{$rowUser->refEmployee}</td>{/if}
+{if $show['u.national_registration_number'] ?? false}<td class="tdoverflowmax100" title="{$rowUser->nationalRegistrationNumber}">{$rowUser->nationalRegistrationNumber}</td>{/if}
+{if $show['u.job'] ?? false}<td class="tdoverflowmax100" title="{$rowUser->job}">{$rowUser->job}</td>{/if}
+{if $show['u.salary'] ?? false}<td class="nowraponall right amount">{$cells['salary']|noescape}</td>{/if}
+{if $show['u.thm'] ?? false}<td class="nowraponall right amount">{$cells['thm']|noescape}</td>{/if}
+{if ($show['u.datelastlogin'] ?? false) && !$privacy}<td class="nowraponall center">{$cells['lastLogin']|noescape}</td>{/if}
+{if ($show['u.datepreviouslogin'] ?? false) && !$privacy}<td class="nowraponall center">{$cells['previousLogin']|noescape}</td>{/if}
+{$cells['extraFields']|noescape}
 {$row['hookHtml']|noescape}
-{if $show['u.datec'] ?? false}<td class="center nowraponall">{$c['dateCreation']|noescape}</td>{/if}
-{if $show['date_modification'] ?? false}<td class="center nowraponall">{$c['dateModification']|noescape}</td>{/if}
+{if $show['u.datec'] ?? false}<td class="center nowraponall">{$cells['dateCreation']|noescape}</td>{/if}
+{if $show['date_modification'] ?? false}<td class="center nowraponall">{$cells['dateModification']|noescape}</td>{/if}
 {if $show['u.import_key'] ?? false}<td class="center">{$row['importKey']}</td>{/if}
-{if $show['u.statut'] ?? false}<td class="center">{$c['status']|noescape}</td>{/if}
-{if !$checkboxLeft}<td class="nowrap center">{if $row['selected'] >= 0}<input id="cb{$u->id}" class="flat checkforselect" type="checkbox" name="toselect[]" value="{$u->id}"{if $row['selected'] === 1} checked="checked"{/if}>{/if}</td>{/if}
+{if $show['u.statut'] ?? false}<td class="center">{$cells['status']|noescape}</td>{/if}
+{if !$checkboxLeft}<td class="nowrap center">{if $row['selected'] >= 0}<input id="cb{$rowUser->id}" class="flat checkforselect" type="checkbox" name="toselect[]" value="{$rowUser->id}"{if $row['selected'] === 1} checked="checked"{/if}>{/if}</td>{/if}
 </tr>
 {/foreach}
 {/if}

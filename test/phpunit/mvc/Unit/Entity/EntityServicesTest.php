@@ -45,16 +45,16 @@ final class EntityServicesTest extends TestCase
 				return new LegacyPageSettings([], []);
 			}
 		};
-		$c = new Container();
-		$c->instance('repo', $repo);
-		$c->instance('perms', $perms);
-		$c->instance('tabs', $tabs);
-		$services = new EntityServices($c);
-		$d = $this->definition();
+		$container = new Container();
+		$container->instance('repo', $repo);
+		$container->instance('perms', $perms);
+		$container->instance('tabs', $tabs);
+		$services = new EntityServices($container);
+		$definition = $this->definition();
 
-		self::assertSame($repo, $services->repository($d));
-		self::assertSame($perms, $services->permissions($d));
-		self::assertSame($tabs, $services->tabs($d));
+		self::assertSame($repo, $services->repository($definition));
+		self::assertSame($perms, $services->permissions($definition));
+		self::assertSame($tabs, $services->tabs($definition));
 	}
 
 	public function testWrongRepositoryTypeThrows(): void
@@ -83,12 +83,12 @@ final class EntityServicesTest extends TestCase
 
 	private function withStdClass(): EntityServices
 	{
-		$c = new Container();
+		$container = new Container();
 		foreach (['repo', 'perms', 'tabs'] as $id) {
-			$c->instance($id, new \stdClass());
+			$container->instance($id, new \stdClass());
 		}
 
-		return new EntityServices($c);
+		return new EntityServices($container);
 	}
 
 	private function definition(): EntityDefinition

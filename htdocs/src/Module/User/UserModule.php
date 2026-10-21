@@ -69,41 +69,41 @@ final class UserModule implements ModuleInterface
 		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php')];
 	}
 
-	public function services(Container $c): void
+	public function services(Container $container): void
 	{
-		$this->container = $c;
-		$c->set(LegacyTriggerBridge::class, static fn (Container $c): LegacyTriggerBridge => new LegacyTriggerBridge(
-			self::get($c, LegacyTriggers::class),
-			self::get($c, LegacyContext::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Logger::class)
+		$this->container = $container;
+		$container->set(LegacyTriggerBridge::class, static fn (Container $container): LegacyTriggerBridge => new LegacyTriggerBridge(
+			self::get($container, LegacyTriggers::class),
+			self::get($container, LegacyContext::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, Logger::class)
 		));
-		$c->set(UserRepository::class, static function (Container $c): UserRepository {
-			return new UserRepository(self::get($c, Connection::class), self::get($c, Config::class)->entity());
+		$container->set(UserRepository::class, static function (Container $container): UserRepository {
+			return new UserRepository(self::get($container, Connection::class), self::get($container, Config::class)->entity());
 		});
-		$c->set(UserWriter::class, static fn (Container $c): UserWriter => new LegacyUserWriter(
-			self::get($c, LegacyContext::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Connection::class)
+		$container->set(UserWriter::class, static fn (Container $container): UserWriter => new LegacyUserWriter(
+			self::get($container, LegacyContext::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, Connection::class)
 		));
-		$c->set(UserService::class, static fn (Container $c): UserService => new UserService(
-			self::get($c, UserRepository::class),
-			self::get($c, UserWriter::class),
-			self::get($c, EventDispatcher::class),
-			self::get($c, Connection::class),
-			self::get($c, CurrentUser::class)
+		$container->set(UserService::class, static fn (Container $container): UserService => new UserService(
+			self::get($container, UserRepository::class),
+			self::get($container, UserWriter::class),
+			self::get($container, EventDispatcher::class),
+			self::get($container, Connection::class),
+			self::get($container, CurrentUser::class)
 		));
 		// Configuration read when the service is built (after main.inc.php); the hierarchy from the legacy user.
-		$c->set(UserPermissionChecker::class, static function (Container $c): UserPermissionChecker {
-			$config = self::get($c, Config::class);
-			$legacyUser = self::get($c, LegacyContext::class)->user;
+		$container->set(UserPermissionChecker::class, static function (Container $container): UserPermissionChecker {
+			$config = self::get($container, Config::class);
+			$legacyUser = self::get($container, LegacyContext::class)->user;
 			$subordinates = [];
 			foreach ($legacyUser === null ? [] : $legacyUser->getAllChildIds(1) as $id) {
 				$subordinates[] = (int) $id;
 			}
 
 			return new UserPermissionChecker(
-				self::get($c, CurrentUser::class),
+				self::get($container, CurrentUser::class),
 				$config->int('MAIN_USE_ADVANCED_PERMS') > 0,
 				$config->isModuleEnabled('salaries'),
 				$config->isModuleEnabled('hrm'),
@@ -113,101 +113,101 @@ final class UserModule implements ModuleInterface
 				$config->entity()
 			);
 		});
-		$c->set(UserCardChrome::class, static fn (Container $c): UserCardChrome => new UserCardChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
-		$c->set(UserFormChrome::class, static fn (Container $c): UserFormChrome => new UserFormChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
-		$c->set(UserValidator::class, static fn (Container $c): UserValidator => new UserValidator(self::get($c, Translator::class), self::get($c, Config::class)));
-		$c->set(Authenticator::class, static function (Container $c): Authenticator {
-			$ctx = self::get($c, LegacyContext::class);
+		$container->set(UserCardChrome::class, static fn (Container $container): UserCardChrome => new UserCardChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
+		$container->set(UserFormChrome::class, static fn (Container $container): UserFormChrome => new UserFormChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
+		$container->set(UserValidator::class, static fn (Container $container): UserValidator => new UserValidator(self::get($container, Translator::class), self::get($container, Config::class)));
+		$container->set(Authenticator::class, static function (Container $container): Authenticator {
+			$ctx = self::get($container, LegacyContext::class);
 			// main.inc.php l.541-554: the constant MAIN_AUTHENTICATION_MODE overrides $dolibarr_main_authentication
 			$modes = defined('MAIN_AUTHENTICATION_MODE') ? constant('MAIN_AUTHENTICATION_MODE') : ($ctx->conf->file->main_authentication ?? 'dolibarr');
 
 			return new Authenticator(
 				$ctx,
-				self::get($c, Session::class),
-				self::get($c, Config::class),
+				self::get($container, Session::class),
+				self::get($container, Config::class),
 				explode(',', is_string($modes) && $modes !== '' ? $modes : 'dolibarr')
 			);
 		});
-		$c->set(SessionAuthenticator::class, static fn (Container $c): SessionAuthenticator => new SessionAuthenticator(
-			self::get($c, LegacyContext::class),
-			self::get($c, Session::class),
-			self::get($c, Config::class),
-			self::get($c, EventDispatcher::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, Connection::class),
-			self::get($c, Logger::class)
+		$container->set(SessionAuthenticator::class, static fn (Container $container): SessionAuthenticator => new SessionAuthenticator(
+			self::get($container, LegacyContext::class),
+			self::get($container, Session::class),
+			self::get($container, Config::class),
+			self::get($container, EventDispatcher::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, Connection::class),
+			self::get($container, Logger::class)
 		));
-		$c->set(LegacyLoginPage::class, static fn (Container $c): LegacyLoginPage => new LegacyLoginPage(self::get($c, LegacyContext::class)));
+		$container->set(LegacyLoginPage::class, static fn (Container $container): LegacyLoginPage => new LegacyLoginPage(self::get($container, LegacyContext::class)));
 		// The global $user goes to the controllers as the legacy object of their hooks and events
-		$c->set(LoginController::class, static fn (Container $c): LoginController => new LoginController(
-			self::get($c, Session::class),
-			self::get($c, Config::class),
-			self::get($c, Translator::class),
-			self::get($c, Authenticator::class),
-			self::get($c, SessionAuthenticator::class),
-			self::get($c, EventDispatcher::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, LegacyLoginPage::class),
-			self::get($c, Logger::class),
-			self::get($c, LegacyContext::class)->user
+		$container->set(LoginController::class, static fn (Container $container): LoginController => new LoginController(
+			self::get($container, Session::class),
+			self::get($container, Config::class),
+			self::get($container, Translator::class),
+			self::get($container, Authenticator::class),
+			self::get($container, SessionAuthenticator::class),
+			self::get($container, EventDispatcher::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, LegacyLoginPage::class),
+			self::get($container, Logger::class),
+			self::get($container, LegacyContext::class)->user
 		));
-		$c->set(LogoutController::class, static fn (Container $c): LogoutController => new LogoutController(
-			self::get($c, Session::class),
-			self::get($c, Config::class),
-			self::get($c, EventDispatcher::class),
-			self::get($c, LegacyHooks::class),
-			$c->has(CurrentUser::class) ? self::get($c, CurrentUser::class) : null,
-			self::get($c, LegacyContext::class)->user
+		$container->set(LogoutController::class, static fn (Container $container): LogoutController => new LogoutController(
+			self::get($container, Session::class),
+			self::get($container, Config::class),
+			self::get($container, EventDispatcher::class),
+			self::get($container, LegacyHooks::class),
+			$container->has(CurrentUser::class) ? self::get($container, CurrentUser::class) : null,
+			self::get($container, LegacyContext::class)->user
 		));
-		$c->set(UserController::class, static fn (Container $c): UserController => new UserController(
-			self::get($c, UserRepository::class),
-			self::get($c, UserPermissionChecker::class),
-			self::get($c, CurrentUser::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Translator::class),
-			self::get($c, UserCardChrome::class),
-			self::get($c, FlashBag::class),
-			self::get($c, UserService::class),
-			self::get($c, UserValidator::class),
-			self::get($c, UserFormChrome::class),
-			self::get($c, Config::class),
-			self::get($c, UrlGenerator::class),
-			self::get($c, Confirm::class)
+		$container->set(UserController::class, static fn (Container $container): UserController => new UserController(
+			self::get($container, UserRepository::class),
+			self::get($container, UserPermissionChecker::class),
+			self::get($container, CurrentUser::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, Translator::class),
+			self::get($container, UserCardChrome::class),
+			self::get($container, FlashBag::class),
+			self::get($container, UserService::class),
+			self::get($container, UserValidator::class),
+			self::get($container, UserFormChrome::class),
+			self::get($container, Config::class),
+			self::get($container, UrlGenerator::class),
+			self::get($container, Confirm::class)
 		));
-		$c->set(UserListChrome::class, static fn (Container $c): UserListChrome => new UserListChrome(self::get($c, LegacyContext::class), self::get($c, UrlGenerator::class)));
-		$c->set(UserListController::class, static fn (Container $c): UserListController => new UserListController(
-			self::get($c, UserRepository::class),
-			self::get($c, UserPermissionChecker::class),
-			self::get($c, CurrentUser::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, Translator::class),
-			self::get($c, UserListChrome::class),
-			self::get($c, FlashBag::class),
-			self::get($c, UserService::class),
-			self::get($c, Config::class),
-			self::get($c, UrlGenerator::class)
+		$container->set(UserListChrome::class, static fn (Container $container): UserListChrome => new UserListChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
+		$container->set(UserListController::class, static fn (Container $container): UserListController => new UserListController(
+			self::get($container, UserRepository::class),
+			self::get($container, UserPermissionChecker::class),
+			self::get($container, CurrentUser::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, Translator::class),
+			self::get($container, UserListChrome::class),
+			self::get($container, FlashBag::class),
+			self::get($container, UserService::class),
+			self::get($container, Config::class),
+			self::get($container, UrlGenerator::class)
 		));
-		$c->set(RightsChrome::class, static fn (Container $c): RightsChrome => new RightsChrome(self::get($c, LegacyContext::class), self::get($c, Connection::class)));
-		$c->set(RightsRepository::class, static fn (Container $c): RightsRepository => new RightsRepository(
-			self::get($c, Connection::class),
-			self::get($c, RightsChrome::class),
-			self::get($c, Config::class)
+		$container->set(RightsChrome::class, static fn (Container $container): RightsChrome => new RightsChrome(self::get($container, LegacyContext::class), self::get($container, Connection::class)));
+		$container->set(RightsRepository::class, static fn (Container $container): RightsRepository => new RightsRepository(
+			self::get($container, Connection::class),
+			self::get($container, RightsChrome::class),
+			self::get($container, Config::class)
 		));
-		$c->set(UserRightsController::class, static fn (Container $c): UserRightsController => new UserRightsController(
-			self::get($c, UserRepository::class),
-			self::get($c, UserPermissionChecker::class),
-			self::get($c, CurrentUser::class),
-			self::get($c, LegacyHooks::class),
-			self::get($c, LegacyObjectLoader::class),
-			self::get($c, Translator::class),
-			self::get($c, UserCardChrome::class),
-			self::get($c, RightsChrome::class),
-			self::get($c, RightsRepository::class),
-			self::get($c, UserService::class),
-			self::get($c, FlashBag::class),
-			self::get($c, Config::class),
-			self::get($c, UrlGenerator::class)
+		$container->set(UserRightsController::class, static fn (Container $container): UserRightsController => new UserRightsController(
+			self::get($container, UserRepository::class),
+			self::get($container, UserPermissionChecker::class),
+			self::get($container, CurrentUser::class),
+			self::get($container, LegacyHooks::class),
+			self::get($container, LegacyObjectLoader::class),
+			self::get($container, Translator::class),
+			self::get($container, UserCardChrome::class),
+			self::get($container, RightsChrome::class),
+			self::get($container, RightsRepository::class),
+			self::get($container, UserService::class),
+			self::get($container, FlashBag::class),
+			self::get($container, Config::class),
+			self::get($container, UrlGenerator::class)
 		));
 	}
 
@@ -216,12 +216,12 @@ final class UserModule implements ModuleInterface
 	 *
 	 * @throws \LogicException When called before services()
 	 */
-	public function listeners(EventDispatcher $d): void
+	public function listeners(EventDispatcher $dispatcher): void
 	{
 		if ($this->container === null) {
 			throw new \LogicException(self::class.'::services() must be called before listeners()');
 		}
-		self::get($this->container, LegacyTriggerBridge::class)->register($d);
+		self::get($this->container, LegacyTriggerBridge::class)->register($dispatcher);
 	}
 
 	/**
@@ -293,9 +293,9 @@ final class UserModule implements ModuleInterface
 	 * @return T
 	 * @throws \LogicException When the service has an unexpected type
 	 */
-	private static function get(Container $c, string $id): object
+	private static function get(Container $container, string $id): object
 	{
-		$service = $c->get($id);
+		$service = $container->get($id);
 		if (!$service instanceof $id) {
 			throw new \LogicException('Service '.$id.' has an unexpected type');
 		}

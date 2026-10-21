@@ -52,21 +52,21 @@ final class RouteDefinition
 	}
 
 	/**
-	 * @param RouteArray $a A cache written before 'constants' existed has none
+	 * @param RouteArray $data A cache written before 'constants' existed has none
 	 */
-	public static function fromArray(array $a): self
+	public static function fromArray(array $data): self
 	{
 		return new self(
-			$a['name'],
-			$a['path'],
-			$a['methods'],
-			$a['controller'],
-			$a['action'],
-			$a['requirements'],
-			$a['public'],
-			$a['regex'],
-			$a['variables'],
-			$a['constants'] ?? []
+			$data['name'],
+			$data['path'],
+			$data['methods'],
+			$data['controller'],
+			$data['action'],
+			$data['requirements'],
+			$data['public'],
+			$data['regex'],
+			$data['variables'],
+			$data['constants'] ?? []
 		);
 	}
 }

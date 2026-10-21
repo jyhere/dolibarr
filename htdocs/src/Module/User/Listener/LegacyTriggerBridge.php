@@ -29,11 +29,11 @@ final class LegacyTriggerBridge
 	) {
 	}
 
-	public function register(EventDispatcher $d): void
+	public function register(EventDispatcher $dispatcher): void
 	{
-		$d->addListener(UserLoggedIn::class, $this->onLoggedIn(...));
-		$d->addListener(UserLoginFailed::class, $this->onLoginFailed(...));
-		$d->addListener(UserLoggedOut::class, $this->onLoggedOut(...));
+		$dispatcher->addListener(UserLoggedIn::class, $this->onLoggedIn(...));
+		$dispatcher->addListener(UserLoginFailed::class, $this->onLoginFailed(...));
+		$dispatcher->addListener(UserLoggedOut::class, $this->onLoggedOut(...));
 	}
 
 	/**
@@ -41,16 +41,16 @@ final class LegacyTriggerBridge
 	 *
 	 * @throws AuthenticationException When a trigger fails, so that the session opening is rolled back
 	 */
-	public function onLoggedIn(UserLoggedIn $e): void
+	public function onLoggedIn(UserLoggedIn $event): void
 	{
-		$user = $this->loader->user($e->userId);
+		$user = $this->loader->user($event->userId);
 		if ($user === null) {
-			$this->log->warning('LegacyTriggerBridge: user '.$e->userId.' not found, USER_LOGIN trigger skipped');
+			$this->log->warning('LegacyTriggerBridge: user '.$event->userId.' not found, USER_LOGIN trigger skipped');
 
 			return;
 		}
-		$user->context['audit'] = $e->loginInfo;
-		$user->context['authentication_method'] = $e->authMode;
+		$user->context['audit'] = $event->loginInfo;
+		$user->context['authentication_method'] = $event->authMode;
 		if ($this->triggers->run('USER_LOGIN', $user, $user) < 0) {
 			throw new AuthenticationException('Error in some triggers USER_LOGIN: '.implode(', ', $this->triggers->errors()));
 		}
@@ -59,15 +59,15 @@ final class LegacyTriggerBridge
 	/**
 	 * USER_LOGIN_FAILED on an empty user, as main.inc.php l.845-853 does with the not yet logged $user.
 	 */
-	public function onLoginFailed(UserLoginFailed $e): void
+	public function onLoginFailed(UserLoginFailed $event): void
 	{
 		$user = new \User($this->ctx->db);
-		$user->login = $e->username;
-		if ($e->audit !== null) {
-			$user->context['audit'] = $e->audit;
+		$user->login = $event->username;
+		if ($event->audit !== null) {
+			$user->context['audit'] = $event->audit;
 		} else {
 			$this->ctx->langs->loadLangs(['main', 'errors']);
-			$user->context['audit'] = $this->ctx->langs->trans('ErrorBadLoginPassword').' - login='.$e->username;
+			$user->context['audit'] = $this->ctx->langs->trans('ErrorBadLoginPassword').' - login='.$event->username;
 		}
 		$this->triggers->run('USER_LOGIN_FAILED', $user, $user);
 	}
@@ -75,11 +75,11 @@ final class LegacyTriggerBridge
 	/**
 	 * USER_LOGOUT, htdocs/user/logout.php.
 	 */
-	public function onLoggedOut(UserLoggedOut $e): void
+	public function onLoggedOut(UserLoggedOut $event): void
 	{
-		$user = $this->loader->user($e->userId);
+		$user = $this->loader->user($event->userId);
 		if ($user === null) {
-			$this->log->warning('LegacyTriggerBridge: user '.$e->userId.' not found, USER_LOGOUT trigger skipped');
+			$this->log->warning('LegacyTriggerBridge: user '.$event->userId.' not found, USER_LOGOUT trigger skipped');
 
 			return;
 		}

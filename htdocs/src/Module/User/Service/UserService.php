@@ -43,10 +43,10 @@ final class UserService
 	 * @param list<int>|null $categoryIds The tags, null when the form does not show them
 	 * @throws ValidationException
 	 */
-	public function create(User $u, ?string $password, ?array $categoryIds): User
+	public function create(User $user, ?string $password, ?array $categoryIds): User
 	{
-		return $this->transactional(function () use ($u, $password, $categoryIds): User {
-			$id = $this->writer->insert($u, $this->me->id());
+		return $this->transactional(function () use ($user, $password, $categoryIds): User {
+			$id = $this->writer->insert($user, $this->me->id());
 			if ($password !== null && $password !== '') {
 				$this->writer->setPassword($id, $password, false, $this->me->id());
 			}
@@ -74,22 +74,22 @@ final class UserService
 	 * @throws ValidationException
 	 * @throws NotFoundException
 	 */
-	public function update(User $u, ?array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
+	public function update(User $user, ?array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
 	{
-		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
-			$before = $this->load($u->id);
+		return $this->transactional(function () use ($user, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
+			$before = $this->load($user->id);
 			// card.php l.666-671 ($passwordismodified), tested before update() as there
-			$passwordChanged = $password !== null && $password !== '' && !$this->writer->isCurrentPassword($u->id, $password);
-			$this->writer->update($u, $this->me->id());
+			$passwordChanged = $password !== null && $password !== '' && !$this->writer->isCurrentPassword($user->id, $password);
+			$this->writer->update($user, $this->me->id());
 			if ($passwordChanged) {
-				$this->writer->setPassword($u->id, (string) $password, false, $this->me->id());
-				$this->events->dispatch(new UserPasswordChanged($u->id, false));
+				$this->writer->setPassword($user->id, (string) $password, false, $this->me->id());
+				$this->events->dispatch(new UserPasswordChanged($user->id, false));
 			}
-			$mismatch = $contactId !== null && $this->writer->linkToContact($u->id, $contactId, $companyId ?? 0);
+			$mismatch = $contactId !== null && $this->writer->linkToContact($user->id, $contactId, $companyId ?? 0);
 			if ($categoryIds !== null) {
-				$this->writer->setCategories($u->id, $categoryIds);
+				$this->writer->setCategories($user->id, $categoryIds);
 			}
-			$after = $this->load($u->id);
+			$after = $this->load($user->id);
 			$this->events->dispatch(new UserUpdated($before, $after));
 
 			return new UserUpdateResult($after, $passwordChanged, $mismatch);

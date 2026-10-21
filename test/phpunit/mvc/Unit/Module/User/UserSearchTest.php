@@ -17,18 +17,18 @@ final class UserSearchTest extends TestCase
 {
 	public function testLimitAndPageAreClamped(): void
 	{
-		$s = $this->search(['limit' => 0, 'page' => -3]);
-		self::assertSame(20, $s->limit);
-		self::assertSame(0, $s->page);
+		$search = $this->search(['limit' => 0, 'page' => -3]);
+		self::assertSame(20, $search->limit);
+		self::assertSame(0, $search->page);
 
-		$s = $this->search(['limit' => 5000, 'page' => 2]);
-		self::assertSame(20, $s->limit);
-		self::assertSame(2, $s->page);
+		$search = $this->search(['limit' => 5000, 'page' => 2]);
+		self::assertSame(20, $search->limit);
+		self::assertSame(2, $search->page);
 
-		$s = $this->search(['limit' => 50, 'page' => 3]);
-		self::assertSame(50, $s->limit);
-		self::assertSame(3, $s->page);
-		self::assertSame(150, $s->offset());
+		$search = $this->search(['limit' => 50, 'page' => 3]);
+		self::assertSame(50, $search->limit);
+		self::assertSame(3, $search->page);
+		self::assertSame(150, $search->offset());
 
 		// list.php l.72-76: pageplusone wins, a new search goes back to the first page
 		self::assertSame(4, $this->search(['pageplusone' => 5, 'page' => 1])->page);
@@ -55,10 +55,10 @@ final class UserSearchTest extends TestCase
 		self::assertSame('u.login', $this->search(['sortfield' => 'u.salary'])->withSortableColumns(['u.login', 'u.email'])->sortField);
 		self::assertSame('u.login', $this->search(['sortfield' => 'u.email,u.api_key'])->withSortableColumns(['u.login', 'u.email'])->sortField);
 		self::assertSame('u.email', $this->search(['sortfield' => 'u.email'])->withSortableColumns(['u.login', 'u.email'])->sortField);
-		$s = $this->search(['sortfield' => 'u.salary', 'sortorder' => 'DESC', 'page' => 2])->withSortableColumns(['u.salary']);
-		self::assertSame('u.salary', $s->sortField);
-		self::assertSame('DESC', $s->sortOrder);
-		self::assertSame(2, $s->page);
+		$search = $this->search(['sortfield' => 'u.salary', 'sortorder' => 'DESC', 'page' => 2])->withSortableColumns(['u.salary']);
+		self::assertSame('u.salary', $search->sortField);
+		self::assertSame('DESC', $search->sortOrder);
+		self::assertSame(2, $search->page);
 	}
 
 	public function testSortOrderWhitelist(): void
@@ -81,9 +81,9 @@ final class UserSearchTest extends TestCase
 	public function testEmployeeListForcesEmployee(): void
 	{
 		// list.php l.222-224
-		$s = $this->search([], [], true);
-		self::assertSame('1', $s->filters['search_employee']);
-		self::assertSame('employeelist', $s->contextpage);
+		$search = $this->search([], [], true);
+		self::assertSame('1', $search->filters['search_employee']);
+		self::assertSame('employeelist', $search->contextpage);
 		self::assertSame('userlist', $this->search([])->contextpage);
 		self::assertSame('', $this->search(['search_employee' => ''], [], true)->filters['search_employee']);
 	}
@@ -98,9 +98,9 @@ final class UserSearchTest extends TestCase
 
 	public function testParamCarriesTheFilters(): void
 	{
-		$s = $this->search(['search_login' => 'a b', 'limit' => 50, 'search_status' => '0']);
+		$search = $this->search(['search_login' => 'a b', 'limit' => 50, 'search_status' => '0']);
 
-		self::assertSame('&contextpage=userlist&limit=50&search_login=a+b&search_status=0', $s->param(20));
+		self::assertSame('&contextpage=userlist&limit=50&search_login=a+b&search_status=0', $search->param(20));
 	}
 
 	/**
@@ -112,8 +112,8 @@ final class UserSearchTest extends TestCase
 		if ($employeeList) {
 			$values['contextpage'] = 'employeelist';
 		}
-		$r = (new Request('GET', '/user', [], [], [], []))->withInputFilter(new FakeInputFilter($values));
+		$request = (new Request('GET', '/user', [], [], [], []))->withInputFilter(new FakeInputFilter($values));
 
-		return UserSearch::fromRequest($r, new ArrayConfig(), $employeeList, 20, $extraSortable);
+		return UserSearch::fromRequest($request, new ArrayConfig(), $employeeList, 20, $extraSortable);
 	}
 }

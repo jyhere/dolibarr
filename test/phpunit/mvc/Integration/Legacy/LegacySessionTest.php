@@ -29,20 +29,20 @@ final class LegacySessionTest extends TestCase
 
 	public function testSessionRoundTrip(): void
 	{
-		$s = new LegacySession();
-		$s->set('k', 1);
-		self::assertTrue($s->has('k'));
-		$s->remove('k');
-		self::assertFalse($s->has('k'));
+		$legacySession = new LegacySession();
+		$legacySession->set('k', 1);
+		self::assertTrue($legacySession->has('k'));
+		$legacySession->remove('k');
+		self::assertFalse($legacySession->has('k'));
 	}
 
 	public function testGetReadsTheSessionArray(): void
 	{
 		$_SESSION['dol_login'] = 'admin';
-		$s = new LegacySession();
-		self::assertSame('admin', $s->get('dol_login'));
-		self::assertSame('none', $s->get('absent', 'none'));
-		self::assertNull($s->get('absent'));
+		$legacySession = new LegacySession();
+		self::assertSame('admin', $legacySession->get('dol_login'));
+		self::assertSame('none', $legacySession->get('absent', 'none'));
+		self::assertNull($legacySession->get('absent'));
 	}
 
 	public function testSetWritesTheSessionArray(): void
@@ -60,11 +60,11 @@ final class LegacySessionTest extends TestCase
 	public function testWorksWhenNoSessionArrayExists(): void
 	{
 		unset($_SESSION);
-		$s = new LegacySession();
-		self::assertFalse($s->has('k'));
-		self::assertNull($s->get('k'));
-		$s->set('k', 'v');
-		self::assertSame('v', $s->get('k'));
+		$legacySession = new LegacySession();
+		self::assertFalse($legacySession->has('k'));
+		self::assertNull($legacySession->get('k'));
+		$legacySession->set('k', 'v');
+		self::assertSame('v', $legacySession->get('k'));
 	}
 
 	public function testDestroyWithoutActiveSessionEmptiesTheArray(): void
@@ -76,8 +76,8 @@ final class LegacySessionTest extends TestCase
 
 	public function testRegenerateAndIdWithoutActiveSession(): void
 	{
-		$s = new LegacySession();
-		$s->regenerate();
-		self::assertSame('', $s->id());
+		$legacySession = new LegacySession();
+		$legacySession->regenerate();
+		self::assertSame('', $legacySession->id());
 	}
 }

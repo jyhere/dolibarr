@@ -63,23 +63,23 @@ final class LegacyRedirect
 	}
 
 	/**
-	 * @param RuleArray $a
+	 * @param RuleArray $data
 	 */
-	public static function fromArray(array $a): self
+	public static function fromArray(array $data): self
 	{
 		return new self(
-			$a['script'],
-			$a['route'],
-			$a['paramMap'],
-			$a['fixedParams'],
-			$a['required'],
-			$a['actions'],
-			$a['forbidden'],
-			$a['carry'],
-			$a['queryFromAction'],
-			$a['requirements'],
-			$a['forbiddenValues'] ?? [],
-			$a['forbiddenPrefixes'] ?? []
+			$data['script'],
+			$data['route'],
+			$data['paramMap'],
+			$data['fixedParams'],
+			$data['required'],
+			$data['actions'],
+			$data['forbidden'],
+			$data['carry'],
+			$data['queryFromAction'],
+			$data['requirements'],
+			$data['forbiddenValues'] ?? [],
+			$data['forbiddenPrefixes'] ?? []
 		);
 	}
 }

@@ -90,14 +90,14 @@ final class ResponderTest extends TestCase
 
 	public function testViewModelWithIsImmutable(): void
 	{
-		$a = new ViewModel('t', ['a' => 1]);
-		$b = $a->with('b', 2);
-		self::assertSame(['a' => 1], $a->data);
-		self::assertSame(['a' => 1, 'b' => 2], $b->data);
-		$c = $b->expose('e', 3);
-		self::assertSame([], $b->exposed);
-		self::assertSame(['e' => 3], $c->exposed);
-		self::assertSame(['e' => 3], $c->with('d', 4)->exposed);
+		$original = new ViewModel('t', ['a' => 1]);
+		$extended = $original->with('b', 2);
+		self::assertSame(['a' => 1], $original->data);
+		self::assertSame(['a' => 1, 'b' => 2], $extended->data);
+		$exposedModel = $extended->expose('e', 3);
+		self::assertSame([], $extended->exposed);
+		self::assertSame(['e' => 3], $exposedModel->exposed);
+		self::assertSame(['e' => 3], $exposedModel->with('d', 4)->exposed);
 		self::assertSame(404, (new ViewModel('t', [], 404))->expose('e', 1)->status);
 	}
 }

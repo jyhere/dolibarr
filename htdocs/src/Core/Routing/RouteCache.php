@@ -48,7 +48,7 @@ final class RouteCache
 	 */
 	public function store(array $definitions, string $stamp): void
 	{
-		$rows = array_map(static fn(RouteDefinition $d): array => $d->toArray(), $definitions);
+		$rows = array_map(static fn(RouteDefinition $definition): array => $definition->toArray(), $definitions);
 		$content = '<?php return '.var_export(['stamp' => $stamp, 'routes' => $rows], true).';'."\n";
 
 		$dir = dirname($this->file);

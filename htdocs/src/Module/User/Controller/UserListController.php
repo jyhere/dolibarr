@@ -56,7 +56,7 @@ final class UserListController
 		private readonly UserPermissionChecker $perms,
 		private readonly CurrentUser $me,
 		private readonly LegacyHooks $hooks,
-		private readonly Translator $t,
+		private readonly Translator $translator,
 		private readonly UserListChrome $chrome,
 		private readonly FlashBag $flash,
 		private readonly UserService $service,
@@ -69,13 +69,13 @@ final class UserListController
 	 * @throws AccessDeniedException When the current user may not list users (list.php l.241-249)
 	 */
 	#[Route('/user', methods: ['GET', 'POST'], name: 'user_list')]
-	public function list(Request $r): ViewModel|Response
+	public function list(Request $request): ViewModel|Response
 	{
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
-		$employeeList = $this->param($r, 'contextpage', 'aZ') === 'employeelist';
-		$search = UserSearch::fromRequest($r, $this->config, $employeeList, $this->chrome->listLimit(), $this->chrome->extraSortable());
+		$employeeList = $this->param($request, 'contextpage', 'aZ') === 'employeelist';
+		$search = UserSearch::fromRequest($request, $this->config, $employeeList, $this->chrome->listLimit(), $this->chrome->extraSortable());
 
 		// l.241-249
 		if ($this->config->isModuleEnabled('salaries') && $employeeList && $search->filter('search_employee') === '1') {
@@ -88,7 +88,7 @@ final class UserListController
 
 		$this->hooks->init(self::HOOK_CONTEXTS);
 		// l.51; main.inc.php removes action on an invalid token: 'view' then
-		$action = $this->param($r, 'action', 'aZ09');
+		$action = $this->param($request, 'action', 'aZ09');
 		$action = $action !== '' ? $action : 'view';
 		$searchOptions = $this->chrome->searchOptions();
 
@@ -106,29 +106,29 @@ final class UserListController
 		$search = $search->withSortableColumns($sortable);
 
 		// l.258-264
-		$massaction = $this->param($r, 'massaction', 'alpha');
-		if ($this->param($r, 'cancel', 'alpha') !== '') {
+		$massaction = $this->param($request, 'massaction', 'alpha');
+		if ($this->param($request, 'cancel', 'alpha') !== '') {
 			$action = 'list';
 			$massaction = '';
 		}
-		if ($this->param($r, 'confirmmassaction', 'alpha') === '' && $massaction !== 'presend' && $massaction !== 'confirm_presend') {
+		if ($this->param($request, 'confirmmassaction', 'alpha') === '' && $massaction !== 'presend' && $massaction !== 'confirm_presend') {
 			$massaction = '';
 		}
 		/** @var list<int> $toselect */
-		$toselect = array_values(array_filter(array_map('intval', (array) $r->get('toselect', 'array:int', [])), static fn (int $id): bool => $id > 0));
+		$toselect = array_values(array_filter(array_map('intval', (array) $request->get('toselect', 'array:int', [])), static fn (int $id): bool => $id > 0));
 
 		// l.266-271
 		$doActions = $this->hook('doActions', ['arrayfields' => &$arrayfields], $action);
 		$this->flashHookErrors($doActions);
 
 		$listUrl = $this->urls->generate('user_list');
-		$invalidToken = $r->get('errorcode', 'aZ09') === 'InvalidToken';
+		$invalidToken = $request->get('errorcode', 'aZ09') === 'InvalidToken';
 		if ($doActions->code === 0 && !$invalidToken) {
 			// l.274: actions_changeselectedfields.inc.php
 			$varpage = $search->contextpage;
-			if ($r->isPost() && $this->param($r, 'formfilteraction') === 'listafterchangingselectedfields') {
+			if ($request->isPost() && $this->param($request, 'formfilteraction') === 'listafterchangingselectedfields') {
 				try {
-					$this->service->saveListFields($varpage, $this->param($r, 'selectedfields'));
+					$this->service->saveListFields($varpage, $this->param($request, 'selectedfields'));
 				} catch (ValidationException $e) {
 					$this->flashErrors($e->messages);
 				}
@@ -136,17 +136,17 @@ final class UserListController
 				return new RedirectResponse($this->listUrl($search, $searchOptions));
 			}
 			// l.277-308
-			$removeFilter = $this->param($r, 'button_removefilter_x', 'alpha') !== '' || $this->param($r, 'button_removefilter', 'alpha') !== '';
+			$removeFilter = $this->param($request, 'button_removefilter_x', 'alpha') !== '' || $this->param($request, 'button_removefilter', 'alpha') !== '';
 			if ($removeFilter) {
 				$search = $search->reset();
 				$searchOptions = [];
 				$toselect = [];
 			}
-			if ($removeFilter || $this->param($r, 'button_search_x', 'alpha') !== '' || $this->param($r, 'button_search', 'alpha') !== '') {
+			if ($removeFilter || $this->param($request, 'button_search_x', 'alpha') !== '' || $this->param($request, 'button_search', 'alpha') !== '') {
 				$massaction = '';
 			}
 			// l.318-372
-			if ($r->isPost() && ($massaction === 'disable' || $massaction === 'reactivate') && $this->perms->canUseMassActions()) {
+			if ($request->isPost() && ($massaction === 'disable' || $massaction === 'reactivate') && $this->perms->canUseMassActions()) {
 				$this->massStatus($toselect, $massaction === 'reactivate');
 
 				return new RedirectResponse($this->listUrl($search, $searchOptions));
@@ -197,11 +197,11 @@ final class UserListController
 			->expose('total', $page->total)
 			->expose('page', $page->page)
 			->expose('limit', $page->limit);
-		if ($r->wantsJson()) {
+		if ($request->wantsJson()) {
 			return $vm;
 		}
 
-		return $this->view($vm, $r, $search, $page, $page->items, $page->total, $page->hasMore, $arrayfields, $searchOptions, $htmlOfSelectArray, $massaction, $toselect, $employeeList, $doActions, $action);
+		return $this->view($vm, $request, $search, $page, $page->items, $page->total, $page->hasMore, $arrayfields, $searchOptions, $htmlOfSelectArray, $massaction, $toselect, $employeeList, $doActions, $action);
 	}
 
 	/**
@@ -212,39 +212,39 @@ final class UserListController
 	 * @param array<string, mixed>                $searchOptions
 	 * @param list<int>                           $toselect
 	 */
-	private function view(ViewModel $vm, Request $r, UserSearch $s, UserPage $page, array $rows, int $total, bool $hasMore, array $arrayfields, array $searchOptions, string $htmlOfSelectArray, string $massaction, array $toselect, bool $employeeList, HookResult $doActions, string $action): ViewModel
+	private function view(ViewModel $vm, Request $request, UserSearch $search, UserPage $page, array $rows, int $total, bool $hasMore, array $arrayfields, array $searchOptions, string $htmlOfSelectArray, string $massaction, array $toselect, bool $employeeList, HookResult $doActions, string $action): ViewModel
 	{
 		$noAction = '';
 		$num = count($rows) + ($hasMore ? 1 : 0);
 		$listLimit = $this->chrome->listLimit();
-		$param = $s->param($listLimit).$this->chrome->extraFieldsParam($searchOptions);
-		$title = $this->t->trans($employeeList && $s->filter('search_employee') === '1' ? 'Employees' : 'Users');
+		$param = $search->param($listLimit).$this->chrome->extraFieldsParam($searchOptions);
+		$title = $this->translator->trans($employeeList && $search->filter('search_employee') === '1' ? 'Employees' : 'Users');
 
 		// l.655-673
 		$canMass = $this->perms->canUseMassActions();
-		$hideMass = $r->getInt('nomassaction') !== 0 || in_array($massaction, ['presend', 'predelete', 'preaffecttag', 'presetsupervisor'], true);
+		$hideMass = $request->getInt('nomassaction') !== 0 || in_array($massaction, ['presend', 'predelete', 'preaffecttag', 'presetsupervisor'], true);
 		$mass = $this->chrome->massActions($canMass, $hideMass);
 		$selectionMode = $mass['html'] !== '' || $massaction !== '';
 
-		$buttons = $this->chrome->viewButtons($param, $s->mode, $employeeList, $this->me->companyId(), $canMass);
-		$titleBar = $this->chrome->titleBar($title, $s, $param, $mass['html'], $num, $total, $buttons, $s->page);
+		$buttons = $this->chrome->viewButtons($param, $search->mode, $employeeList, $this->me->companyId(), $canMass);
+		$titleBar = $this->chrome->titleBar($title, $search, $param, $mass['html'], $num, $total, $buttons, $search->page);
 
 		// l.739-768
-		$moreForFilter = $this->chrome->moreForFilter($s->filter('search_categ'), $s->filter('search_warehouse'), $this->me->hasRight('categorie', 'read'));
+		$moreForFilter = $this->chrome->moreForFilter($search->filter('search_categ'), $search->filter('search_warehouse'), $this->me->hasRight('categorie', 'read'));
 		$preList = $this->hook('printFieldPreListTitle', [], $action);
 		$moreForFilter = $preList->code === 0 ? $moreForFilter.$preList->output.$preList->print : $preList->output.$preList->print;
 
 		// l.772-773
-		$selectedFields = ($s->mode !== 'kanban' ? $htmlOfSelectArray : '').($mass['count'] > 0 ? $this->chrome->checkAddButtons() : '');
+		$selectedFields = ($search->mode !== 'kanban' ? $htmlOfSelectArray : '').($mass['count'] > 0 ? $this->chrome->checkAddButtons() : '');
 
 		// l.866-869
 		$option = $this->hook('printFieldListOption', ['arrayfields' => $arrayfields], $noAction);
 
 		// l.900-1030
 		$titleTotal = ['nbfield' => 0];
-		$titlesBefore = $this->chrome->titlesBeforeHook($arrayfields, $param, $s, $selectedFields, $titleTotal);
-		$titleHook = $this->hook('printFieldListTitle', ['arrayfields' => $arrayfields, 'param' => $param, 'sortfield' => $s->sortField, 'sortorder' => $s->sortOrder, 'totalarray' => &$titleTotal], $noAction);
-		$titlesAfter = $this->chrome->titlesAfterHook($arrayfields, $param, $s, $selectedFields, $titleTotal);
+		$titlesBefore = $this->chrome->titlesBeforeHook($arrayfields, $param, $search, $selectedFields, $titleTotal);
+		$titleHook = $this->hook('printFieldListTitle', ['arrayfields' => $arrayfields, 'param' => $param, 'sortfield' => $search->sortField, 'sortorder' => $search->sortOrder, 'totalarray' => &$titleTotal], $noAction);
+		$titlesAfter = $this->chrome->titlesAfterHook($arrayfields, $param, $search, $selectedFields, $titleTotal);
 
 		// l.1044-1458
 		$totalarray = ['val' => ['u.salary' => 0], 'nbfield' => 0];
@@ -262,7 +262,7 @@ final class UserListController
 				'countryLabel' => $row->countryLabel,
 				'importKey' => is_scalar($row->row['import_key'] ?? null) ? (string) $row->row['import_key'] : '',
 				'selected' => $selected,
-				'kanbanHtml' => $s->mode === 'kanban' ? $this->chrome->kanban($rowObject, $selected) : '',
+				'kanbanHtml' => $search->mode === 'kanban' ? $this->chrome->kanban($rowObject, $selected) : '',
 				'cells' => $before + $after,
 				'hookHtml' => $value->output.$value->print,
 			];
@@ -288,16 +288,16 @@ final class UserListController
 			->with('helpUrl', 'EN:Module_Users|FR:Module_Utilisateurs|ES:M&oacute;dulo_Usuarios|DE:Modul_Benutzer')
 			->with('bodyCss', 'bodyforlist mod-user page-list')
 			->with('formAction', $this->urls->generate('user_list'))
-			->with('s', $s)
-			->with('search', $s->filters)
+			->with('userSearch', $search)
+			->with('search', $search->filters)
 			->with('show', $show)
 			->with('privacy', $this->config->int('MAIN_ENABLE_LOGINS_PRIVACY') !== 0)
 			->with('checkboxLeft', $this->chrome->checkboxLeft())
 			->with('titleBarHtml', $titleBar)
-			->with('categoryWaysHtml', $this->chrome->categoryWays($r->getInt('catid')))
-			->with('searchAllHtml', $s->filter('search_all') !== '' ? $this->chrome->searchAllNotice($s->searchAllFields, $s->filter('search_all')) : '')
+			->with('categoryWaysHtml', $this->chrome->categoryWays($request->getInt('catid')))
+			->with('searchAllHtml', $search->filter('search_all') !== '' ? $this->chrome->searchAllNotice($search->searchAllFields, $search->filter('search_all')) : '')
 			->with('moreForFilterHtml', $moreForFilter)
-			->with('w', $this->chrome->filterWidgets($s))
+			->with('widgets', $this->chrome->filterWidgets($search))
 			->with('extraFieldsInputsHtml', $this->chrome->extraFieldsSearchInputs($arrayfields, $searchOptions))
 			->with('optionHookHtml', $option->output.$option->print)
 			->with('titlesBefore', $titlesBefore)
@@ -305,7 +305,7 @@ final class UserListController
 			->with('titlesAfter', $titlesAfter)
 			->with('kanbanColspan', (int) $titleTotal['nbfield'])
 			->with('rows', $rowsView)
-			->with('totalsHtml', $this->chrome->totals($totalarray, $num, $s->limit, $s->offset(), $page->sql, $page->sqlFields))
+			->with('totalsHtml', $this->chrome->totals($totalarray, $num, $search->limit, $search->offset(), $page->sql, $page->sqlFields))
 			->with('colspan', $colspan)
 			->with('footerHookHtml', $footer->output.$footer->print);
 	}
@@ -332,18 +332,18 @@ final class UserListController
 	{
 		foreach ($ids as $id) {
 			if ($id === $this->me->id()) {
-				$this->flash->error($this->t->trans($enable ? 'CanEnableYourself' : 'CantDisableYourself'));
+				$this->flash->error($this->translator->trans($enable ? 'CanEnableYourself' : 'CantDisableYourself'));
 
 				return;
 			}
 			$target = $this->repo->find($id);
 			if ($target === null) {
-				$this->flash->error($this->t->trans('ErrorRecordNotFound'));
+				$this->flash->error($this->translator->trans('ErrorRecordNotFound'));
 
 				return;
 			}
 			if ($target->admin) {
-				$this->flash->error($this->t->transHtml($enable ? 'CantEnableAnAdminUserWithMassActions' : 'CantDisableAnAdminUserWithMassActions', $target->login));
+				$this->flash->error($this->translator->transHtml($enable ? 'CantEnableAnAdminUserWithMassActions' : 'CantDisableAnAdminUserWithMassActions', $target->login));
 
 				return;
 			}
@@ -351,7 +351,7 @@ final class UserListController
 		try {
 			$changed = $this->service->setStatuses($ids, $enable, $this->config->limitUsers());
 		} catch (QuotaReachedException) {
-			$this->flash->error($this->t->trans('YourQuotaOfUsersIsReached'));
+			$this->flash->error($this->translator->trans('YourQuotaOfUsersIsReached'));
 
 			return;
 		} catch (ValidationException $e) {
@@ -359,11 +359,11 @@ final class UserListController
 
 			return;
 		} catch (NotFoundException) {
-			$this->flash->error($this->t->trans('ErrorRecordNotFound'));
+			$this->flash->error($this->translator->trans('ErrorRecordNotFound'));
 
 			return;
 		}
-		$this->flash->success($this->t->trans('RecordsModified', (string) $changed));
+		$this->flash->success($this->translator->trans('RecordsModified', (string) $changed));
 	}
 
 	/**
@@ -371,12 +371,12 @@ final class UserListController
 	 *
 	 * @param array<string, mixed> $searchOptions
 	 */
-	private function listUrl(UserSearch $s, array $searchOptions): string
+	private function listUrl(UserSearch $search, array $searchOptions): string
 	{
-		$param = ltrim($s->param($this->chrome->listLimit()).$this->chrome->extraFieldsParam($searchOptions), '&');
-		$params = $s->sortField !== 'u.login' || $s->sortOrder !== 'ASC' ? '&sortfield='.urlencode($s->sortField).'&sortorder='.urlencode($s->sortOrder) : '';
-		if ($s->page > 0) {
-			$params .= '&page='.$s->page;
+		$param = ltrim($search->param($this->chrome->listLimit()).$this->chrome->extraFieldsParam($searchOptions), '&');
+		$params = $search->sortField !== 'u.login' || $search->sortOrder !== 'ASC' ? '&sortfield='.urlencode($search->sortField).'&sortorder='.urlencode($search->sortOrder) : '';
+		if ($search->page > 0) {
+			$params .= '&page='.$search->page;
 		}
 		$query = ltrim($param.$params, '&');
 
@@ -390,14 +390,14 @@ final class UserListController
 	 * @param list<int>            $toselect
 	 * @param array<string, mixed> $searchOptions
 	 */
-	private function legacyMassActionUrl(string $massaction, array $toselect, UserSearch $s, array $searchOptions): string
+	private function legacyMassActionUrl(string $massaction, array $toselect, UserSearch $search, array $searchOptions): string
 	{
 		$query = 'massaction='.urlencode($massaction).'&confirmmassaction=1';
 		foreach ($toselect as $id) {
 			$query .= '&toselect%5B%5D='.$id;
 		}
 
-		return $this->config->urlRoot().'/user/list.php?'.$query.$s->param($this->chrome->listLimit()).$this->chrome->extraFieldsParam($searchOptions);
+		return $this->config->urlRoot().'/user/list.php?'.$query.$search->param($this->chrome->listLimit()).$this->chrome->extraFieldsParam($searchOptions);
 	}
 
 	/**
@@ -422,9 +422,9 @@ final class UserListController
 	}
 
 
-	private function param(Request $r, string $name, string $filter = 'alphanohtml'): string
+	private function param(Request $request, string $name, string $filter = 'alphanohtml'): string
 	{
-		$value = $r->get($name, $filter);
+		$value = $request->get($name, $filter);
 
 		return is_scalar($value) ? (string) $value : '';
 	}

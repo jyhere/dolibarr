@@ -82,13 +82,13 @@ final class UserFormTemplateTest extends TestCase
 	private function render(User $values, string $backtopage, string $mode = 'create', array $extra = []): string
 	{
 		$source = (string) file_get_contents(self::TEMPLATE);
-		preg_match_all("/\\\$f\\['(\\w+)'\\]/", $source, $m);
-		$f = [];
-		foreach ($m[1] as $key) {
-			$f[$key] = '<i data-frag="'.$key.'"></i>';
+		preg_match_all("/\\\$fragments\\['(\\w+)'\\]/", $source, $matches);
+		$fragments = [];
+		foreach ($matches[1] as $key) {
+			$fragments[$key] = '<i data-frag="'.$key.'"></i>';
 		}
-		preg_match_all("/\\\$show\\['(\\w+)'\\]/", $source, $m);
-		$show = array_fill_keys($m[1], true);
+		preg_match_all("/\\\$show\\['(\\w+)'\\]/", $source, $matches);
+		$show = array_fill_keys($matches[1], true);
 
 		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
 		$renderer = new LatteRenderer(
@@ -125,7 +125,7 @@ final class UserFormTemplateTest extends TestCase
 			'show' => $show,
 			'titleHtml' => '<i data-frag="title"></i>',
 			'loginJs' => '<i data-frag="loginJs"></i>',
-			'f' => $f,
+			'fragments' => $fragments,
 		] + $extra);
 	}
 }

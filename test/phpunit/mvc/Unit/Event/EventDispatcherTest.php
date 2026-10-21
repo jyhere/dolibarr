@@ -64,9 +64,9 @@ final class EventDispatcherTest extends TestCase
 	{
 		$calls = [];
 		$dispatcher = new EventDispatcher();
-		$dispatcher->addListener(StoppableFixtureEvent::class, static function (StoppableFixtureEvent $e) use (&$calls): void {
+		$dispatcher->addListener(StoppableFixtureEvent::class, static function (StoppableFixtureEvent $event) use (&$calls): void {
 			$calls[] = 'one';
-			$e->stopped = true;
+			$event->stopped = true;
 		}, 1);
 		$dispatcher->addListener(StoppableFixtureEvent::class, static function () use (&$calls): void {
 			$calls[] = 'two';

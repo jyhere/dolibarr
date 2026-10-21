@@ -24,8 +24,8 @@ final class LegacyTriggers
 		$result = (int) $interfaces->run_triggers($action, $object, $actor, $this->ctx->langs, $this->ctx->conf);
 
 		$this->errors = [];
-		foreach ($interfaces->errors as $e) {
-			$this->errors[] = (string) $e;
+		foreach ($interfaces->errors as $triggerError) {
+			$this->errors[] = (string) $triggerError;
 		}
 
 		return $result;

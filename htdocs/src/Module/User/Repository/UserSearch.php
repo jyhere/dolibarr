@@ -89,7 +89,7 @@ final class UserSearch
 	 * @param int          $listLimit     $conf->liste_limit (main.inc.php l.1249-1256); 0 reads MAIN_SIZE_LISTE_LIMIT
 	 * @param list<string> $extraSortable The extrafields columns of the list (ef.<name>), sortable too
 	 */
-	public static function fromRequest(Request $r, Config $config, bool $employeeList, int $listLimit = 0, array $extraSortable = []): self
+	public static function fromRequest(Request $request, Config $config, bool $employeeList, int $listLimit = 0, array $extraSortable = []): self
 	{
 		if ($listLimit <= 0) {
 			$userLimit = $config->userString('MAIN_SIZE_LISTE_LIMIT');
@@ -98,40 +98,40 @@ final class UserSearch
 		}
 
 		// l.69: GETPOSTINT('limit') or $conf->liste_limit, here within [1, MAX_LIMIT]
-		$limit = $r->getInt('limit');
+		$limit = $request->getInt('limit');
 		if ($limit < 1 || $limit > self::MAX_LIMIT) {
 			$limit = $listLimit;
 		}
 		// l.72-76
-		$page = $r->isSet('pageplusone') ? $r->getInt('pageplusone') - 1 : $r->getInt('page');
-		if ($page < 0 || self::str($r, 'button_search', 'alpha') !== '' || self::str($r, 'button_removefilter', 'alpha') !== '') {
+		$page = $request->isSet('pageplusone') ? $request->getInt('pageplusone') - 1 : $request->getInt('page');
+		if ($page < 0 || self::str($request, 'button_search', 'alpha') !== '' || self::str($request, 'button_removefilter', 'alpha') !== '') {
 			$page = 0;
 		}
 
 		$filters = [];
 		foreach (self::FILTERS as $name => $filter) {
-			$filters[$name] = self::str($r, $name, $filter);
+			$filters[$name] = self::str($request, $name, $filter);
 		}
 		$filters['search_all'] = trim($filters['search_all']);
-		$filters['search_datelastlogin'] = self::date($r, 'search_datelastlogin');
-		$filters['search_datepreviouslogin'] = self::date($r, 'search_datepreviouslogin');
+		$filters['search_datelastlogin'] = self::date($request, 'search_datelastlogin');
+		$filters['search_datepreviouslogin'] = self::date($request, 'search_datepreviouslogin');
 
 		// l.202-216
 		$operator = 0;
-		if ($r->isSet('formfilteraction')) {
-			$operator = $r->getInt('search_category_user_operator');
+		if ($request->isSet('formfilteraction')) {
+			$operator = $request->getInt('search_category_user_operator');
 		} elseif ($config->string('MAIN_SEARCH_CAT_OR_BY_DEFAULT') !== '') {
 			$operator = $config->int('MAIN_SEARCH_CAT_OR_BY_DEFAULT');
 		}
 		$filters['search_category_user_operator'] = $operator;
 		$categoryList = [];
-		$posted = $r->get('search_category_user_list', 'array:int', []);
+		$posted = $request->get('search_category_user_list', 'array:int', []);
 		foreach (is_array($posted) ? $posted : [] as $id) {
 			if (is_numeric($id)) {
 				$categoryList[] = (int) $id;
 			}
 		}
-		$catid = $r->getInt('catid');
+		$catid = $request->getInt('catid');
 		if ($catid !== 0 && $categoryList === []) {
 			$categoryList = [$catid];
 		}
@@ -144,7 +144,7 @@ final class UserSearch
 		if ($filters['search_status'] === '' && $filters['search_all'] === '') {
 			$filters['search_status'] = '1';
 		}
-		if ($employeeList && !$r->isSet('search_employee')) {
+		if ($employeeList && !$request->isSet('search_employee')) {
 			$filters['search_employee'] = '1';
 		}
 
@@ -158,14 +158,14 @@ final class UserSearch
 			$searchAll['u.api_key'] = 'ApiKey';
 		}
 
-		$contextpage = self::str($r, 'contextpage', 'aZ');
-		$optioncss = self::str($r, 'optioncss', 'aZ');
-		$mode = self::str($r, 'mode', 'aZ');
+		$contextpage = self::str($request, 'contextpage', 'aZ');
+		$optioncss = self::str($request, 'optioncss', 'aZ');
+		$mode = self::str($request, 'mode', 'aZ');
 
 		return new self(
 			$filters,
-			self::sortField(self::str($r, 'sortfield', 'aZ09comma'), $extraSortable),
-			strtoupper(self::str($r, 'sortorder', 'aZ09comma')) === 'DESC' ? 'DESC' : 'ASC',
+			self::sortField(self::str($request, 'sortfield', 'aZ09comma'), $extraSortable),
+			strtoupper(self::str($request, 'sortorder', 'aZ09comma')) === 'DESC' ? 'DESC' : 'ASC',
 			$limit,
 			$page,
 			$optioncss === 'print' ? 'print' : '',
@@ -234,9 +234,9 @@ final class UserSearch
 	 */
 	public function filter(string $name): string
 	{
-		$v = $this->filters[$name] ?? '';
+		$value = $this->filters[$name] ?? '';
 
-		return is_scalar($v) ? (string) $v : '';
+		return is_scalar($value) ? (string) $value : '';
 	}
 
 	/**
@@ -262,14 +262,14 @@ final class UserSearch
 			$param .= '&optioncss='.urlencode($this->optioncss);
 		}
 		foreach (self::PARAM_ORDER as $name) {
-			$v = $this->filter($name);
+			$value = $this->filter($name);
 			$add = match ($name) {
-				'search_gender', 'search_employee' => $v !== '' && $v !== '-1',
-				'search_supervisor', 'search_warehouse', 'search_categ' => self::positive($v),
-				default => $v !== '',
+				'search_gender', 'search_employee' => $value !== '' && $value !== '-1',
+				'search_supervisor', 'search_warehouse', 'search_categ' => self::positive($value),
+				default => $value !== '',
 			};
 			if ($add) {
-				$param .= '&'.$name.'='.urlencode($v);
+				$param .= '&'.$name.'='.urlencode($value);
 			}
 		}
 
@@ -277,11 +277,11 @@ final class UserSearch
 	}
 
 	/**
-	 * PHP's loose "$v > 0" of list.php on a string criterion ('3,4' > 0 holds).
+	 * PHP's loose "$value > 0" of list.php on a string criterion ('3,4' > 0 holds).
 	 */
-	public static function positive(string $v): bool
+	public static function positive(string $value): bool
 	{
-		return is_numeric($v) ? (float) $v > 0 : $v > '0';
+		return is_numeric($value) ? (float) $value > 0 : $value > '0';
 	}
 
 	/**
@@ -301,20 +301,20 @@ final class UserSearch
 		return $field;
 	}
 
-	private static function str(Request $r, string $name, string $filter): string
+	private static function str(Request $request, string $name, string $filter): string
 	{
-		$v = $r->get($name, $filter, '');
+		$value = $request->get($name, $filter, '');
 
-		return is_scalar($v) ? (string) $v : '';
+		return is_scalar($value) ? (string) $value : '';
 	}
 
 	/**
 	 * GETPOSTDATE($name, '', 'tzuserrel'): a timestamp, '' when not given.
 	 */
-	private static function date(Request $r, string $name): int|string
+	private static function date(Request $request, string $name): int|string
 	{
-		$v = $r->get($name, 'date', '');
+		$value = $request->get($name, 'date', '');
 
-		return is_int($v) ? $v : '';
+		return is_int($value) ? $value : '';
 	}
 }

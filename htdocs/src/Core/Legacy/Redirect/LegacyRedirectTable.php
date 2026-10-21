@@ -93,10 +93,10 @@ final class LegacyRedirectTable
 	}
 
 	/**
-	 * @param list<RuleArray> $a
+	 * @param list<RuleArray> $rows
 	 */
-	public static function fromArray(array $a): self
+	public static function fromArray(array $rows): self
 	{
-		return new self(array_map(static fn (array $row): LegacyRedirect => LegacyRedirect::fromArray($row), $a));
+		return new self(array_map(static fn (array $row): LegacyRedirect => LegacyRedirect::fromArray($row), $rows));
 	}
 }

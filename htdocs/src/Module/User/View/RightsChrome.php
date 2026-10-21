@@ -151,10 +151,10 @@ final class RightsChrome
 		// l.478-490
 		$infoAdmin = '';
 		if ($meIsAdmin) {
-			$s = $langs->trans('WarningOnlyPermissionOfActivatedModules').' '.$langs->trans('YouCanEnableModulesFrom');
-			$s .= '<br>'.img_picto($langs->trans('InfoAdmin'), 'info-circle').' ';
-			$s .= $langs->trans($advancedPerms ? 'YouAreUsingTheAdvancedPermissionsMode' : 'YouAreUsingTheSimplePermissionsMode');
-			$infoAdmin = info_admin($s);
+			$warning = $langs->trans('WarningOnlyPermissionOfActivatedModules').' '.$langs->trans('YouCanEnableModulesFrom');
+			$warning .= '<br>'.img_picto($langs->trans('InfoAdmin'), 'info-circle').' ';
+			$warning .= $langs->trans($advancedPerms ? 'YouAreUsingTheAdvancedPermissionsMode' : 'YouAreUsingTheSimplePermissionsMode');
+			$infoAdmin = info_admin($warning);
 		}
 
 		return [

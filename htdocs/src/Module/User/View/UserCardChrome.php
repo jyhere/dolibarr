@@ -424,10 +424,10 @@ final class UserCardChrome implements EntityTabs
 
 		return (string) preg_replace_callback(
 			'#href="'.preg_quote($self, '#').'\?id=(\d+)((?:&|&amp;)[^"]*)?"#',
-			function (array $m) use ($route, $fixed): string {
-				$query = isset($m[2]) ? ltrim(preg_replace('#^(&amp;|&)#', '', $m[2]) ?? '', '&') : '';
+			function (array $matches) use ($route, $fixed): string {
+				$query = isset($matches[2]) ? ltrim(preg_replace('#^(&amp;|&)#', '', $matches[2]) ?? '', '&') : '';
 
-				return 'href="'.$this->urls->generate($route, $fixed + ['id' => (int) $m[1]]).($query !== '' ? '?'.$query : '').'"';
+				return 'href="'.$this->urls->generate($route, $fixed + ['id' => (int) $matches[1]]).($query !== '' ? '?'.$query : '').'"';
 			},
 			$html
 		);
@@ -501,26 +501,26 @@ final class UserCardChrome implements EntityTabs
 	{
 		require_once DOL_DOCUMENT_ROOT.'/societe/class/societe.class.php';
 		require_once DOL_DOCUMENT_ROOT.'/contact/class/contact.class.php';
-		$s = '';
+		$html = '';
 		if (!empty($object->socid) && $object->socid > 0) {
 			$societe = new \Societe($this->ctx->db);
 			$societe->fetch($object->socid);
 			if ($societe->id > 0) {
-				$s .= $societe->getNomUrl(1, '');
+				$html .= $societe->getNomUrl(1, '');
 			}
 		} else {
-			$s .= '<span class="opacitymedium hideonsmartphone">'.$this->ctx->langs->trans('ThisUserIsNot').'</span>';
+			$html .= '<span class="opacitymedium hideonsmartphone">'.$this->ctx->langs->trans('ThisUserIsNot').'</span>';
 		}
 		if (!empty($object->contact_id)) {
 			$contact = new \Contact($this->ctx->db);
 			$contact->fetch($object->contact_id);
 			if ($contact->id > 0) {
-				$s .= ($object->socid > 0 && $s) ? ' / ' : '<br>';
-				$s .= $contact->getNomUrl(1, '');
+				$html .= ($object->socid > 0 && $html) ? ' / ' : '<br>';
+				$html .= $contact->getNomUrl(1, '');
 			}
 		}
 
-		return $s;
+		return $html;
 	}
 
 	/**
@@ -546,10 +546,10 @@ final class UserCardChrome implements EntityTabs
 		if ($id <= 0) {
 			return $none;
 		}
-		$u = new \User($this->ctx->db);
-		$u->fetch($id);
+		$linked = new \User($this->ctx->db);
+		$linked->fetch($id);
 
-		return $u->getNomUrl(-1);
+		return $linked->getNomUrl(-1);
 	}
 
 	/**

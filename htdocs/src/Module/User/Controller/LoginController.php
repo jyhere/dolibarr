@@ -58,7 +58,7 @@ final class LoginController
 	 * The legacy login page (dol_loginfunction()), or the home page when already logged in.
 	 */
 	#[Route('/login', methods: ['GET'], name: 'login', public: true)]
-	public function form(Request $r): Response
+	public function form(Request $request): Response
 	{
 		if (!empty($this->session->get('dol_login'))) {
 			return new RedirectResponse($this->config->urlRoot().'/index.php');
@@ -68,7 +68,7 @@ final class LoginController
 	}
 
 	#[Route('/login', methods: ['POST'], name: 'login_post', public: true)]
-	public function authenticate(Request $r): Response
+	public function authenticate(Request $request): Response
 	{
 		$urlRoot = $this->config->urlRoot();
 
@@ -81,10 +81,10 @@ final class LoginController
 		$this->translator->load('errors');
 
 		// main.inc.php l.700-713: credentials read POST first (method 3); an array-shaped username is ''
-		$username = self::text($r->getPost('username', 'alpha'));
-		$entity = $r->getInt('entity');
-		$backToPage = SafeRedirect::relativePath(self::text($r->get('backtopage')), $urlRoot);
-		$actionLogin = $r->get('actionlogin', 'aZ09');
+		$username = self::text($request->getPost('username', 'alpha'));
+		$entity = $request->getInt('entity');
+		$backToPage = SafeRedirect::relativePath(self::text($request->get('backtopage')), $urlRoot);
+		$actionLogin = $request->get('actionlogin', 'aZ09');
 
 		// main.inc.php l.610-617: hooks for security access
 		$this->hooks->init(['login']);
@@ -102,7 +102,7 @@ final class LoginController
 		// l.759-764: a password in the query string ends up in access logs, history and Referer headers.
 		// The query string itself is checked (raw read, as GETPOST(..., 1)). Unlike main.inc.php, the
 		// afteroauthloginreturn flag does not exempt it: an OAuth return never carries a password.
-		if ((string) $r->query('password', '') !== '') {
+		if ((string) $request->query('password', '') !== '') {
 			$this->log->warning('--- Login submission with credentials in the query string refused for '.$urlRoot.'/login');
 			$this->session->set('dol_loginmesg', $this->translator->transnoentities('ErrorLoginMustBePostMethod'));
 
@@ -114,10 +114,10 @@ final class LoginController
 		}
 
 		// l.787-808: second step of a two-factor authentication, or login and password
-		$secondStep = !empty($this->session->get('dol_totp_pending')) && $r->isSet('totpcode');
+		$secondStep = !empty($this->session->get('dol_totp_pending')) && $request->isSet('totpcode');
 		$result = $secondStep
-			? $this->authenticator->attemptTotp(self::text($r->get('totpcode', 'alphanohtml')))
-			: $this->authenticator->attempt($username, self::text($r->getPost('password', 'password')), $entity);
+			? $this->authenticator->attemptTotp(self::text($request->get('totpcode', 'alphanohtml')))
+			: $this->authenticator->attempt($username, self::text($request->getPost('password', 'password')), $entity);
 		if ($result->needsTotp()) {
 			return $this->toLoginPage($backToPage);
 		}
@@ -128,13 +128,13 @@ final class LoginController
 			return $this->failed($username, $entity, $audit, $backToPage);
 		}
 
-		return $this->openSession($r, $result, $backToPage);
+		return $this->openSession($request, $result, $backToPage);
 	}
 
 	/**
 	 * main.inc.php l.880-958 then l.1098-1192: load the user, open the session, go to the next page.
 	 */
-	private function openSession(Request $r, AuthenticationResult $result, ?string $backToPage): Response
+	private function openSession(Request $request, AuthenticationResult $result, ?string $backToPage): Response
 	{
 		$urlRoot = $this->config->urlRoot();
 
@@ -147,7 +147,7 @@ final class LoginController
 
 		$clientInfo = [];
 		foreach (self::CLIENT_INFO_FIELDS as $field) {
-			$value = $r->get($field, 'alphanohtml');
+			$value = $request->get($field, 'alphanohtml');
 			if (is_string($value)) {
 				$clientInfo[$field] = $value;
 			}

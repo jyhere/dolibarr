@@ -327,7 +327,7 @@ final class UserInputTest extends TestCase
 	 */
 	private function fields(array $hidden = []): UserFormFields
 	{
-		$names = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), (new \ReflectionMethod(UserFormFields::class, '__construct'))->getParameters());
+		$names = array_map(static fn (\ReflectionParameter $parameter): string => $parameter->getName(), (new \ReflectionMethod(UserFormFields::class, '__construct'))->getParameters());
 
 		return new UserFormFields(...array_fill_keys(array_diff($names, $hidden), true) + array_fill_keys($hidden, false));
 	}

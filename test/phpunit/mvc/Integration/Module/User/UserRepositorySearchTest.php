@@ -148,10 +148,10 @@ final class UserRepositorySearchTest extends TestCase
 	 */
 	private function search(array $query, array $fragments = [], ?array $childIds = null): \Dolibarr\Module\User\Repository\UserPage
 	{
-		$r = GlobalsRequest::create('GET', '/user', $query);
-		$s = UserSearch::fromRequest($r, new LegacyConfig($this->ctx), false, 20);
+		$request = GlobalsRequest::create('GET', '/user', $query);
+		$search = UserSearch::fromRequest($request, new LegacyConfig($this->ctx), false, 20);
 
-		return (new UserRepository($this->connection, (int) $this->ctx->conf->entity))->search($s, $childIds, null, $fragments);
+		return (new UserRepository($this->connection, (int) $this->ctx->conf->entity))->search($search, $childIds, null, $fragments);
 	}
 
 	private function insertUser(string $login, int $status, string $lastname = 'List', ?int $supervisor = null): int

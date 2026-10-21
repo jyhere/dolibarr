@@ -289,11 +289,11 @@ final class UserListChrome
 	 *
 	 * @param int $total -1 when not counted: no total shown, as list.php's ''
 	 */
-	public function titleBar(string $title, UserSearch $s, string $param, string $massActionButton, int $num, int $total, string $buttons, int $page): string
+	public function titleBar(string $title, UserSearch $search, string $param, string $massActionButton, int $num, int $total, string $buttons, int $page): string
 	{
 		ob_start();
 		try {
-			print_barre_liste($title, $page, $this->urls->generate('user_list'), $param, $s->sortField, $s->sortOrder, $massActionButton, $num, $total < 0 ? '' : $total, 'user', 0, ' '.$buttons, '', $s->limit, 0, 0, 1);
+			print_barre_liste($title, $page, $this->urls->generate('user_list'), $param, $search->sortField, $search->sortOrder, $massActionButton, $num, $total < 0 ? '' : $total, 'user', 0, ' '.$buttons, '', $search->limit, 0, 0, 1);
 		} finally {
 			$html = (string) ob_get_clean();
 		}
@@ -310,8 +310,8 @@ final class UserListChrome
 			return '';
 		}
 		require_once DOL_DOCUMENT_ROOT.'/categories/class/categorie.class.php';
-		$c = new \Categorie($this->ctx->db);
-		$ways = $c->print_all_ways('auto', 'user/list.php');
+		$category = new \Categorie($this->ctx->db);
+		$ways = $category->print_all_ways('auto', 'user/list.php');
 
 		return "<div id='ways'> &gt; ".($ways[0] ?? '')."<br>\n</div><br>";
 	}
@@ -366,7 +366,7 @@ final class UserListChrome
 	 *
 	 * @return array<string, string>
 	 */
-	public function filterWidgets(UserSearch $s): array
+	public function filterWidgets(UserSearch $search): array
 	{
 		$langs = $this->ctx->langs;
 		$form = $this->ctx->form();
@@ -374,11 +374,11 @@ final class UserListChrome
 		return [
 			'buttonsLeft' => $form->showFilterButtons('left'),
 			'buttonsRight' => $form->showFilterButtons(),
-			'gender' => $form->selectarray('search_gender', ['man' => $langs->trans('Genderman'), 'woman' => $langs->trans('Genderwoman'), 'other' => $langs->trans('Genderother')], $s->filter('search_gender'), 1),
-			'employee' => (string) $form->selectyesno('search_employee', $s->filter('search_employee'), 1, false, 1),
-			'supervisor' => (string) $form->select_dolusers($s->filter('search_supervisor'), 'search_supervisor', 1, [], 0, '', '', '0', 0, 0, '', 0, '', 'maxwidth125'),
-			'country' => (string) $form->select_country($s->filter('search_country'), 'search_country', '', 0, 'minwidth100imp maxwidth100'),
-			'status' => $form->selectarray('search_status', ['-1' => '', '0' => $langs->trans('Disabled'), '1' => $langs->trans('Enabled')], $s->filter('search_status'), 0, 0, 0, '', 0, 0, 0, '', 'search_status width100 onrightofpage'),
+			'gender' => $form->selectarray('search_gender', ['man' => $langs->trans('Genderman'), 'woman' => $langs->trans('Genderwoman'), 'other' => $langs->trans('Genderother')], $search->filter('search_gender'), 1),
+			'employee' => (string) $form->selectyesno('search_employee', $search->filter('search_employee'), 1, false, 1),
+			'supervisor' => (string) $form->select_dolusers($search->filter('search_supervisor'), 'search_supervisor', 1, [], 0, '', '', '0', 0, 0, '', 0, '', 'maxwidth125'),
+			'country' => (string) $form->select_country($search->filter('search_country'), 'search_country', '', 0, 'minwidth100imp maxwidth100'),
+			'status' => $form->selectarray('search_status', ['-1' => '', '0' => $langs->trans('Disabled'), '1' => $langs->trans('Enabled')], $search->filter('search_status'), 0, 0, 0, '', 0, 0, 0, '', 'search_status width100 onrightofpage'),
 		];
 	}
 
@@ -411,13 +411,13 @@ final class UserListChrome
 	 * @param array<string, mixed>                $totalarray
 	 * @return list<string>
 	 */
-	public function titlesBeforeHook(array $arrayfields, string $param, UserSearch $s, string $selectedFields, array &$totalarray): array
+	public function titlesBeforeHook(array $arrayfields, string $param, UserSearch $search, string $selectedFields, array &$totalarray): array
 	{
 		$this->ctx->form();
 		$file = $this->urls->generate('user_list');
 		$titles = [];
 		if ($this->checkboxLeft()) {
-			$titles[] = getTitleFieldOfList($selectedFields, 0, $file, '', '', '', '', $s->sortField, $s->sortOrder, 'center maxwidthsearch ')."\n";
+			$titles[] = getTitleFieldOfList($selectedFields, 0, $file, '', '', '', '', $search->sortField, $search->sortOrder, 'center maxwidthsearch ')."\n";
 		}
 		$privacy = getDolGlobalInt('MAIN_ENABLE_LOGINS_PRIVACY') != 0;
 		$columns = [
@@ -448,7 +448,7 @@ final class UserListChrome
 			if (empty($arrayfields[$key]['checked']) || ($privacy && in_array($key, ['u.datelastlogin', 'u.datepreviouslogin'], true))) {
 				continue;
 			}
-			$titles[] = getTitleFieldOfList($label, 0, $file, $key, '', $param, '', $s->sortField, $s->sortOrder, $prefix);
+			$titles[] = getTitleFieldOfList($label, 0, $file, $key, '', $param, '', $search->sortField, $search->sortOrder, $prefix);
 		}
 		$totalarray['nbfield'] = (int) ($totalarray['nbfield'] ?? 0) + count($titles);
 
@@ -457,8 +457,8 @@ final class UserListChrome
 		$langs = $this->ctx->langs;
 		$extrafields = $this->extraFields();
 		$object = $this->legacyObject();
-		$sortfield = $s->sortField;
-		$sortorder = $s->sortOrder;
+		$sortfield = $search->sortField;
+		$sortorder = $search->sortOrder;
 		ob_start();
 		try {
 			include DOL_DOCUMENT_ROOT.'/core/tpl/extrafields_list_search_title.tpl.php';
@@ -476,17 +476,17 @@ final class UserListChrome
 	 * @param array<string, mixed>                $totalarray
 	 * @return list<string>
 	 */
-	public function titlesAfterHook(array $arrayfields, string $param, UserSearch $s, string $selectedFields, array &$totalarray): array
+	public function titlesAfterHook(array $arrayfields, string $param, UserSearch $search, string $selectedFields, array &$totalarray): array
 	{
 		$file = $this->urls->generate('user_list');
 		$titles = [];
 		foreach (['u.datec' => ['DateCreationShort', 'center nowrap '], 'date_modification' => ['DateModificationShort', 'center nowrap '], 'u.import_key' => ['ImportId', 'center '], 'u.statut' => ['Status', 'center ']] as $key => [$label, $prefix]) {
 			if (!empty($arrayfields[$key]['checked'])) {
-				$titles[] = getTitleFieldOfList($label, 0, $file, $key, '', $param, '', $s->sortField, $s->sortOrder, $prefix);
+				$titles[] = getTitleFieldOfList($label, 0, $file, $key, '', $param, '', $search->sortField, $search->sortOrder, $prefix);
 			}
 		}
 		if (!$this->checkboxLeft()) {
-			$titles[] = getTitleFieldOfList(($s->mode !== 'kanban' ? $selectedFields : ''), 0, $file, '', '', '', '', $s->sortField, $s->sortOrder, 'center maxwidthsearch ')."\n";
+			$titles[] = getTitleFieldOfList(($search->mode !== 'kanban' ? $selectedFields : ''), 0, $file, '', '', '', '', $search->sortField, $search->sortOrder, 'center maxwidthsearch ')."\n";
 		}
 		$totalarray['nbfield'] = (int) ($totalarray['nbfield'] ?? 0) + count($titles);
 
@@ -496,31 +496,31 @@ final class UserListChrome
 	/**
 	 * l.1058-1080: a \User filled from the row, as list.php fills its $object (no query).
 	 */
-	public function legacyRow(UserListRow $r): \User
+	public function legacyRow(UserListRow $listRow): \User
 	{
 		$db = $this->ctx->db;
-		$obj = (object) $r->row;
+		$obj = (object) $listRow->row;
 		$object = new \User($db);
 		$object->setVarsFromFetchObj($obj);
-		$object->id = (int) $r->user->id;
-		$object->admin = (int) $r->user->admin;
-		$object->ref = (string) $r->user->id;
-		$object->login = $r->user->login;
-		$object->status = $r->user->status;
-		$object->office_phone = (string) $r->user->officePhone;
-		$object->user_mobile = (string) $r->user->userMobile;
-		$object->job = (string) $r->user->job;
-		$object->email = (string) $r->user->email;
-		$object->gender = (string) $r->user->gender;
-		$object->socid = (int) $r->user->companyId;
-		$object->firstname = (string) $r->user->firstname;
-		$object->lastname = (string) $r->user->lastname;
-		$object->employee = (int) $r->user->employee;
-		$object->photo = (string) $r->user->photo;
-		$object->datestartvalidity = $db->jdate($r->row['datestartvalidity'] ?? '');
-		$object->dateendvalidity = $db->jdate($r->row['dateendvalidity'] ?? '');
-		$object->country_code = (string) $r->countryCode;
-		$object->country = (string) $r->countryLabel;
+		$object->id = (int) $listRow->user->id;
+		$object->admin = (int) $listRow->user->admin;
+		$object->ref = (string) $listRow->user->id;
+		$object->login = $listRow->user->login;
+		$object->status = $listRow->user->status;
+		$object->office_phone = (string) $listRow->user->officePhone;
+		$object->user_mobile = (string) $listRow->user->userMobile;
+		$object->job = (string) $listRow->user->job;
+		$object->email = (string) $listRow->user->email;
+		$object->gender = (string) $listRow->user->gender;
+		$object->socid = (int) $listRow->user->companyId;
+		$object->firstname = (string) $listRow->user->firstname;
+		$object->lastname = (string) $listRow->user->lastname;
+		$object->employee = (int) $listRow->user->employee;
+		$object->photo = (string) $listRow->user->photo;
+		$object->datestartvalidity = $db->jdate($listRow->row['datestartvalidity'] ?? '');
+		$object->dateendvalidity = $db->jdate($listRow->row['dateendvalidity'] ?? '');
+		$object->country_code = (string) $listRow->countryCode;
+		$object->country = (string) $listRow->countryLabel;
 
 		return $object;
 	}
@@ -533,13 +533,13 @@ final class UserListChrome
 	 * @param array<string, mixed>                $totalarray
 	 * @return array<string, string|null>
 	 */
-	public function rowBeforeHook(UserListRow $r, \User $object, int $i, array $arrayfields, array &$totalarray, bool $canReadHrmData, bool $canReadSecretApi): array
+	public function rowBeforeHook(UserListRow $listRow, \User $object, int $i, array $arrayfields, array &$totalarray, bool $canReadHrmData, bool $canReadSecretApi): array
 	{
 		$langs = $this->ctx->langs;
 		$db = $this->ctx->db;
-		$row = $r->row;
-		$rowid = $r->user->id;
-		$admin = $r->user->admin;
+		$row = $listRow->row;
+		$rowid = $listRow->user->id;
+		$admin = $listRow->user->admin;
 		$multicompany = isModEnabled('multicompany');
 		$privacy = getDolGlobalInt('MAIN_ENABLE_LOGINS_PRIVACY') != 0;
 		$checked = static fn (string $key): bool => !empty($arrayfields[$key]['checked']);
@@ -547,13 +547,13 @@ final class UserListChrome
 
 		// l.1080, l.1139-1147
 		$login = $this->showUrls($object->getNomUrl(-1, '', 0, 0, 24, 1, 'login', '', 1));
-		if ($multicompany && $admin && empty($r->user->entity)) {
+		if ($multicompany && $admin && empty($listRow->user->entity)) {
 			$login .= img_picto($langs->trans('SuperAdministratorDesc'), 'superadmin', 'class="valignmiddle paddingright paddingleft"');
 		} elseif ($admin) {
 			$login .= img_picto($langs->trans('AdministratorDesc'), 'admin', 'class="valignmiddle paddingright paddingleft"');
 		}
 		$cells['login'] = $login;
-		$cells['employee'] = yn((int) $r->user->employee);
+		$cells['employee'] = yn((int) $listRow->user->employee);
 
 		// l.1200-1222
 		$supervisor = '';
@@ -567,8 +567,8 @@ final class UserListChrome
 			$user2->photo = (string) ($row['photo2'] ?? '');
 			$user2->admin = (int) ($row['admin2'] ?? 0);
 			// l.1210-1211: the phones of the row's user, as list.php does
-			$user2->office_phone = (string) $r->user->officePhone;
-			$user2->user_mobile = (string) $r->user->userMobile;
+			$user2->office_phone = (string) $listRow->user->officePhone;
+			$user2->user_mobile = (string) $listRow->user->userMobile;
 			$user2->email = (string) ($row['email2'] ?? '');
 			$user2->socid = (int) ($row['fk_soc2'] ?? 0);
 			$user2->status = (int) ($row['status2'] ?? 0);
@@ -581,10 +581,10 @@ final class UserListChrome
 		}
 		$cells['supervisor'] = $supervisor;
 
-		$cells['phone'] = dol_print_phone((string) $r->user->officePhone, (string) $r->countryCode, 0, $rowid, 'AC_TEL', ' ', 'phone');
-		$cells['mobile'] = dol_print_phone((string) $r->user->userMobile, (string) $r->countryCode, 0, $rowid, 'AC_TEL', ' ', 'mobile');
+		$cells['phone'] = dol_print_phone((string) $listRow->user->officePhone, (string) $listRow->countryCode, 0, $rowid, 'AC_TEL', ' ', 'phone');
+		$cells['mobile'] = dol_print_phone((string) $listRow->user->userMobile, (string) $listRow->countryCode, 0, $rowid, 'AC_TEL', ' ', 'mobile');
 		$showinvalidemail = (int) !getDolGlobalInt('MAIN_SHOW_INVALID_EMAIL_IN_LIST');
-		$cells['email'] = dol_print_email((string) $r->user->email, $rowid, (int) $r->user->companyId, 1, 0, $showinvalidemail, 1);
+		$cells['email'] = dol_print_email((string) $listRow->user->email, $rowid, (int) $listRow->user->companyId, 1, 0, $showinvalidemail, 1);
 
 		// l.1266-1278
 		$apiKey = '';
@@ -603,13 +603,13 @@ final class UserListChrome
 		$cells['apiKeyTitle'] = $apiKeyTitle;
 
 		// l.1284-1296
-		if ($r->user->companyId !== null && $r->user->companyId > 0) {
+		if ($listRow->user->companyId !== null && $listRow->user->companyId > 0) {
 			$company = new \Societe($db);
-			$company->id = $r->user->companyId;
-			$company->name = (string) $r->companyName;
+			$company->id = $listRow->user->companyId;
+			$company->name = (string) $listRow->companyName;
 			$company->canvas = (string) ($row['canvas'] ?? '');
 			$cells['company'] = $company->getNomUrl(1);
-		} elseif ($r->user->isLdapManaged) {
+		} elseif ($listRow->user->isLdapManaged) {
 			$cells['company'] = '<span class="opacitymedium">'.$langs->trans('DomainUser').'</span>';
 		} else {
 			$cells['company'] = '<span class="opacitymedium">'.$langs->trans('InternalUser').'</span>';
@@ -619,21 +619,21 @@ final class UserListChrome
 		$mc = $this->ctx->multicompany();
 		$cells['entity'] = null;
 		if ($multicompany && $mc !== null && !getDolGlobalString('MULTICOMPANY_TRANSVERSE_MODE')) {
-			if (empty($r->user->entity)) {
+			if (empty($listRow->user->entity)) {
 				$cells['entity'] = $langs->trans('AllEntities');
 			} elseif (method_exists($mc, 'getInfo')) {
-				$mc->getInfo($r->user->entity);
+				$mc->getInfo($listRow->user->entity);
 				$cells['entity'] = (string) ($mc->label ?? '');
 			}
 		}
 
 		// l.1348-1383
 		$salary = '';
-		if ($r->user->salary) {
-			$salary = $canReadHrmData ? price($r->user->salary) : '<span class="opacitymedium">'.$langs->trans('Hidden').'</span>';
+		if ($listRow->user->salary) {
+			$salary = $canReadHrmData ? price($listRow->user->salary) : '<span class="opacitymedium">'.$langs->trans('Hidden').'</span>';
 		}
 		$cells['salary'] = $salary;
-		$cells['thm'] = $r->user->thm !== null ? price($r->user->thm) : '';
+		$cells['thm'] = $listRow->user->thm !== null ? price($listRow->user->thm) : '';
 		$cells['lastLogin'] = dol_print_date($db->jdate($row['datelastlogin'] ?? ''), 'dayhour');
 		$cells['previousLogin'] = dol_print_date($db->jdate($row['datepreviouslogin'] ?? ''), 'dayhour');
 
@@ -656,7 +656,7 @@ final class UserListChrome
 				$totalarray['nbfield']++;
 				$totalarray['pos'][$totalarray['nbfield']] = 'u.salary';
 			}
-			$totalarray['val']['u.salary'] = (float) ($totalarray['val']['u.salary'] ?? 0) + (float) $r->user->salary;
+			$totalarray['val']['u.salary'] = (float) ($totalarray['val']['u.salary'] ?? 0) + (float) $listRow->user->salary;
 		}
 		if (!$i) {
 			$totalarray['nbfield'] += (int) $checked('u.thm');
@@ -684,7 +684,7 @@ final class UserListChrome
 	 * @param array<string, mixed>                $totalarray
 	 * @return array<string, string>
 	 */
-	public function rowAfterHook(UserListRow $r, \User $object, int $i, array $arrayfields, array &$totalarray): array
+	public function rowAfterHook(UserListRow $listRow, \User $object, int $i, array $arrayfields, array &$totalarray): array
 	{
 		$db = $this->ctx->db;
 		if (!$i) {
@@ -696,8 +696,8 @@ final class UserListChrome
 		}
 
 		return [
-			'dateCreation' => dol_print_date($db->jdate($r->row['date_creation'] ?? ''), 'dayhour', 'tzuser'),
-			'dateModification' => dol_print_date($db->jdate($r->row['date_modification'] ?? ''), 'dayhour', 'tzuser'),
+			'dateCreation' => dol_print_date($db->jdate($listRow->row['date_creation'] ?? ''), 'dayhour', 'tzuser'),
+			'dateModification' => dol_print_date($db->jdate($listRow->row['date_modification'] ?? ''), 'dayhour', 'tzuser'),
 			'status' => $object->getLibStatut(5),
 		];
 	}
@@ -743,10 +743,10 @@ final class UserListChrome
 	{
 		return (string) preg_replace_callback(
 			'#href="'.preg_quote(DOL_URL_ROOT.'/user/card.php?id=', '#').'(\d+)(?:(&amp;|&)([^"]*))?"#',
-			function (array $m) use ($saveLastSearch): string {
-				$query = isset($m[3]) && $m[3] !== '' ? $m[3] : ($saveLastSearch ? 'save_lastsearch_values=1' : '');
+			function (array $matches) use ($saveLastSearch): string {
+				$query = isset($matches[3]) && $matches[3] !== '' ? $matches[3] : ($saveLastSearch ? 'save_lastsearch_values=1' : '');
 
-				return 'href="'.$this->urls->generate('user_show', ['id' => (int) $m[1]]).($query !== '' ? '?'.$query : '').'"';
+				return 'href="'.$this->urls->generate('user_show', ['id' => (int) $matches[1]]).($query !== '' ? '?'.$query : '').'"';
 			},
 			$html
 		);

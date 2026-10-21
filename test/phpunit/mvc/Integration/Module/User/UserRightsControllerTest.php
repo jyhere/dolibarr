@@ -112,7 +112,7 @@ final class UserRightsControllerTest extends TestCase
 		$view = $this->controller()->show($this->request('GET', [], [], $target->id), $target->id);
 		$exposed = $view->exposed['rights'];
 		self::assertIsArray($exposed);
-		$user = array_values(array_filter($exposed, static fn (mixed $m): bool => is_array($m) && $m['module'] === 'user'))[0];
+		$user = array_values(array_filter($exposed, static fn (mixed $module): bool => is_array($module) && $module['module'] === 'user'))[0];
 		self::assertIsArray($user['rights']);
 		self::assertNotSame([], $user['rights']);
 		foreach ($user['rights'] as $right) {
@@ -257,25 +257,25 @@ final class UserRightsControllerTest extends TestCase
 
 	public function testBannerPreviousNextLinksTargetTheCurrentTabRoute(): void
 	{
-		$a = $this->disposable('NavA');
-		$b = $this->disposable('NavB');
+		$firstUser = $this->disposable('NavA');
+		$secondUser = $this->disposable('NavB');
 		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class, UserRightsController::class, NotesController::class]), '');
 		$chrome = new UserCardChrome($this->ctx, $urls);
-		$legacy = (new LegacyObjectLoader($this->connection))->user($a->id);
+		$legacy = (new LegacyObjectLoader($this->connection))->user($firstUser->id);
 		self::assertNotNull($legacy);
 		$oldSelf = $_SERVER['PHP_SELF'] ?? null;
 
 		try {
-			foreach (['rights' => '/user/'.$b->id.'/rights', 'note' => '/user/'.$b->id.'/note'] as $tab => $expected) {
-				$_SERVER['PHP_SELF'] = '/user/'.$a->id.($tab === 'rights' ? '/rights' : '/note');
-				$banner = $chrome->chrome($legacy, $a, $tab)['bannerHtml'];
+			foreach (['rights' => '/user/'.$secondUser->id.'/rights', 'note' => '/user/'.$secondUser->id.'/note'] as $tab => $expected) {
+				$_SERVER['PHP_SELF'] = '/user/'.$firstUser->id.($tab === 'rights' ? '/rights' : '/note');
+				$banner = $chrome->chrome($legacy, $firstUser, $tab)['bannerHtml'];
 				self::assertStringContainsString('href="'.$expected.'"', $banner, $tab);
 				self::assertStringNotContainsString('href="'.$_SERVER['PHP_SELF'].'?id=', $banner, $tab);
 			}
 
-			$_SERVER['PHP_SELF'] = '/user/'.$a->id;
-			$card = $chrome->build($legacy, $a, new UserPermissionChecker($this->legacyMe(), false, false, false, [], false, false, (int) $this->ctx->conf->entity), false, 2)->bannerHtml;
-			self::assertStringContainsString('href="/user/'.$b->id.'"', $card);
+			$_SERVER['PHP_SELF'] = '/user/'.$firstUser->id;
+			$card = $chrome->build($legacy, $firstUser, new UserPermissionChecker($this->legacyMe(), false, false, false, [], false, false, (int) $this->ctx->conf->entity), false, 2)->bannerHtml;
+			self::assertStringContainsString('href="/user/'.$secondUser->id.'"', $card);
 			self::assertStringNotContainsString('href="'.$_SERVER['PHP_SELF'].'?id=', $card);
 		} finally {
 			if ($oldSelf === null) {

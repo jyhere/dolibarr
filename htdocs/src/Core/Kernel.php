@@ -209,11 +209,11 @@ final class Kernel
 	}
 
 	/**
-	 * Log $e (dol_syslog, else the PHP error log) and answer a 500 without any detail.
+	 * Log $throwable (dol_syslog, else the PHP error log) and answer a 500 without any detail.
 	 */
-	private function serverError(\Throwable $e, Request $request, ?Responder $responder): Response
+	private function serverError(\Throwable $throwable, Request $request, ?Responder $responder): Response
 	{
-		$message = 'Dolibarr MVC: uncaught '.get_class($e).': '.$e->getMessage().' in '.$e->getFile().':'.$e->getLine();
+		$message = 'Dolibarr MVC: uncaught '.get_class($throwable).': '.$throwable->getMessage().' in '.$throwable->getFile().':'.$throwable->getLine();
 		if (function_exists('dol_syslog')) {
 			(new Logger())->error($message);
 		} else {

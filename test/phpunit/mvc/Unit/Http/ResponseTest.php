@@ -17,8 +17,8 @@ final class ResponseTest extends TestCase
 
 	public function testRedirectSetsLocationAnd302(): void
 	{
-		$r = new RedirectResponse('/login');
-		self::assertSame(302, $r->status());
-		self::assertSame('/login', $r->headers()['Location']);
+		$response = new RedirectResponse('/login');
+		self::assertSame(302, $response->status());
+		self::assertSame('/login', $response->headers()['Location']);
 	}
 }

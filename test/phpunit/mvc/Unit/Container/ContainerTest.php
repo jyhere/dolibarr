@@ -14,7 +14,7 @@ final class ContainerTest extends TestCase
 	{
 		$calls = 0;
 		$container = new Container();
-		$container->set(\stdClass::class, static function (Container $c) use (&$calls): object {
+		$container->set(\stdClass::class, static function (Container $resolver) use (&$calls): object {
 			$calls++;
 			return new \stdClass();
 		});
@@ -30,8 +30,8 @@ final class ContainerTest extends TestCase
 	{
 		$received = null;
 		$container = new Container();
-		$container->set(\stdClass::class, static function (Container $c) use (&$received): object {
-			$received = $c;
+		$container->set(\stdClass::class, static function (Container $resolver) use (&$received): object {
+			$received = $resolver;
 			return new \stdClass();
 		});
 
@@ -52,8 +52,8 @@ final class ContainerTest extends TestCase
 	public function testCircularDependencyThrowsWithChain(): void
 	{
 		$container = new Container();
-		$container->set('A', static fn(Container $c): object => $c->get('B'));
-		$container->set('B', static fn(Container $c): object => $c->get('A'));
+		$container->set('A', static fn(Container $resolver): object => $resolver->get('B'));
+		$container->set('B', static fn(Container $resolver): object => $resolver->get('A'));
 
 		$this->expectException(ContainerException::class);
 		$this->expectExceptionMessage('A -> B -> A');

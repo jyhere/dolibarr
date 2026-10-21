@@ -40,7 +40,7 @@ final class CoreServices
 	 * @param list<RouteDefinition>  $definitions
 	 */
 	public static function register(
-		Container $c,
+		Container $container,
 		LegacyContext $ctx,
 		Request $request,
 		array $modules,
@@ -49,28 +49,28 @@ final class CoreServices
 		string $urlRoot,
 		bool $prod
 	): void {
-		$c->instance(Request::class, $request);
-		$c->instance(LegacyContext::class, $ctx);
-		$c->set(InputFilter::class, static fn (): InputFilter => new LegacyInputFilter());
-		$c->set(Session::class, static fn (): Session => new LegacySession());
-		$c->set(Config::class, static fn (): Config => new LegacyConfig($ctx));
-		$c->set(Connection::class, static fn (): Connection => new Connection($ctx->db));
-		$c->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
+		$container->instance(Request::class, $request);
+		$container->instance(LegacyContext::class, $ctx);
+		$container->set(InputFilter::class, static fn (): InputFilter => new LegacyInputFilter());
+		$container->set(Session::class, static fn (): Session => new LegacySession());
+		$container->set(Config::class, static fn (): Config => new LegacyConfig($ctx));
+		$container->set(Connection::class, static fn (): Connection => new Connection($ctx->db));
+		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {
-			$c->set(CurrentUser::class, static fn (): CurrentUser => new LegacyCurrentUser($user));
+			$container->set(CurrentUser::class, static fn (): CurrentUser => new LegacyCurrentUser($user));
 		}
-		$c->set(LegacyHooks::class, static fn (): LegacyHooks => new LegacyHooks($ctx->hookmanager));
-		$c->set(LegacyTriggers::class, static fn (): LegacyTriggers => new LegacyTriggers($ctx));
-		$c->set(LegacyObjectLoader::class, static fn (Container $c): LegacyObjectLoader => new LegacyObjectLoader(self::get($c, Connection::class)));
-		$c->set(FlashBag::class, static fn (): FlashBag => new FlashBag());
-		$c->set(Confirm::class, static fn (): Confirm => new Confirm($ctx));
-		$c->set(Logger::class, static fn (): Logger => new Logger());
-		$c->set(LegacyLayout::class, static fn (): LegacyLayout => new LegacyLayout());
-		$c->set(EventDispatcher::class, static fn (): EventDispatcher => new EventDispatcher());
-		$c->set(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($definitions, $urlRoot));
-		$c->set(DolibarrExtension::class, static function (Container $c): DolibarrExtension {
-			$hooks = self::get($c, LegacyHooks::class);
+		$container->set(LegacyHooks::class, static fn (): LegacyHooks => new LegacyHooks($ctx->hookmanager));
+		$container->set(LegacyTriggers::class, static fn (): LegacyTriggers => new LegacyTriggers($ctx));
+		$container->set(LegacyObjectLoader::class, static fn (Container $container): LegacyObjectLoader => new LegacyObjectLoader(self::get($container, Connection::class)));
+		$container->set(FlashBag::class, static fn (): FlashBag => new FlashBag());
+		$container->set(Confirm::class, static fn (): Confirm => new Confirm($ctx));
+		$container->set(Logger::class, static fn (): Logger => new Logger());
+		$container->set(LegacyLayout::class, static fn (): LegacyLayout => new LegacyLayout());
+		$container->set(EventDispatcher::class, static fn (): EventDispatcher => new EventDispatcher());
+		$container->set(UrlGenerator::class, static fn (): UrlGenerator => new UrlGenerator($definitions, $urlRoot));
+		$container->set(DolibarrExtension::class, static function (Container $container): DolibarrExtension {
+			$hooks = self::get($container, LegacyHooks::class);
 			$legacyHook = static function (string $name, array $params) use ($hooks): string {
 				$object = null;
 				$action = '';
@@ -82,9 +82,9 @@ final class CoreServices
 			};
 
 			return new DolibarrExtension(
-				self::get($c, Translator::class),
-				$c->has(CurrentUser::class) ? self::get($c, CurrentUser::class) : null,
-				self::get($c, UrlGenerator::class),
+				self::get($container, Translator::class),
+				$container->has(CurrentUser::class) ? self::get($container, CurrentUser::class) : null,
+				self::get($container, UrlGenerator::class),
 				$legacyHook
 			);
 		});
@@ -95,25 +95,25 @@ final class CoreServices
 				$registry->register($definition);
 			}
 		}
-		$c->instance(EntityRegistry::class, $registry);
-		$c->set(EntityServices::class, static fn (Container $c): EntityServices => new EntityServices($c));
+		$container->instance(EntityRegistry::class, $registry);
+		$container->set(EntityServices::class, static fn (Container $container): EntityServices => new EntityServices($container));
 
 		$templateDirs = ['core' => __DIR__.'/templates'];
 		foreach ($modules as $module) {
 			$templateDirs = array_merge($templateDirs, $module->templateDirs());
 		}
-		$c->set(LatteRenderer::class, static function (Container $c) use ($templateDirs, $dataRoot, $urlRoot, $prod): LatteRenderer {
-			$renderer = new LatteRenderer($dataRoot.'/cache/latte', $templateDirs, self::get($c, DolibarrExtension::class), !$prod);
-			$renderer->addGlobal('layout', self::get($c, LegacyLayout::class));
+		$container->set(LatteRenderer::class, static function (Container $container) use ($templateDirs, $dataRoot, $urlRoot, $prod): LatteRenderer {
+			$renderer = new LatteRenderer($dataRoot.'/cache/latte', $templateDirs, self::get($container, DolibarrExtension::class), !$prod);
+			$renderer->addGlobal('layout', self::get($container, LegacyLayout::class));
 			$renderer->addGlobal('urlRoot', $urlRoot);
 
 			return $renderer;
 		});
-		$c->set(Responder::class, static fn (Container $c): Responder => new Responder(self::get($c, LatteRenderer::class), $request));
+		$container->set(Responder::class, static fn (Container $container): Responder => new Responder(self::get($container, LatteRenderer::class), $request));
 
-		$dispatcher = self::get($c, EventDispatcher::class);
+		$dispatcher = self::get($container, EventDispatcher::class);
 		foreach ($modules as $module) {
-			$module->services($c);
+			$module->services($container);
 			$module->listeners($dispatcher);
 		}
 	}
@@ -124,9 +124,9 @@ final class CoreServices
 	 * @return T
 	 * @throws \LogicException When the service has an unexpected type
 	 */
-	private static function get(Container $c, string $id): object
+	private static function get(Container $container, string $id): object
 	{
-		$service = $c->get($id);
+		$service = $container->get($id);
 		if (!$service instanceof $id) {
 			throw new \LogicException('Service '.$id.' has an unexpected type');
 		}

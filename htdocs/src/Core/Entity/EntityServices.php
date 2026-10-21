@@ -18,25 +18,25 @@ final class EntityServices
 	/**
 	 * @throws \LogicException When the service is not an EntityRepository
 	 */
-	public function repository(EntityDefinition $d): EntityRepository
+	public function repository(EntityDefinition $definition): EntityRepository
 	{
-		return $this->typed($d, $d->repositoryId, EntityRepository::class);
+		return $this->typed($definition, $definition->repositoryId, EntityRepository::class);
 	}
 
 	/**
 	 * @throws \LogicException When the service is not an EntityPermissions
 	 */
-	public function permissions(EntityDefinition $d): EntityPermissions
+	public function permissions(EntityDefinition $definition): EntityPermissions
 	{
-		return $this->typed($d, $d->permissionCheckerId, EntityPermissions::class);
+		return $this->typed($definition, $definition->permissionCheckerId, EntityPermissions::class);
 	}
 
 	/**
 	 * @throws \LogicException When the service is not an EntityTabs
 	 */
-	public function tabs(EntityDefinition $d): EntityTabs
+	public function tabs(EntityDefinition $definition): EntityTabs
 	{
-		return $this->typed($d, $d->tabsFactoryId, EntityTabs::class);
+		return $this->typed($definition, $definition->tabsFactoryId, EntityTabs::class);
 	}
 
 	/**
@@ -45,11 +45,11 @@ final class EntityServices
 	 * @return T
 	 * @throws \LogicException When the service is not a $type
 	 */
-	private function typed(EntityDefinition $d, string $id, string $type): object
+	private function typed(EntityDefinition $definition, string $id, string $type): object
 	{
 		$service = $this->container->get($id);
 		if (!$service instanceof $type) {
-			throw new \LogicException('Service '.$id.' of the entity '.$d->slug.' must implement '.$type.', got '.$service::class);
+			throw new \LogicException('Service '.$id.' of the entity '.$definition->slug.' must implement '.$type.', got '.$service::class);
 		}
 
 		return $service;

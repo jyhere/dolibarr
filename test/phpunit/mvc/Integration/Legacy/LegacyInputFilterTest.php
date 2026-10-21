@@ -50,10 +50,10 @@ final class LegacyInputFilterTest extends TestCase
 	public function testRestricthtmlKeepsSafeTags(): void
 	{
 		$_POST['n'] = '<b>ok</b><script>x</script>';
-		$v = $this->filter()->filter('n', 'restricthtml');
-		self::assertIsString($v);
-		self::assertStringContainsString('<b>ok</b>', $v);
-		self::assertStringNotContainsString('<script', $v);
+		$value = $this->filter()->filter('n', 'restricthtml');
+		self::assertIsString($value);
+		self::assertStringContainsString('<b>ok</b>', $value);
+		self::assertStringNotContainsString('<script', $value);
 	}
 
 	public function testMissingKeyReturnsTheDefault(): void

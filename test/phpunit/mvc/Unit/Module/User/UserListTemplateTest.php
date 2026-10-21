@@ -89,7 +89,7 @@ final class UserListTemplateTest extends TestCase
 				return '<!--footer-->';
 			}
 		};
-		$s = UserSearch::fromRequest((new Request('GET', '/user', [], [], [], []))->withInputFilter(new FakeInputFilter($query)), new ArrayConfig(), false, 20);
+		$search = UserSearch::fromRequest((new Request('GET', '/user', [], [], [], []))->withInputFilter(new FakeInputFilter($query)), new ArrayConfig(), false, 20);
 		$frag = static fn (string $name): string => '<i data-frag="'.$name.'"></i>';
 		$rows = $withRow ? [[
 			'user' => new User(7, 1, '<i>bob</i>', lastname: '<b>Doe</b>', firstname: 'F'),
@@ -108,8 +108,8 @@ final class UserListTemplateTest extends TestCase
 			'helpUrl' => '',
 			'bodyCss' => 'bodyforlist mod-user page-list',
 			'formAction' => '/user',
-			's' => $s,
-			'search' => $s->filters,
+			'userSearch' => $search,
+			'search' => $search->filters,
 			'show' => ['u.login' => true, 'u.lastname' => true, 'u.statut' => true],
 			'privacy' => false,
 			'checkboxLeft' => false,
@@ -117,7 +117,7 @@ final class UserListTemplateTest extends TestCase
 			'categoryWaysHtml' => '',
 			'searchAllHtml' => '',
 			'moreForFilterHtml' => '',
-			'w' => ['buttonsLeft' => '', 'buttonsRight' => $frag('buttons'), 'gender' => '', 'employee' => '', 'supervisor' => '', 'country' => '', 'status' => $frag('statusSelect')],
+			'widgets' => ['buttonsLeft' => '', 'buttonsRight' => $frag('buttons'), 'gender' => '', 'employee' => '', 'supervisor' => '', 'country' => '', 'status' => $frag('statusSelect')],
 			'extraFieldsInputsHtml' => '',
 			'optionHookHtml' => '',
 			'titlesBefore' => [$frag('th1'), $frag('th2')],

@@ -112,12 +112,12 @@ final class Request
 	}
 
 	/**
-	 * A copy of the request reading its parameters through $f.
+	 * A copy of the request reading its parameters through $inputFilter.
 	 */
-	public function withInputFilter(InputFilter $f): self
+	public function withInputFilter(InputFilter $inputFilter): self
 	{
 		$clone = clone $this;
-		$clone->inputFilter = $f;
+		$clone->inputFilter = $inputFilter;
 
 		return $clone;
 	}

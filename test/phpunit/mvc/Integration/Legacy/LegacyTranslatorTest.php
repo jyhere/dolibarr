@@ -13,12 +13,12 @@ final class LegacyTranslatorTest extends TestCase
 	{
 		$langs = $GLOBALS['langs'];
 		$langs->load('users');
-		$t = new LegacyTranslator($langs);
+		$translator = new LegacyTranslator($langs);
 
-		$html = $t->transHtml('PasswordChangedTo', '<b>"x"</b>');
+		$html = $translator->transHtml('PasswordChangedTo', '<b>"x"</b>');
 
 		self::assertStringContainsString('&lt;b&gt;&quot;x&quot;&lt;/b&gt;', $html);
 		self::assertStringNotContainsString('<b>"x"', $html);
-		self::assertSame($t->trans('PasswordChangedTo', '&lt;b&gt;&quot;x&quot;&lt;/b&gt;'), $html, 'the translation itself is trans(), its tags kept');
+		self::assertSame($translator->trans('PasswordChangedTo', '&lt;b&gt;&quot;x&quot;&lt;/b&gt;'), $html, 'the translation itself is trans(), its tags kept');
 	}
 }

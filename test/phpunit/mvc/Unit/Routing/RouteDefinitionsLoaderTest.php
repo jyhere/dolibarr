@@ -29,7 +29,7 @@ final class RouteDefinitionsLoaderTest extends TestCase
 		$loader = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]);
 		$definitions = $loader->load();
 
-		self::assertSame(['fixture_public', 'fixture_out', 'fixture_show'], array_map(static fn ($d): string => $d->name, $definitions));
+		self::assertSame(['fixture_public', 'fixture_out', 'fixture_show'], array_map(static fn ($definition): string => $definition->name, $definitions));
 		self::assertFileExists($this->dataRoot.'/cache/routes.php');
 		self::assertEquals($definitions, (new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]))->load());
 		self::assertSame(['EVEN_IF_ONLY_LOGIN_ALLOWED', 'NOREDIRECTBYMAINTOLOGIN'], $loader->load()[1]->constants, 'route constants survive the cache');
@@ -37,12 +37,12 @@ final class RouteDefinitionsLoaderTest extends TestCase
 
 	public function testStampDependsOnVersionAndModules(): void
 	{
-		$a = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]);
-		$b = new RouteDefinitionsLoader($this->dataRoot, true, '2.0', [new FixtureModule()]);
-		$c = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', []);
+		$loaderOne = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', [new FixtureModule()]);
+		$loaderTwo = new RouteDefinitionsLoader($this->dataRoot, true, '2.0', [new FixtureModule()]);
+		$loaderEmpty = new RouteDefinitionsLoader($this->dataRoot, true, '1.0', []);
 
-		self::assertNotSame($a->stamp(), $b->stamp());
-		self::assertNotSame($a->stamp(), $c->stamp());
+		self::assertNotSame($loaderOne->stamp(), $loaderTwo->stamp());
+		self::assertNotSame($loaderOne->stamp(), $loaderEmpty->stamp());
 	}
 
 	public function testUnwritableCacheStillReturnsDefinitions(): void

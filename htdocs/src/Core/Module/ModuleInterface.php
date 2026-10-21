@@ -21,9 +21,9 @@ interface ModuleInterface
 	 */
 	public function controllers(): array;
 
-	public function services(Container $c): void;
+	public function services(Container $container): void;
 
-	public function listeners(EventDispatcher $d): void;
+	public function listeners(EventDispatcher $dispatcher): void;
 
 	/**
 	 * @return list<EntityDefinition>

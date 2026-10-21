@@ -59,8 +59,8 @@ final class LogoutTest extends TestCase
 		$_SESSION = ['dol_login' => $GLOBALS['user']->login, 'dol_entity' => 1];
 		$dispatcher = new EventDispatcher();
 		$received = [];
-		$dispatcher->addListener(UserLoggedOut::class, static function (UserLoggedOut $e) use (&$received): void {
-			$received[] = $e;
+		$dispatcher->addListener(UserLoggedOut::class, static function (UserLoggedOut $event) use (&$received): void {
+			$received[] = $event;
 		});
 
 		$this->controller($dispatcher)->logout(GlobalsRequest::create('POST', '/logout', [], []));

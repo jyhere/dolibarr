@@ -49,8 +49,8 @@ final class UserServiceTest extends TestCase
 		$this->events = new EventDispatcher();
 		(new LegacyTriggerBridge(new LegacyTriggers($this->ctx), $this->ctx, new LegacyObjectLoader($this->connection), new Logger()))->register($this->events);
 		foreach ([UserCreated::class, UserUpdated::class, UserDeleted::class, UserStatusChanged::class, UserPasswordChanged::class, UserRightsChanged::class, UserGroupsChanged::class] as $class) {
-			$this->events->addListener($class, function (object $e): void {
-				$this->spied[] = $e;
+			$this->events->addListener($class, function (object $event): void {
+				$this->spied[] = $event;
 			});
 		}
 		$this->disableUserAgendaEvents();

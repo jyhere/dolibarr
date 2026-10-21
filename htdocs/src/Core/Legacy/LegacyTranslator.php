@@ -28,7 +28,7 @@ final class LegacyTranslator implements Translator
 
 	public function transHtml(string $key, string ...$args): string
 	{
-		return $this->trans($key, ...array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args));
+		return $this->trans($key, ...array_map(static fn (string $arg): string => htmlspecialchars($arg, ENT_COMPAT, 'UTF-8'), $args));
 	}
 
 	public function load(string $domain): void

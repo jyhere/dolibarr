@@ -11,8 +11,8 @@ final class RequestTest extends TestCase
 {
 	public function testPathStripsQueryTrailingSlashAndDoubleSlashes(): void
 	{
-		$r = new Request('GET', '//user/1/?x=1', [], [], [], []);
-		self::assertSame('/user/1', $r->path());
+		$request = new Request('GET', '//user/1/?x=1', [], [], [], []);
+		self::assertSame('/user/1', $request->path());
 	}
 
 	public function testRootPathStaysSlash(): void
@@ -40,9 +40,9 @@ final class RequestTest extends TestCase
 
 	public function testJsonSuffixAndFormatParam(): void
 	{
-		$r = new Request('GET', '/user/1.json', [], [], [], []);
-		self::assertTrue($r->wantsJson());
-		self::assertSame('/user/1', $r->path());
+		$request = new Request('GET', '/user/1.json', [], [], [], []);
+		self::assertTrue($request->wantsJson());
+		self::assertSame('/user/1', $request->path());
 		self::assertTrue((new Request('GET', '/user/1', ['format' => 'json'], [], [], []))->wantsJson());
 	}
 }

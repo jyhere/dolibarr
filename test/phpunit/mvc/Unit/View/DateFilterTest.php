@@ -21,8 +21,8 @@ final class DateFilterTest extends TestCase
 
 	public function testDateObjectIsPrintedFromItsTimestamp(): void
 	{
-		$d = new \DateTimeImmutable('2026-10-20 00:00:00', new \DateTimeZone('UTC'));
-		self::assertSame('DATE('.$d->getTimestamp().',day,gmt)', ($this->filter())($d, 'day', 'gmt'));
+		$date = new \DateTimeImmutable('2026-10-20 00:00:00', new \DateTimeZone('UTC'));
+		self::assertSame('DATE('.$date->getTimestamp().',day,gmt)', ($this->filter())($date, 'day', 'gmt'));
 	}
 
 	public function testTimestampKeepsDefaults(): void

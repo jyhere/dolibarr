@@ -35,8 +35,8 @@ final class LegacyHooks
 
 		// Same messages, same order as setEventMessages($hookmanager->error, $hookmanager->errors)
 		$errors = [];
-		foreach ($this->hm->errors as $e) {
-			$errors[] = (string) $e;
+		foreach ($this->hm->errors as $hookError) {
+			$errors[] = (string) $hookError;
 		}
 		$error = (string) $this->hm->error;
 		if ($error !== '' && !in_array($error, $errors, true)) {

@@ -34,7 +34,7 @@ final class RouteDefinitionsLoader
 	 */
 	public function stamp(): string
 	{
-		return $this->version.'|'.sha1(implode(',', array_map(static fn (ModuleInterface $m): string => $m::class, $this->modules)));
+		return $this->version.'|'.sha1(implode(',', array_map(static fn (ModuleInterface $module): string => $module::class, $this->modules)));
 	}
 
 	/**

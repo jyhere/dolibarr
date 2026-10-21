@@ -9,23 +9,23 @@ namespace Dolibarr\Core;
  */
 final class Logger
 {
-	public function debug(string $m): void
+	public function debug(string $message): void
 	{
-		dol_syslog($m, LOG_DEBUG);
+		dol_syslog($message, LOG_DEBUG);
 	}
 
-	public function info(string $m): void
+	public function info(string $message): void
 	{
-		dol_syslog($m, LOG_INFO);
+		dol_syslog($message, LOG_INFO);
 	}
 
-	public function warning(string $m): void
+	public function warning(string $message): void
 	{
-		dol_syslog($m, LOG_WARNING);
+		dol_syslog($message, LOG_WARNING);
 	}
 
-	public function error(string $m): void
+	public function error(string $message): void
 	{
-		dol_syslog($m, LOG_ERR);
+		dol_syslog($message, LOG_ERR);
 	}
 }

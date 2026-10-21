@@ -12,29 +12,29 @@ final class ConnectionTest extends TestCase
 {
 	public function testFetchOneAndEscape(): void
 	{
-		$c = new Connection($GLOBALS['db']);
-		$row = $c->fetchOne("SELECT login FROM ".$c->prefix()."user WHERE rowid = 1");
+		$connection = new Connection($GLOBALS['db']);
+		$row = $connection->fetchOne("SELECT login FROM ".$connection->prefix()."user WHERE rowid = 1");
 		self::assertNotNull($row);
 		self::assertSame($GLOBALS['user']->login, $row->login);
-		self::assertSame("O\\'Neil", $c->escape("O'Neil"));
+		self::assertSame("O\\'Neil", $connection->escape("O'Neil"));
 	}
 
 	public function testRealTransactionRunsWithoutException(): void
 	{
-		$c = new Connection($GLOBALS['db']);
-		$c->begin();
-		$c->begin();
-		$c->commit();
-		$c->rollback();
+		$connection = new Connection($GLOBALS['db']);
+		$connection->begin();
+		$connection->begin();
+		$connection->commit();
+		$connection->rollback();
 		self::assertSame(0, (int) $GLOBALS['db']->transaction_opened);
 	}
 
 	public function testFailedBeginCommitOrRollbackThrowsTheDriverError(): void
 	{
-		$c = new Connection($this->failingDb());
+		$connection = new Connection($this->failingDb());
 		foreach (['begin', 'commit', 'rollback'] as $method) {
 			try {
-				$c->$method();
+				$connection->$method();
 				self::fail($method.'() should throw');
 			} catch (DatabaseException $e) {
 				self::assertSame('forced '.$method.' failure', $e->getMessage());

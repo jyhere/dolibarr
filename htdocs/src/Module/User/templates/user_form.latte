@@ -4,7 +4,7 @@
    and on the edit form OpenID and photo. *}
 {layout 'core:@layout'}
 {block content}
-{var $u = $values}
+{var $formValues = $values}
 {if $mode === 'edit'}
 {include editForm}
 {else}
@@ -20,49 +20,49 @@
 {if $backtopageforcancel !== ''}<input type="hidden" name="backtopageforcancel" value="{$backtopageforcancel}">
 {/if}
 <input type="hidden" name="entity" value="{$entity}">
-{$f['ficheHead']|noescape}
-{$f['focusJs']|noescape}
+{$fragments['ficheHead']|noescape}
+{$fragments['focusJs']|noescape}
 <table class="border centpercent">
 {if $show['civility']}
-<tr><td><label for="civility_code">{='UserTitle'|trans}</label></td><td>{$f['civility']|noescape}</td></tr>
+<tr><td><label for="civility_code">{='UserTitle'|trans}</label></td><td>{$fragments['civility']|noescape}</td></tr>
 {/if}
 <tr>
 <td class="titlefieldcreate"><span class="fieldrequired">{='Lastname'|trans}</span></td>
-<td><input class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" id="lastname" name="lastname" value="{$u->lastname ?? ''}"></td></tr>
+<td><input class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" id="lastname" name="lastname" value="{$formValues->lastname ?? ''}"></td></tr>
 <tr><td>{='Firstname'|trans}</td>
-<td><input id="firstname" class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" name="firstname" value="{$u->firstname ?? ''}"></td></tr>
+<td><input id="firstname" class="minwidth100 maxwidth150onsmartphone createloginauto" type="text" name="firstname" value="{$formValues->firstname ?? ''}"></td></tr>
 <tr><td><span class="fieldrequired">{='Login'|trans}</span></td>
-<td><input id="login" class="maxwidth200 maxwidth150onsmartphone" maxsize="24" type="text" name="login" value="{$u->login ?? ''}" spellcheck="false"></td></tr>
+<td><input id="login" class="maxwidth200 maxwidth150onsmartphone" maxsize="24" type="text" name="login" value="{$formValues->login ?? ''}" spellcheck="false"></td></tr>
 {$loginJs|noescape}
 {if $show['admin']}
-<tr><td>{$f['adminLabel']|noescape}</td>
-<td>{$f['admin']|noescape}</td></tr>
+<tr><td>{$fragments['adminLabel']|noescape}</td>
+<td>{$fragments['admin']|noescape}</td></tr>
 {/if}
 <tr><td>{='Gender'|trans}</td>
-<td>{$f['gender']|noescape}</td></tr>
+<td>{$fragments['gender']|noescape}</td></tr>
 <tr>
-<td>{='Employee'|trans}</td><td><input type="checkbox" name="employee" value="1"{if $u->employee} checked="checked"{/if}></td></tr>
+<td>{='Employee'|trans}</td><td><input type="checkbox" name="employee" value="1"{if $formValues->employee} checked="checked"{/if}></td></tr>
 <tr><td class="titlefieldcreate">{='HierarchicalResponsible'|trans}</td>
-<td>{$f['supervisor']|noescape}</td>
+<td>{$fragments['supervisor']|noescape}</td>
 </tr>
 {if $show['expenseValidator']}
-<tr><td class="titlefieldcreate">{$f['expenseValidatorLabel']|noescape}</td>
-<td>{$f['expenseValidator']|noescape}</td>
+<tr><td class="titlefieldcreate">{$fragments['expenseValidatorLabel']|noescape}</td>
+<td>{$fragments['expenseValidator']|noescape}</td>
 </tr>
 {/if}
 {if $show['holidayValidator']}
-<tr><td class="titlefieldcreate">{$f['holidayValidatorLabel']|noescape}</td>
-<td>{$f['holidayValidator']|noescape}</td>
+<tr><td class="titlefieldcreate">{$fragments['holidayValidatorLabel']|noescape}</td>
+<td>{$fragments['holidayValidator']|noescape}</td>
 </tr>
 {/if}
 <tr><td>{='ExternalUser'|trans} ?</td>
-<td>{$f['internal']|noescape}</td></tr>
+<td>{$fragments['internal']|noescape}</td></tr>
 </table><hr><table class="border centpercent">
 <tr><td class="titlefieldcreate">{='RangeOfLoginValidity'|trans}</td>
-<td>{$f['dateStartValidity']|noescape} &nbsp; {$f['dateEndValidity']|noescape}</td>
+<td>{$fragments['dateStartValidity']|noescape} &nbsp; {$fragments['dateEndValidity']|noescape}</td>
 </tr>
 <tr><td class="fieldrequired">{='Password'|trans}</td>
-<td>{$f['passwordField']|noescape}</td></tr>
+<td>{$fragments['passwordField']|noescape}</td></tr>
 {if $show['forcePasswordChange']}
 <tr><td class="titlefieldcreate"></td>
 <td><input type="checkbox" name="forcepasswordchange" id="forcepasswordchange" value="1"{if $forcePasswordChange} checked="checked"{/if}><label class="opacitymedium" for="forcepasswordchange">{='ForcePasswordChange'|trans}</label></td>
@@ -70,209 +70,209 @@
 {/if}
 {* api_key (card.php l.1340-1359): not rendered, the new path never stores it *}
 </table><hr><table class="border centpercent">
-<tr><td class="tdtop titlefieldcreate">{$f['addressLabel']|noescape}</td>
-<td><textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$u->address}</textarea></td></tr>
-<tr><td>{$f['zipLabel']|noescape}</td><td>{$f['zip']|noescape}</td></tr>
-<tr><td>{$f['townLabel']|noescape}</td><td>{$f['town']|noescape}</td></tr>
-<tr><td>{$f['countryLabel']|noescape}</td><td class="maxwidthonsmartphone">{$f['country']|noescape}</td></tr>
+<tr><td class="tdtop titlefieldcreate">{$fragments['addressLabel']|noescape}</td>
+<td><textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$formValues->address}</textarea></td></tr>
+<tr><td>{$fragments['zipLabel']|noescape}</td><td>{$fragments['zip']|noescape}</td></tr>
+<tr><td>{$fragments['townLabel']|noescape}</td><td>{$fragments['town']|noescape}</td></tr>
+<tr><td>{$fragments['countryLabel']|noescape}</td><td class="maxwidthonsmartphone">{$fragments['country']|noescape}</td></tr>
 {if $show['state']}
-<tr><td>{$f['stateLabel']|noescape}</td><td class="maxwidthonsmartphone">{$f['state']|noescape}</td></tr>
+<tr><td>{$fragments['stateLabel']|noescape}</td><td class="maxwidthonsmartphone">{$fragments['state']|noescape}</td></tr>
 {/if}
 <tr><td>{='PhonePro'|trans}</td>
-<td>{$f['officePhone']|noescape}</td></tr>
+<td>{$fragments['officePhone']|noescape}</td></tr>
 <tr><td>{='PhoneMobile'|trans}</td>
-<td>{$f['userMobile']|noescape}</td></tr>
+<td>{$fragments['userMobile']|noescape}</td></tr>
 <tr><td>{='Fax'|trans}</td>
-<td>{$f['officeFax']|noescape}</td></tr>
+<td>{$fragments['officeFax']|noescape}</td></tr>
 <tr><td n:class="$show['emailRequired'] ? fieldrequired">{='EMail'|trans}</td>
-<td>{$f['emailPicto']|noescape}<input type="text" name="email" class="maxwidth500 widthcentpercentminusx" value="{$u->email ?? ''}" spellcheck="false"></td></tr>
+<td>{$fragments['emailPicto']|noescape}<input type="text" name="email" class="maxwidth500 widthcentpercentminusx" value="{$formValues->email ?? ''}" spellcheck="false"></td></tr>
 {* social networks (card.php l.1446-1474): not rendered, deferred *}
 {if $show['accountancyCode']}
 <tr><td>{='AccountancyCode'|trans}</td>
-<td><input type="text" class="maxwidthonsmartphone" name="accountancy_code" value="{$u->accountancyCode ?? ''}"></td></tr>
+<td><input type="text" class="maxwidthonsmartphone" name="accountancy_code" value="{$formValues->accountancyCode ?? ''}"></td></tr>
 {/if}
 {if $show['color']}
 <tr><td>{='Color'|trans}</td>
-<td>{$f['color']|noescape}</td></tr>
+<td>{$fragments['color']|noescape}</td></tr>
 {/if}
 {if $show['categories']}
-<tr><td>{$f['categoriesLabel']|noescape}</td><td>{$f['categories']|noescape}</td></tr>
+<tr><td>{$fragments['categoriesLabel']|noescape}</td><td>{$fragments['categories']|noescape}</td></tr>
 {/if}
 {if $show['language']}
-<tr><td>{$f['languageLabel']|noescape}</td>
-<td class="maxwidthonsmartphone">{$f['language']|noescape}</td></tr>
+<tr><td>{$fragments['languageLabel']|noescape}</td>
+<td class="maxwidthonsmartphone">{$fragments['language']|noescape}</td></tr>
 {/if}
-{$f['extrafields']|noescape}
+{$fragments['extrafields']|noescape}
 <tr><td class="tdtop">{='Signature'|trans}</td>
-<td class="wordbreak">{$f['signature']|noescape}</td></tr>
-<tr><td class="tdtop">{='NotePublic'|trans}</td><td>{$f['notePublic']|noescape}</td></tr>
-<tr><td class="tdtop">{='NotePrivate'|trans}</td><td>{$f['notePrivate']|noescape}</td></tr>
+<td class="wordbreak">{$fragments['signature']|noescape}</td></tr>
+<tr><td class="tdtop">{='NotePublic'|trans}</td><td>{$fragments['notePublic']|noescape}</td></tr>
+<tr><td class="tdtop">{='NotePrivate'|trans}</td><td>{$fragments['notePrivate']|noescape}</td></tr>
 </table><hr><table class="border centpercent">
 {if $show['warehouse']}
-<tr><td>{='DefaultWarehouse'|trans}</td><td>{$f['warehouse']|noescape}</td></tr>
+<tr><td>{='DefaultWarehouse'|trans}</td><td>{$fragments['warehouse']|noescape}</td></tr>
 {/if}
 <tr><td class="titlefieldcreate">{='PostOrFunction'|trans}</td>
-<td><input class="maxwidth200 maxwidth150onsmartphone" type="text" name="job" value="{$u->job ?? ''}"></td></tr>
+<td><input class="maxwidth200 maxwidth150onsmartphone" type="text" name="job" value="{$formValues->job ?? ''}"></td></tr>
 {if $canSeeSalary}
-<tr><td>{$f['thmLabel']|noescape}</td>
-<td><input size="8" type="text" name="thm" value="{$u->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+<tr><td>{$fragments['thmLabel']|noescape}</td>
+<td><input size="8" type="text" name="thm" value="{$formValues->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
 </tr>
-<tr><td>{$f['tjmLabel']|noescape}</td>
-<td><input size="8" type="text" name="tjm" value="{$u->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+<tr><td>{$fragments['tjmLabel']|noescape}</td>
+<td><input size="8" type="text" name="tjm" value="{$formValues->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
 </tr>
 <tr><td>{='Salary'|trans}</td>
-<td>{$f['salaryPicto']|noescape}<input class="width100" type="text" name="salary" value="{$u->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+<td>{$fragments['salaryPicto']|noescape}<input class="width100" type="text" name="salary" value="{$formValues->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
 </tr>
 {/if}
 <tr><td>{='WeeklyHours'|trans}</td>
-<td><input size="8" type="text" name="weeklyhours" value="{$u->weeklyHours ?? ''}"></td>
+<td><input size="8" type="text" name="weeklyhours" value="{$formValues->weeklyHours ?? ''}"></td>
 </tr>
 <tr><td>{='DateOfEmployment'|trans}</td>
-<td>{$f['dateEmployment']|noescape} - {$f['dateEmploymentEnd']|noescape}</td>
+<td>{$fragments['dateEmployment']|noescape} - {$fragments['dateEmploymentEnd']|noescape}</td>
 </tr>
 <tr><td>{='DateOfBirth'|trans}</td>
-<td>{$f['dateOfBirth']|noescape}</td>
+<td>{$fragments['dateOfBirth']|noescape}</td>
 </tr>
 </table>
-{$f['ficheEnd']|noescape}
-{$f['buttons']|noescape}
+{$fragments['ficheEnd']|noescape}
+{$fragments['buttons']|noescape}
 </form>
-{$f['passwordJs']|noescape}
+{$fragments['passwordJs']|noescape}
 {/if}
 {/block}
 
 {define editForm}
 {* The edit view of card.php (l.2498-3309): a field the current user may not edit is shown read-only,
    with its hidden input where card.php prints one. *}
-{var $u = $values}
+{var $formValues = $values}
 <form action="{$formAction}" method="POST" name="updateuser" enctype="multipart/form-data">
 <input type="hidden" name="token" value="{token()}">
 <input type="hidden" name="action" value="update">
 <input type="hidden" name="entity" value="{$entity}">
-{$f['ficheHead']|noescape}
+{$fragments['ficheHead']|noescape}
 <table class="border centpercent">
 {if $show['technicalId']}
-<tr><td class="titlefieldcreate">{='Ref'|trans}</td><td>{$u->id}</td></tr>
+<tr><td class="titlefieldcreate">{='Ref'|trans}</td><td>{$formValues->id}</td></tr>
 {/if}
 <tr><td class="titlefieldcreate fieldrequired">{='Lastname'|trans}</td>
-<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="lastname" value="{$u->lastname ?? ''}">{else}<input type="hidden" name="lastname" value="{$u->lastname ?? ''}">{$u->lastname}{/if}</td></tr>
+<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="lastname" value="{$formValues->lastname ?? ''}">{else}<input type="hidden" name="lastname" value="{$formValues->lastname ?? ''}">{$formValues->lastname}{/if}</td></tr>
 <tr><td>{='Firstname'|trans}</td>
-<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="firstname" value="{$u->firstname ?? ''}">{else}<input type="hidden" name="firstname" value="{$u->firstname ?? ''}">{$u->firstname}{/if}</td></tr>
+<td>{if $canEdit && !$ldap}<input class="minwidth100" type="text" name="firstname" value="{$formValues->firstname ?? ''}">{else}<input type="hidden" name="firstname" value="{$formValues->firstname ?? ''}">{$formValues->firstname}{/if}</td></tr>
 <tr><td><span class="fieldrequired">{='Login'|trans}</span></td>
-<td>{if $canEditLogin}<input maxlength="50" type="text" class="flat" name="login" value="{$u->login}" spellcheck="false">{else}<input type="hidden" name="login" value="{$u->login}">{$u->login}{/if}</td></tr>
+<td>{if $canEditLogin}<input maxlength="50" type="text" class="flat" name="login" value="{$formValues->login}" spellcheck="false">{else}<input type="hidden" name="login" value="{$formValues->login}">{$formValues->login}{/if}</td></tr>
 <tr><td>{='ExternalUser'|trans} ?</td>
-<td>{if isset($f['company'])}{$f['company']|noescape}{else}{$f['externalType']|noescape}{/if}</td></tr>
-<tr><td>{$f['adminLabel']|noescape}</td>
-<td>{$f['admin']|noescape}</td></tr>
+<td>{if isset($fragments['company'])}{$fragments['company']|noescape}{else}{$fragments['externalType']|noescape}{/if}</td></tr>
+<tr><td>{$fragments['adminLabel']|noescape}</td>
+<td>{$fragments['admin']|noescape}</td></tr>
 {if $show['civility']}
-<tr><td class="titlefieldcreate"><label for="civility_code">{='UserTitle'|trans}</label></td><td>{if isset($f['civility'])}{$f['civility']|noescape}{elseif $u->civility !== null && $u->civility !== ''}{=('Civility'.$u->civility)|trans}{/if}</td></tr>
+<tr><td class="titlefieldcreate"><label for="civility_code">{='UserTitle'|trans}</label></td><td>{if isset($fragments['civility'])}{$fragments['civility']|noescape}{elseif $formValues->civility !== null && $formValues->civility !== ''}{=('Civility'.$formValues->civility)|trans}{/if}</td></tr>
 {/if}
 <tr><td>{='Gender'|trans}</td>
-<td>{$f['gender']|noescape}</td></tr>
-<tr><td>{$f['employeeLabel']|noescape}</td><td><input type="checkbox" name="employee"{if !$canEdit} disabled{/if} value="1"{if $u->employee} checked="checked"{/if}></td></tr>
+<td>{$fragments['gender']|noescape}</td></tr>
+<tr><td>{$fragments['employeeLabel']|noescape}</td><td><input type="checkbox" name="employee"{if !$canEdit} disabled{/if} value="1"{if $formValues->employee} checked="checked"{/if}></td></tr>
 {if $show['hierarchy']}
 <tr><td class="titlefieldcreate">{='HierarchicalResponsible'|trans}</td>
-<td>{if !$canEdit}<input type="hidden" name="fk_user" value="{$u->supervisorId ?? 0}">{/if}{$f['supervisor']|noescape}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user" value="{$formValues->supervisorId ?? 0}">{/if}{$fragments['supervisor']|noescape}</td>
 </tr>
 {if $show['expenseValidator']}
-<tr><td class="titlefieldcreate">{$f['expenseValidatorLabel']|noescape}</td>
-<td>{if !$canEdit}<input type="hidden" name="fk_user_expense_validator" value="{$u->expenseValidatorId ?? 0}">{/if}{$f['expenseValidator']|noescape}</td>
+<tr><td class="titlefieldcreate">{$fragments['expenseValidatorLabel']|noescape}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user_expense_validator" value="{$formValues->expenseValidatorId ?? 0}">{/if}{$fragments['expenseValidator']|noescape}</td>
 </tr>
 {/if}
 {if $show['holidayValidator']}
-<tr><td class="titlefieldcreate">{$f['holidayValidatorLabel']|noescape}</td>
-<td>{if !$canEdit}<input type="hidden" name="fk_user_holiday_validator" value="{$u->holidayValidatorId ?? 0}">{/if}{$f['holidayValidator']|noescape}</td>
+<tr><td class="titlefieldcreate">{$fragments['holidayValidatorLabel']|noescape}</td>
+<td>{if !$canEdit}<input type="hidden" name="fk_user_holiday_validator" value="{$formValues->holidayValidatorId ?? 0}">{/if}{$fragments['holidayValidator']|noescape}</td>
 </tr>
 {/if}
 {/if}
 </table><hr><table class="border centpercent">
 <tr><td class="titlefieldcreate">{='RangeOfLoginValidity'|trans}</td>
-<td>{$f['dateStartValidity']|noescape} &nbsp; {$f['dateEndValidity']|noescape}</td>
+<td>{$fragments['dateStartValidity']|noescape} &nbsp; {$fragments['dateEndValidity']|noescape}</td>
 </tr>
 <tr><td class="titlefieldcreate">{='Password'|trans}</td>
-<td>{$f['passwordField']|noescape}</td></tr>
+<td>{$fragments['passwordField']|noescape}</td></tr>
 {if $show['forcePasswordChange']}
-<tr class="valigntop">{if $show['smallScreen']}<td colspan="2">{$f['forcePass']|noescape}</td>{else}<td></td><td>{$f['forcePass']|noescape}</td>{/if}</tr>
+<tr class="valigntop">{if $show['smallScreen']}<td colspan="2">{$fragments['forcePass']|noescape}</td>{else}<td></td><td>{$fragments['forcePass']|noescape}</td>{/if}</tr>
 {/if}
 {* api_key (card.php l.2876-2889), OpenID (l.2891-2902): not rendered *}
 </table><hr><table class="border centpercent">
-<tr><td class="tdtop titlefieldcreate">{$f['addressLabel']|noescape}</td>
-<td>{if $canEdit}<textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$u->address}</textarea>{else}{$u->address}{/if}</td></tr>
-<tr><td>{$f['zipLabel']|noescape}</td><td>{if $canEdit}{$f['zip']|noescape}{else}{$u->zip}{/if}</td></tr>
-<tr><td>{$f['townLabel']|noescape}</td><td>{if $canEdit}{$f['town']|noescape}{else}{$u->town}{/if}</td></tr>
-<tr><td>{$f['countryLabel']|noescape}</td><td>{$f['country']|noescape}</td></tr>
+<tr><td class="tdtop titlefieldcreate">{$fragments['addressLabel']|noescape}</td>
+<td>{if $canEdit}<textarea name="address" id="address" class="quatrevingtpercent" rows="3" wrap="soft">{$formValues->address}</textarea>{else}{$formValues->address}{/if}</td></tr>
+<tr><td>{$fragments['zipLabel']|noescape}</td><td>{if $canEdit}{$fragments['zip']|noescape}{else}{$formValues->zip}{/if}</td></tr>
+<tr><td>{$fragments['townLabel']|noescape}</td><td>{if $canEdit}{$fragments['town']|noescape}{else}{$formValues->town}{/if}</td></tr>
+<tr><td>{$fragments['countryLabel']|noescape}</td><td>{$fragments['country']|noescape}</td></tr>
 {if $show['state']}
-<tr><td class="tdoverflow">{$f['stateLabel']|noescape}</td><td>{$f['state']|noescape}</td></tr>
+<tr><td class="tdoverflow">{$fragments['stateLabel']|noescape}</td><td>{$fragments['state']|noescape}</td></tr>
 {/if}
 <tr><td>{='PhonePro'|trans}</td>
-<td>{if $canEdit && !$ldap}{$f['officePhone']|noescape}{else}{$f['officePhonePicto']|noescape}<input type="hidden" name="office_phone" value="{$u->officePhone ?? ''}">{$u->officePhone}{/if}</td></tr>
+<td>{if $canEdit && !$ldap}{$fragments['officePhone']|noescape}{else}{$fragments['officePhonePicto']|noescape}<input type="hidden" name="office_phone" value="{$formValues->officePhone ?? ''}">{$formValues->officePhone}{/if}</td></tr>
 <tr><td>{='PhoneMobile'|trans}</td>
-<td>{if $canEdit && !$ldap}{$f['userMobile']|noescape}{else}{$f['userMobilePicto']|noescape}<input type="hidden" name="user_mobile" value="{$u->userMobile ?? ''}">{$u->userMobile}{/if}</td></tr>
+<td>{if $canEdit && !$ldap}{$fragments['userMobile']|noescape}{else}{$fragments['userMobilePicto']|noescape}<input type="hidden" name="user_mobile" value="{$formValues->userMobile ?? ''}">{$formValues->userMobile}{/if}</td></tr>
 <tr><td>{='Fax'|trans}</td>
-<td>{if $canEdit && !$ldap}{$f['officeFax']|noescape}{else}{$f['officeFaxPicto']|noescape}<input type="hidden" name="office_fax" value="{$u->officeFax ?? ''}">{$u->officeFax}{/if}</td></tr>
+<td>{if $canEdit && !$ldap}{$fragments['officeFax']|noescape}{else}{$fragments['officeFaxPicto']|noescape}<input type="hidden" name="office_fax" value="{$formValues->officeFax ?? ''}">{$formValues->officeFax}{/if}</td></tr>
 <tr><td n:class="$show['emailRequired'] ? fieldrequired">{='EMail'|trans}</td>
-<td>{$f['emailPicto']|noescape}{if !$canEditEmail}{$u->email}{elseif $canEdit && !$ldap}<input class="minwidth100 maxwidth500 widthcentpercentminusx" type="text" name="email" value="{$u->email ?? ''}">{else}<input type="hidden" name="email" value="{$u->email ?? ''}">{$u->email}{/if}</td></tr>
+<td>{$fragments['emailPicto']|noescape}{if !$canEditEmail}{$formValues->email}{elseif $canEdit && !$ldap}<input class="minwidth100 maxwidth500 widthcentpercentminusx" type="text" name="email" value="{$formValues->email ?? ''}">{else}<input type="hidden" name="email" value="{$formValues->email ?? ''}">{$formValues->email}{/if}</td></tr>
 {* social networks (card.php l.3011-3031): not rendered, deferred *}
 </table><hr><table class="border centpercent">
 {if $show['warehouse']}
-<tr><td class="titlefieldcreate">{='DefaultWarehouse'|trans}</td><td>{$f['warehouse']|noescape}</td></tr>
+<tr><td class="titlefieldcreate">{='DefaultWarehouse'|trans}</td><td>{$fragments['warehouse']|noescape}</td></tr>
 {/if}
 {if $show['accountancyCode']}
 <tr><td class="titlefieldcreate">{='AccountancyCode'|trans}</td>
-<td>{if $canEdit}<input type="text" class="flat maxwidth300" name="accountancy_code" value="{$u->accountancyCode ?? ''}">{else}<input type="hidden" name="accountancy_code" value="{$u->accountancyCode ?? ''}">{$u->accountancyCode}{/if}</td></tr>
+<td>{if $canEdit}<input type="text" class="flat maxwidth300" name="accountancy_code" value="{$formValues->accountancyCode ?? ''}">{else}<input type="hidden" name="accountancy_code" value="{$formValues->accountancyCode ?? ''}">{$formValues->accountancyCode}{/if}</td></tr>
 {/if}
 {if $show['color']}
 <tr><td class="titlefieldcreate">{='ColorUser'|trans}</td>
-<td>{$f['color']|noescape}</td></tr>
+<td>{$fragments['color']|noescape}</td></tr>
 {/if}
 {* photo (card.php l.3076-3082): not rendered, the upload stays on the legacy card *}
 {if $show['categories']}
-<tr><td>{$f['categoriesLabel']|noescape}</td>
-<td>{$f['categories']|noescape}</td></tr>
+<tr><td>{$fragments['categoriesLabel']|noescape}</td>
+<td>{$fragments['categories']|noescape}</td></tr>
 {/if}
 {if $show['language']}
-<tr><td>{$f['languageLabel']|noescape}</td><td colspan="3">
-{$f['language']|noescape}</td></tr>
+<tr><td>{$fragments['languageLabel']|noescape}</td><td colspan="3">
+{$fragments['language']|noescape}</td></tr>
 {/if}
 <tr><td>{='Status'|trans}</td>
-<td>{$f['status']|noescape}</td></tr>
+<td>{$fragments['status']|noescape}</td></tr>
 {if $show['member']}
 <tr><td>{='LinkedToDolibarrMember'|trans}</td>
-<td>{$f['member']|noescape}</td></tr>
+<td>{$fragments['member']|noescape}</td></tr>
 {/if}
-{$f['extrafields']|noescape}
+{$fragments['extrafields']|noescape}
 <tr><td class="tdtop">{='Signature'|trans}</td>
-<td>{$f['signature']|noescape}</td></tr>
+<td>{$fragments['signature']|noescape}</td></tr>
 </table><hr><table class="border centpercent">
 <tr><td class="titlefieldcreate">{='PostOrFunction'|trans}</td>
-<td>{if $canEdit}<input type="text" class="minwidth300 maxwidth500" name="job" value="{$u->job ?? ''}">{else}<input type="hidden" name="job" value="{$u->job ?? ''}">{$u->job}{/if}</td></tr>
+<td>{if $canEdit}<input type="text" class="minwidth300 maxwidth500" name="job" value="{$formValues->job ?? ''}">{else}<input type="hidden" name="job" value="{$formValues->job ?? ''}">{$formValues->job}{/if}</td></tr>
 <tr><td>{='WeeklyHours'|trans}</td>
-<td>{if $canEdit}<input size="8" type="text" name="weeklyhours" value="{$u->weeklyHours ?? ''}">{else}{$u->weeklyHours}{/if}</td>
+<td>{if $canEdit}<input size="8" type="text" name="weeklyhours" value="{$formValues->weeklyHours ?? ''}">{else}{$formValues->weeklyHours}{/if}</td>
 </tr>
 {if $canSeeSalary}
 <tr><td>{='Salary'|trans}</td>
-<td>{$f['salaryPicto']|noescape}<input size="8" type="text" name="salary" value="{$u->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
+<td>{$fragments['salaryPicto']|noescape}<input size="8" type="text" name="salary" value="{$formValues->salary ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span></td>
 </tr>
-<tr><td>{$f['thmLabel']|noescape}</td>
-<td>{if $canEdit}<input size="8" type="text" name="thm" value="{$u->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$f['thm']|noescape}{/if}</td>
+<tr><td>{$fragments['thmLabel']|noescape}</td>
+<td>{if $canEdit}<input size="8" type="text" name="thm" value="{$formValues->thm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$fragments['thm']|noescape}{/if}</td>
 </tr>
-<tr><td>{$f['tjmLabel']|noescape}</td>
-<td>{if $canEdit}<input size="8" type="text" name="tjm" value="{$u->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$f['tjm']|noescape}{/if}</td>
+<tr><td>{$fragments['tjmLabel']|noescape}</td>
+<td>{if $canEdit}<input size="8" type="text" name="tjm" value="{$formValues->tjm ?? ''}"> <span class="opacitymedium">{$currencySymbol}</span>{else}{$fragments['tjm']|noescape}{/if}</td>
 </tr>
 {/if}
 <tr><td>{='DateEmployment'|trans}</td>
-<td>{$f['dateEmployment']|noescape}{if $employmentDash} - {/if}{$f['dateEmploymentEnd']|noescape}</td>
+<td>{$fragments['dateEmployment']|noescape}{if $employmentDash} - {/if}{$fragments['dateEmploymentEnd']|noescape}</td>
 </tr>
 <tr><td>{='DateOfBirth'|trans}</td>
-<td>{$f['dateOfBirth']|noescape}</td>
+<td>{$fragments['dateOfBirth']|noescape}</td>
 </tr>
 </table>
-{$f['ficheEnd']|noescape}
+{$fragments['ficheEnd']|noescape}
 <div class="center">
 <input value="{='Save'|trans}" class="button button-save" type="submit" name="save">
 &nbsp; &nbsp; &nbsp;
 <input value="{='Cancel'|trans}" class="button button-cancel" type="submit" name="cancel">
 </div>
 </form>
-{$f['passwordJs']|noescape}
+{$fragments['passwordJs']|noescape}
 {/define}

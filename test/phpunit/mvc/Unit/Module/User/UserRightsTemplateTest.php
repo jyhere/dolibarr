@@ -126,7 +126,7 @@ final class UserRightsTemplateTest extends TestCase
 			'bodyCss' => 'mod-user page-card_perms',
 			'formAction' => '/user/3/rights',
 			'chrome' => ['tabsHtml' => '<i data-frag="tabs"></i>', 'bannerHtml' => '<i data-frag="banner"></i>', 'tabsEndHtml' => '<i data-frag="tabsEnd"></i>', 'headerRowsHtml' => '<i data-frag="rows"></i>'],
-			'f' => $frags,
+			'fragments' => $frags,
 			'canEdit' => $canEdit,
 			'meIsAdmin' => $canEdit,
 			'targetIsAdmin' => $targetIsAdmin,

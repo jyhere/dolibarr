@@ -103,34 +103,34 @@ final class LegacyRedirectorTest extends TestCase
 			new LegacyRedirect('x.php', 'user_show', ['id' => 'id'], required: ['id']),
 			new LegacyRedirect('x.php', 'user_list'),
 		]);
-		$r = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
+		$redirector = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
 
-		self::assertSame('/user', $r->resolve('GET', 'x.php', ['a' => '1', 'id' => '2'], []));
-		self::assertSame('/user/2', $r->resolve('GET', 'x.php', ['id' => '2'], []));
-		self::assertSame('/user', $r->resolve('GET', 'x.php', [], []));
+		self::assertSame('/user', $redirector->resolve('GET', 'x.php', ['a' => '1', 'id' => '2'], []));
+		self::assertSame('/user/2', $redirector->resolve('GET', 'x.php', ['id' => '2'], []));
+		self::assertSame('/user', $redirector->resolve('GET', 'x.php', [], []));
 	}
 
 	public function testUnknownScriptAndMissingRouteVariable(): void
 	{
 		self::assertNull($this->redirector()->resolve('GET', 'nope.php', [], []));
 		$table = $this->table([new LegacyRedirect('y.php', 'user_show', ['id' => 'id'])]);
-		$r = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
-		self::assertNull($r->resolve('GET', 'y.php', [], []));
+		$redirector = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
+		self::assertNull($redirector->resolve('GET', 'y.php', [], []));
 	}
 
 	public function testUrlRootPrefix(): void
 	{
-		$r = new LegacyRedirector($this->table($this->rules()), new UrlGenerator($this->routes(), '/dolibarr'));
+		$redirector = new LegacyRedirector($this->table($this->rules()), new UrlGenerator($this->routes(), '/dolibarr'));
 
-		self::assertSame('/dolibarr/user/5', $r->resolve('GET', 'user/card.php', ['id' => '5'], []));
+		self::assertSame('/dolibarr/user/5', $redirector->resolve('GET', 'user/card.php', ['id' => '5'], []));
 	}
 
 	public function testFixedParamsFeedThePath(): void
 	{
 		$table = $this->table([new LegacyRedirect('z.php', 'user_show', fixedParams: ['id' => 7])]);
-		$r = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
+		$redirector = new LegacyRedirector($table, new UrlGenerator($this->routes(), ''));
 
-		self::assertSame('/user/7', $r->resolve('GET', 'z.php', [], []));
+		self::assertSame('/user/7', $redirector->resolve('GET', 'z.php', [], []));
 	}
 
 	public function testHostileValuesNeverRedirect(): void

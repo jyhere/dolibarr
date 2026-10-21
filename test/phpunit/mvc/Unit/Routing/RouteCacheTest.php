@@ -24,14 +24,14 @@ final class RouteCacheTest extends TestCase
 			$cache->store($defs, 's');
 			self::assertEquals($defs, $cache->load('s'));
 
-			$t = time() - 1000;
+			$timestamp = time() - 1000;
 			file_put_contents($controller, '<?php');
-			touch($file, $t);
+			touch($file, $timestamp);
 
-			touch($controller, $t - 10);
+			touch($controller, $timestamp - 10);
 			self::assertTrue($cache->isFresh([$controller]));
 
-			touch($controller, $t + 10);
+			touch($controller, $timestamp + 10);
 			self::assertFalse($cache->isFresh([$controller]));
 
 			unlink($controller);

@@ -105,7 +105,7 @@ final class UserLegacyRedirectsTest extends TestCase
 
 	public function testLogoutRouteRunsEvenIfOnlyLoginAllowed(): void
 	{
-		$routes = array_column(array_map(static fn ($d): array => $d->toArray(), (new RouteCompiler())->compile([LogoutController::class])), null, 'name');
+		$routes = array_column(array_map(static fn ($definition): array => $definition->toArray(), (new RouteCompiler())->compile([LogoutController::class])), null, 'name');
 
 		// user/logout.php defines it: the offline message of main.inc.php links to it (redirected to /logout)
 		self::assertSame(['EVEN_IF_ONLY_LOGIN_ALLOWED'], $routes['logout']['constants']);

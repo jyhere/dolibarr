@@ -116,15 +116,15 @@ final class UserUpdateTest extends TestCase
 		self::assertSame('Shown', $values->lastname);
 		self::assertSame($target->entity, $vm->data['entity']);
 		self::assertTrue($vm->data['canEdit']);
-		$f = $vm->data['f'];
-		self::assertIsArray($f);
+		$fields = $vm->data['fragments'];
+		self::assertIsArray($fields);
 		// An admin on another user: third party and contact selectors (card.php l.2575-2608)
-		self::assertStringContainsString('name="socid"', $f['company']);
-		self::assertStringContainsString('contactid', $f['company']);
-		self::assertStringContainsString('<select', $f['admin']);
-		self::assertStringContainsString('type="password"', $f['passwordField']);
-		self::assertStringContainsString('value=""', $f['passwordField']);
-		self::assertStringContainsString('/user/'.$target->id, $f['ficheHead']);
+		self::assertStringContainsString('name="socid"', $fields['company']);
+		self::assertStringContainsString('contactid', $fields['company']);
+		self::assertStringContainsString('<select', $fields['admin']);
+		self::assertStringContainsString('type="password"', $fields['passwordField']);
+		self::assertStringContainsString('value=""', $fields['passwordField']);
+		self::assertStringContainsString('/user/'.$target->id, $fields['ficheHead']);
 	}
 
 	public function testEditFormHidesAdminFlagForNonAdmin(): void
@@ -134,11 +134,11 @@ final class UserUpdateTest extends TestCase
 
 		$vm = $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.write']))->editForm($this->request('GET', [], [], $target->id), $target->id);
 
-		$f = $vm->data['f'];
-		self::assertIsArray($f);
-		self::assertStringNotContainsString('<select', $f['admin']);
-		self::assertStringContainsString('<input type="hidden" name="admin" value="0">', $f['admin']);
-		self::assertArrayNotHasKey('company', $f, 'Only an admin links a third party or a contact (card.php l.2557)');
+		$fields = $vm->data['fragments'];
+		self::assertIsArray($fields);
+		self::assertStringNotContainsString('<select', $fields['admin']);
+		self::assertStringContainsString('<input type="hidden" name="admin" value="0">', $fields['admin']);
+		self::assertArrayNotHasKey('company', $fields, 'Only an admin links a third party or a contact (card.php l.2557)');
 		self::assertFalse($vm->data['canEditLogin']);
 	}
 
@@ -271,7 +271,7 @@ final class UserUpdateTest extends TestCase
 		$row = $this->connection->fetchOne('SELECT api_key FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$target->id);
 		self::assertSame($apiKey, dolDecrypt((string) ($row?->api_key ?? '')), 'update() rewrites the api_key it fetched (encrypted)');
 		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
-		self::assertSame([$tagId], array_map(static fn (object $r): int => (int) $r->fk_categorie, $tags));
+		self::assertSame([$tagId], array_map(static fn (object $tag): int => (int) $tag->fk_categorie, $tags));
 	}
 
 	public function testEditorWithoutTheTagsRightKeepsTheTags(): void
@@ -296,7 +296,7 @@ final class UserUpdateTest extends TestCase
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('Pilot', $this->repo()->find($target->id)?->job);
 		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
-		self::assertSame([$tagId], array_map(static fn (object $r): int => (int) $r->fk_categorie, $tags));
+		self::assertSame([$tagId], array_map(static fn (object $tag): int => (int) $tag->fk_categorie, $tags));
 	}
 
 	public function testUpdateByNonAdminOnAdminIsForbidden(): void
@@ -391,9 +391,9 @@ final class UserUpdateTest extends TestCase
 
 		$vm = $this->controller($me)->editForm($this->request('GET', [], [], $target->id), $target->id);
 		self::assertFalse($vm->data['canEdit']);
-		$f = $vm->data['f'];
-		self::assertIsArray($f);
-		self::assertStringContainsString('type="password"', $f['passwordField']);
+		$fields = $vm->data['fragments'];
+		self::assertIsArray($fields);
+		self::assertStringContainsString('type="password"', $fields['passwordField']);
 
 		$response = $this->controller($me)->update(
 			$this->request('POST', [], $this->posted($target, ['lastname' => 'Hacked', 'password' => 'Changed-Pass-456!']), $target->id),
@@ -549,23 +549,23 @@ final class UserUpdateTest extends TestCase
 	}
 
 	/**
-	 * What the edit form posts for $u (the fields of card.php l.2498-3309), with $changes on top.
+	 * What the edit form posts for $targetUser (the fields of card.php l.2498-3309), with $changes on top.
 	 *
 	 * @param array<string, string|list<string>> $changes
 	 * @return array<string, string|list<string>>
 	 */
-	private function posted(User $u, array $changes): array
+	private function posted(User $targetUser, array $changes): array
 	{
 		return $changes + [
 			'action' => 'update',
-			'entity' => (string) $u->entity,
-			'lastname' => (string) $u->lastname,
-			'firstname' => (string) $u->firstname,
-			'login' => $u->login,
-			'admin' => $u->admin ? '1' : '0',
-			'employee' => $u->employee ? '1' : '0',
-			'email' => (string) $u->email,
-			'job' => (string) $u->job,
+			'entity' => (string) $targetUser->entity,
+			'lastname' => (string) $targetUser->lastname,
+			'firstname' => (string) $targetUser->firstname,
+			'login' => $targetUser->login,
+			'admin' => $targetUser->admin ? '1' : '0',
+			'employee' => $targetUser->employee ? '1' : '0',
+			'email' => (string) $targetUser->email,
+			'job' => (string) $targetUser->job,
 		];
 	}
 

@@ -53,7 +53,7 @@ final class RightsRepositoryTest extends TestCase
 		$catalog = $this->repository()->catalogFor(1, $entity, false)->byModule;
 
 		self::assertArrayHasKey('user', $catalog);
-		$userRights = array_map(static fn (RightDefinition $d): string => $d->perms.'.'.$d->subperms, $catalog['user']);
+		$userRights = array_map(static fn (RightDefinition $definition): string => $definition->perms.'.'.$definition->subperms, $catalog['user']);
 		self::assertContains('user.lire', $userRights);
 		self::assertContains('self.creer', $userRights);
 		foreach ($catalog as $module => $rights) {
@@ -68,7 +68,7 @@ final class RightsRepositoryTest extends TestCase
 
 		// The legacy computation (l.527-618, dol_sort_array() included) gives the same rights in the same order
 		self::assertSame($this->legacyOrder($entity), array_merge(...array_values(array_map(
-			static fn (array $rights): array => array_map(static fn (RightDefinition $d): int => $d->id, $rights),
+			static fn (array $rights): array => array_map(static fn (RightDefinition $definition): int => $definition->id, $rights),
 			$catalog
 		))));
 	}
@@ -112,8 +112,8 @@ final class RightsRepositoryTest extends TestCase
 		self::assertFalse($byId[$read]->inheritedFromGroup);
 		self::assertFalse($byId[$export]->granted);
 		self::assertTrue($byId[$export]->inheritedFromGroup);
-		$others = array_filter($byId, static fn (RightDefinition $d): bool => $d->id !== $read && $d->id !== $export);
-		self::assertSame([], array_filter($others, static fn (RightDefinition $d): bool => $d->granted || $d->inheritedFromGroup));
+		$others = array_filter($byId, static fn (RightDefinition $definition): bool => $definition->id !== $read && $definition->id !== $export);
+		self::assertSame([], array_filter($others, static fn (RightDefinition $definition): bool => $definition->granted || $definition->inheritedFromGroup));
 		self::assertSame([$entity => [$export]], $repo->groupRightsByEntity($target->id, $entity));
 		self::assertSame([$read], $repo->userRights($target->id, $entity));
 	}

@@ -56,7 +56,7 @@ final class NotesController
 		private readonly EventDispatcher $events,
 		private readonly Connection $connection,
 		private readonly FlashBag $flash,
-		private readonly Translator $t,
+		private readonly Translator $translator,
 		private readonly UrlGenerator $urls
 	) {
 	}
@@ -70,10 +70,10 @@ final class NotesController
 	 * @throws AccessDeniedException When the current user may not read the entity
 	 */
 	#[Route('/{entity}/{id}/note', methods: ['GET'], name: 'entity_note', requirements: ['entity' => '[a-z]+', 'id' => '\d+'])]
-	public function show(Request $r, string $entity, int $id): ViewModel
+	public function show(Request $request, string $entity, int $id): ViewModel
 	{
 		[$definition, $found, $perms, $tabs, $settings, $legacyObject] = $this->prepare($entity, $id);
-		$action = $this->action($r);
+		$action = $this->action($request);
 		$doActions = $this->doActions($settings, $legacyObject, $action);
 
 		$permissionNote = $perms->canEditNotes($found);
@@ -102,25 +102,25 @@ final class NotesController
 	 * @throws AccessDeniedException When the current user may not read the entity or edit its notes
 	 */
 	#[Route('/{entity}/{id}/note', methods: ['POST'], name: 'entity_note_post', requirements: ['entity' => '[a-z]+', 'id' => '\d+'])]
-	public function update(Request $r, string $entity, int $id): RedirectResponse
+	public function update(Request $request, string $entity, int $id): RedirectResponse
 	{
 		[$definition, $found, $perms, , $settings, $legacyObject] = $this->prepare($entity, $id);
 		$back = new RedirectResponse($this->urls->generate('entity_note', ['entity' => $definition->slug, 'id' => $id]));
 
 		// Invalid CSRF token (main.inc.php l.456-478, its warning already set): doActions with an empty action, nothing written
-		if ($r->get('errorcode', 'aZ09') === 'InvalidToken') {
+		if ($request->get('errorcode', 'aZ09') === 'InvalidToken') {
 			$this->doActions($settings, $legacyObject, '');
 
 			return $back;
 		}
 
 		// note.php l.83-90: the standard actions only when doActions returns 0
-		$action = $this->action($r);
+		$action = $this->action($request);
 		if ($this->doActions($settings, $legacyObject, $action)->code !== 0) {
 			return $back;
 		}
 		$field = self::ACTIONS[$action] ?? null;
-		if ($field === null || $this->param($r, 'cancel', 'alpha') !== '') {
+		if ($field === null || $this->param($request, 'cancel', 'alpha') !== '') {
 			return $back;
 		}
 		if (!$perms->canEditNotes($found)) {
@@ -131,7 +131,7 @@ final class NotesController
 			return $back;
 		}
 
-		$posted = $r->getPost($field, 'restricthtml', '');
+		$posted = $request->getPost($field, 'restricthtml', '');
 		$value = dol_html_entity_decode(is_string($posted) ? $posted : '', ENT_QUOTES | ENT_HTML5, 'UTF-8', 1);
 
 		$this->connection->begin();
@@ -200,7 +200,7 @@ final class NotesController
 		$tabs = $this->services->tabs($definition);
 		$settings = $tabs->legacyPageSettings('note');
 		foreach ($settings->translationDomains as $domain) {
-			$this->t->load($domain);
+			$this->translator->load($domain);
 		}
 		$this->hooks->init($settings->hookContexts);
 
@@ -236,14 +236,14 @@ final class NotesController
 		return $this->me->companyId() <= 0;
 	}
 
-	private function action(Request $r): string
+	private function action(Request $request): string
 	{
-		return $this->param($r, 'action', 'aZ09');
+		return $this->param($request, 'action', 'aZ09');
 	}
 
-	private function param(Request $r, string $name, string $filter): string
+	private function param(Request $request, string $name, string $filter): string
 	{
-		$value = $r->get($name, $filter);
+		$value = $request->get($name, $filter);
 
 		return is_string($value) ? $value : '';
 	}
