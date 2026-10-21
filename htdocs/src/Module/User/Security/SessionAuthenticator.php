@@ -123,6 +123,7 @@ final class SessionAuthenticator
 			if ($result->failed()) {
 				throw new AuthenticationException('Error in some hooks afterLogin: '.implode(', ', $result->errors));
 			}
+			$this->connection->commit();
 		} catch (\Throwable $e) {
 			$this->connection->rollback();
 			// Its data is emptied too: nothing may see a logged user for the rest of the request
@@ -131,7 +132,6 @@ final class SessionAuthenticator
 
 			throw $e instanceof AuthenticationException ? $e : new AuthenticationException('Error in some triggers USER_LOGIN or in some hooks afterLogin', 0, $e);
 		}
-		$this->connection->commit();
 	}
 
 	/**

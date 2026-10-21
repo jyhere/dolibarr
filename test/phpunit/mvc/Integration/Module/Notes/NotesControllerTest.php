@@ -7,6 +7,7 @@ namespace Dolibarr\Tests\Integration\Module\Notes;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Entity\EntityRegistry;
 use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
@@ -322,6 +323,41 @@ final class NotesControllerTest extends TestCase
 		self::assertSame(['Trigger says no'], $_SESSION['dol_events']['errors'] ?? []);
 	}
 
+	public function testFailingRollbackChainsTheOriginalException(): void
+	{
+		$target = $this->disposable('Target');
+		$dispatcher = new EventDispatcher();
+		$dispatcher->addListener(NoteUpdated::class, static function (): void {
+			throw new \RuntimeException('listener failed');
+		});
+		$db = new class extends \DoliDBMysqli {
+			public function __construct()
+			{
+			}
+
+			public function begin($textinlog = '')
+			{
+				return 1;
+			}
+
+			public function rollback($log = '')
+			{
+				$this->lasterror = 'forced rollback failure';
+
+				return false;
+			}
+		};
+
+		try {
+			$this->controller(null, null, $dispatcher, new Connection($db))->update($this->post($target->id, ['action' => 'setnote_public', 'note_public' => 'x']), 'user', $target->id);
+			self::fail('DatabaseException expected');
+		} catch (DatabaseException $e) {
+			self::assertStringContainsString('forced rollback failure', $e->getMessage());
+			self::assertInstanceOf(\RuntimeException::class, $e->getPrevious());
+			self::assertSame('listener failed', $e->getPrevious()->getMessage());
+		}
+	}
+
 	private function assertRedirectsToNotes(mixed $response, int $id): void
 	{
 		self::assertInstanceOf(RedirectResponse::class, $response);
@@ -389,7 +425,7 @@ final class NotesControllerTest extends TestCase
 		return $dispatcher;
 	}
 
-	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null, ?EventDispatcher $dispatcher = null): NotesController
+	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null, ?EventDispatcher $dispatcher = null, ?Connection $connection = null): NotesController
 	{
 		$ctx = $this->ctx;
 		$me ??= $this->legacyMe();
@@ -413,7 +449,7 @@ final class NotesControllerTest extends TestCase
 			new NotesRepository($this->connection),
 			new NotesChrome($ctx),
 			$dispatcher ?? $this->dispatcher(),
-			$this->connection,
+			$connection ?? $this->connection,
 			new FlashBag(),
 			new LegacyTranslator($ctx->langs),
 			$urls

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Module\User;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
@@ -113,6 +114,51 @@ final class SessionAuthenticatorTest extends TestCase
 		self::assertSame($before, $this->lastLoginDates($ctx));
 		self::assertArrayNotHasKey('dol_login', $_SESSION);
 		self::assertArrayNotHasKey('dol_authmode', $_SESSION);
+	}
+
+	public function testAFailingCommitRollsBackClearsTheSessionAndChainsTheError(): void
+	{
+		$_SESSION = ['token' => 'abc'];
+		$ctx = LegacyContext::fromGlobals();
+		$db = new class extends \DoliDBMysqli {
+			public int $rollbacks = 0;
+
+			public function __construct()
+			{
+			}
+
+			public function begin($textinlog = '')
+			{
+				return 1;
+			}
+
+			public function commit($log = '')
+			{
+				$this->lasterror = 'forced commit failure';
+
+				return 0;
+			}
+
+			public function rollback($log = '')
+			{
+				$this->rollbacks++;
+
+				return true;
+			}
+		};
+		$auth = new SessionAuthenticator($ctx, new LegacySession(), new LegacyConfig($ctx), new EventDispatcher(), new LegacyHooks($ctx->hookmanager), new Connection($db), new Logger());
+
+		try {
+			$auth->login($GLOBALS['user'], 'dolibarr', ['tz' => '2']);
+			self::fail('AuthenticationException expected');
+		} catch (AuthenticationException $e) {
+			self::assertInstanceOf(DatabaseException::class, $e->getPrevious());
+			self::assertSame('forced commit failure', $e->getPrevious()->getMessage());
+		}
+
+		self::assertSame(1, $db->rollbacks);
+		self::assertArrayNotHasKey('dol_login', $_SESSION);
+		self::assertArrayNotHasKey('token', $_SESSION);
 	}
 
 	/**
