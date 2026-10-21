@@ -480,8 +480,43 @@ expect_location_suffix "logout.php?noredirect=1 redirects to /logout?noredirect=
 expect_grep "note.php edit link with token ends on the edit mode page" '<form method="post" action="/user/1/note">' 1 -L -b "$J3" "$BASE/user/note.php?id=1&action=editnote_public&token=$TR"
 expect_code "card.php?id=1&action=clone stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=clone&token=$TR"
 expect_code "list.php?massaction stays legacy 200" 200 -b "$J3" "$BASE/user/list.php?massaction=preaffecttag&token=$TR"
+# Rules that carry a query or an action (the redirect does not check that the id exists: user 1 is only redirected, never changed)
+expect_location_suffix "card.php?id=1&action=edit redirects to /user/1/edit" "/user/1/edit" -b "$J3" "$BASE/user/card.php?id=1&action=edit"
+expect_location_suffix "card.php?id=1&action=disable redirects to /user/1?confirm=disable" "/user/1?confirm=disable" -b "$J3" "$BASE/user/card.php?id=1&action=disable"
+expect_location_suffix "card.php?action=create redirects to /user/new" "/user/new" -b "$J3" "$BASE/user/card.php?action=create"
+expect_location_suffix "list.php?search_login=adm redirects to /user?search_login=adm" "/user?search_login=adm" -b "$J3" "$BASE/user/list.php?search_login=adm"
+# Not redirected: the legacy page answers
+expect_code "card.php?id=1&action=presend stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=presend"
+expect_code "card.php without id stays legacy 200" 200 -b "$J3" "$BASE/user/card.php"
+# A POST is never redirected to an MVC route
+for POSTLABEL in "without token" "with token"; do
+	POSTDATA="action=update"
+	[ "$POSTLABEL" = "with token" ] && POSTDATA="action=update&token=$TR"
+	OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" -X POST -d "$POSTDATA" "$BASE/user/card.php?id=1")"
+	LOC="${OUT#* }"; LOC="${LOC#"$BASE"}"
+	case "$LOC" in /user/*) fail "POST card.php $POSTLABEL never redirects to a route" "$OUT";; *) ok "POST card.php $POSTLABEL not redirected to a route ($OUT)";; esac
+done
+# No loop: every covered URL ends on a 200 within 2 redirects
+for URL in "card.php?id=1" "card.php?id=1&action=edit" "card.php?id=1&action=disable" "card.php?action=create" "list.php" \
+	"list.php?search_login=adm" "note.php?id=1" "perms.php?id=1"; do
+	OUT="$(curl -s -L --max-redirs 5 -o /dev/null -w '%{num_redirects} %{http_code}' -b "$J3" "$BASE/user/$URL")"
+	[ "${OUT#* }" = "200" ] && [ "${OUT%% *}" -le 2 ] && ok "no redirect loop from $URL ($OUT)" || fail "redirect loop from $URL" "$OUT"
+done
+# Switch: MAIN_MVC_LEGACY_REDIRECTS=0 (read per request) leaves the legacy page alone; restored right after
+restore_redirect_switch() { smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_MVC_LEGACY_REDIRECTS'" > /dev/null || true; }
+trap 'restore_redirect_switch; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+restore_redirect_switch
+smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_MVC_LEGACY_REDIRECTS', '0', 'chaine', 0, 1)" > /dev/null
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" "$BASE/user/card.php?id=1")"
+restore_redirect_switch
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$OUT" = "200 " ] && ok "MAIN_MVC_LEGACY_REDIRECTS=0 disables the redirect (card.php?id=1 200, no Location)" || fail "redirect switch" "$OUT"
+expect_location_suffix "redirect back on once the switch row is removed" "/user/1" -b "$J3" "$BASE/user/card.php?id=1"
 OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" "$BASE/logout?urlfrom=//evil.example/x")"
 case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the host";; *) fail "logout urlfrom=//evil" "$OUT";; esac
+# Last: it ends the J3 session
+OUT="$(curl -s -L --max-redirs 5 -o /dev/null -w '%{num_redirects} %{http_code}' -b "$J3" "$BASE/user/logout.php?noredirect=1")"
+[ "${OUT#* }" = "200" ] && ok "logout.php?noredirect=1 ends ($OUT)" || fail "logout loop" "$OUT"
 
 echo "== Legacy login -> new world"
 newjar J2
