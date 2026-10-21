@@ -138,8 +138,40 @@ final class UserInputTest extends TestCase
 		self::assertSame('old', $entity->login);
 		self::assertSame('E1', $entity->refEmployee, 'ref_employee absent from the form is kept');
 		self::assertSame(4, $entity->warehouseId, 'fk_warehouse needs the stock module');
-		self::assertSame(7, $entity->companyId);
-		self::assertNull($entity->contactId);
+		// card.php l.2557: the third party and contact fields are only an admin's on another user
+		self::assertSame(2, $entity->companyId, 'socid is ignored from a non-admin');
+		self::assertSame(3, $entity->contactId, 'contactid is ignored from a non-admin');
+
+		$byAdmin = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config);
+		self::assertSame(0, $byAdmin->contactId);
+		self::assertSame(7, $byAdmin->toEntity($base, 1)->companyId);
+		self::assertNull($byAdmin->toEntity($base, 1)->contactId);
+	}
+
+	public function testCredentialsOfAnAdminAreKeptFromANonAdmin(): void
+	{
+		$request = GlobalsRequest::create('POST', '/user', [], ['lastname' => 'Doe', 'login' => 'hacked', 'email' => 'hacker@example.com', 'password' => 'Hacked-Pass-1!']);
+		$config = new LegacyConfig(LegacyContext::fromGlobals());
+		$admin = new User(id: 9, entity: 1, login: 'old', admin: true, email: 'admin@example.com');
+
+		$input = UserInput::fromRequest($request, $this->checker(rights: ['user.user.write', 'user.user.password']), $admin, $config);
+		self::assertSame('admin@example.com', $input->toEntity($admin, 1)->email);
+		self::assertSame('old', $input->toEntity($admin, 1)->login);
+		self::assertNull($input->password);
+
+		// An admin of an entity on a superadmin: neither the email, nor the login, nor the password, nor the flag
+		$superadmin = new User(id: 9, entity: 0, login: 'root', admin: true, email: 'root@example.com');
+		$entityAdmin = new UserPermissionChecker(new RightsCurrentUser(5, true, ['user.user.password'], 0, 1), false, true);
+		$input = UserInput::fromRequest($request->withInputFilter(new LegacyInputFilter()), $entityAdmin, $superadmin, $config);
+		$entity = $input->toEntity($superadmin, 0);
+		self::assertSame('root@example.com', $entity->email);
+		self::assertSame('root', $entity->login);
+		self::assertTrue($entity->admin);
+		self::assertNull($input->password);
+
+		// A plain target: the email posted is taken
+		$plain = new User(id: 9, entity: 1, login: 'old', email: 'plain@example.com');
+		self::assertSame('hacker@example.com', UserInput::fromRequest($request, $this->checker(rights: ['user.user.write']), $plain, $config)->toEntity($plain, 1)->email);
 	}
 
 	public function testNonAdminKeepsAdminFlagAndSelfEditKeepsLogin(): void
@@ -177,7 +209,7 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 		$base = new User(id: 9, entity: 1, login: 'old');
 
-		$entity = UserInput::fromRequest($request, $this->checker(), $base, $config)->toEntity($base, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config)->toEntity($base, 1);
 
 		self::assertSame(12, $entity->contactId);
 		self::assertSame(7, $entity->companyId);

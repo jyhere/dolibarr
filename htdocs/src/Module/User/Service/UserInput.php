@@ -22,7 +22,10 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
  * there, they have their own page).
  *
  * Hardening over card.php: the posted admin flag is ignored unless the checker's canEditAdminFlag() allows it,
- * so a non-admin creator cannot make an admin, and an external target is never made admin.
+ * so a non-admin creator cannot make an admin, and an external target is never made admin. On an update, the
+ * password, the login and the email are only read when canChangeCredentials() allows it (an admin's are not a
+ * non-admin's to change, a superadmin's not an entity admin's), and the third party and contact only when
+ * canLinkCompany() does (the form only shows them to an admin on another user, card.php l.2557).
  *
  * The extrafields come from ExtraFields::setOptionalsFromPost() (see InputFilter::optionals()): on an update
  * only the keys the form carries are returned and toEntity() merges them over the existing ones.
@@ -100,7 +103,8 @@ final class UserInput
 
 		// The password: card.php l.463 (create) and l.511 (update, with the right to set it).
 		$password = null;
-		if (!$update || $perms->canSetPassword($target)) {
+		$credentials = $perms->canChangeCredentials($target);
+		if (!$update || ($perms->canSetPassword($target) && $credentials)) {
 			$password = self::text($r, 'password', 'password');
 		}
 
@@ -116,9 +120,10 @@ final class UserInput
 			: self::id($r, 'fk_warehouse');
 
 		// l.653 (update): the contact link (raw UPDATE of fk_socpeople/fk_soc) only runs when the form carries
-		// contactid. Null tells the caller not to touch the link; toEntity() then keeps the stored ones.
+		// contactid, which it only does for an admin on another user (l.2557). Null tells the caller not to touch
+		// the link; toEntity() then keeps the stored ones.
 		$contactId = $companyId = null;
-		if ($update && $r->isSet('contactid')) {
+		if ($update && $perms->canLinkCompany($target) && $r->isSet('contactid')) {
 			$contactId = self::id($r, 'contactid') ?? 0;
 			$companyId = self::id($r, 'socid') ?? 0;
 		}
@@ -141,12 +146,12 @@ final class UserInput
 
 		return new self(
 			lastname: self::text($r, 'lastname') ?? '',
-			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
+			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) && $credentials ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
 			firstname: self::text($r, 'firstname'),
 			gender: self::text($r, 'gender', 'aZ09'),
 			civility: self::text($r, 'civility_code', 'aZ09'),
 			lang: self::text($r, 'default_lang', 'aZ09'),
-			email: self::email($r),
+			email: $credentials ? self::email($r) : $existing?->email,
 			job: self::text($r, 'job'),
 			officePhone: self::text($r, 'office_phone'),
 			officeFax: self::text($r, 'office_fax'),

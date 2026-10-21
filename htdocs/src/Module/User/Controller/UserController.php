@@ -101,9 +101,10 @@ final class UserController
 
 	/**
 	 * Actions confirm_disable (card.php l.215-228) and confirm_enable (l.230-250), then the card.
+	 * Each one also needs its button (DisableUser, Reactivate: canDeactivate(), canReactivate()).
 	 *
 	 * @throws NotFoundException
-	 * @throws AccessDeniedException
+	 * @throws AccessDeniedException When the action posted has no button for the current user
 	 */
 	#[Route('/user/{id}/status', methods: ['POST'], name: 'user_status', requirements: ['id' => '\d+'])]
 	public function setStatus(Request $r, int $id): RedirectResponse
@@ -112,13 +113,19 @@ final class UserController
 		$action = $this->standardAction($r, $user, true);
 
 		if ($action === 'confirm_disable') {
+			if (!$this->perms->canDeactivate($user)) {
+				throw new AccessDeniedException();
+			}
 			if ($this->perms->canDisable($user)) {
 				$this->writeOrFlash(fn () => $this->service->setStatus($id, false));
 			} elseif ($this->perms->canEnable($user) && !$this->perms->canDeleteAdminTarget($user)) {
 				// Allowed, not oneself, refused as an admin by a non-admin (card.php l.218-221)
 				$this->flash->error($this->t->trans('OnlyAdminUsersCanDisableAdminUsers'));
 			}
-		} elseif ($action === 'confirm_enable' && $this->perms->canEnable($user)) {
+		} elseif ($action === 'confirm_enable') {
+			if (!$this->perms->canReactivate($user)) {
+				throw new AccessDeniedException();
+			}
 			// card.php l.235-241
 			$limit = $this->config->limitUsers();
 			if ($limit > 0 && $this->repo->countForQuota() >= $limit) {
@@ -133,10 +140,11 @@ final class UserController
 	}
 
 	/**
-	 * Action confirm_delete (card.php l.252-285): the list on success, else the card.
+	 * Action confirm_delete (card.php l.252-285): the list on success, else the card. It also needs the
+	 * DeleteUser button (canSeeDeleteButton()).
 	 *
 	 * @throws NotFoundException
-	 * @throws AccessDeniedException
+	 * @throws AccessDeniedException When the current user has no DeleteUser button
 	 */
 	#[Route('/user/{id}/delete', methods: ['POST'], name: 'user_delete', requirements: ['id' => '\d+'])]
 	public function delete(Request $r, int $id): RedirectResponse
@@ -144,6 +152,9 @@ final class UserController
 		$user = $this->prepareAction($id);
 
 		if ($this->standardAction($r, $user, true) === 'confirm_delete') {
+			if (!$this->perms->canSeeDeleteButton($user)) {
+				throw new AccessDeniedException();
+			}
 			if ($this->perms->canDelete($user)) {
 				if ($this->writeOrFlash(fn () => $this->service->delete($id))) {
 					$this->flash->success($this->t->trans('RecordDeleted'));
@@ -161,16 +172,20 @@ final class UserController
 
 	/**
 	 * Actions confirm_password and confirm_passwordsend (card.php l.776-797): a new generated password,
-	 * shown or sent by email, then the card (card.php renders it without redirection).
+	 * shown or sent by email, then the card (card.php renders it without redirection). Each one also needs its
+	 * button (ReinitPassword, SendNewPassword: see passwordButton()).
 	 *
 	 * @throws NotFoundException
-	 * @throws AccessDeniedException
+	 * @throws AccessDeniedException When the action posted has no button for the current user
 	 */
 	#[Route('/user/{id}/password', methods: ['POST'], name: 'user_password_post', requirements: ['id' => '\d+'])]
 	public function setPassword(Request $r, int $id): RedirectResponse
 	{
 		$user = $this->prepareAction($id);
 		$action = $this->standardAction($r, $user, true);
+		if (($action === 'confirm_password' || $action === 'confirm_passwordsend') && !$this->passwordButton($user, $action === 'confirm_passwordsend')) {
+			throw new AccessDeniedException();
+		}
 
 		if ($action === 'confirm_password' && $this->perms->canSetPassword($user)) {
 			$clear = '';
@@ -186,6 +201,20 @@ final class UserController
 		}
 
 		return new RedirectResponse($this->urls->generate('user_show', ['id' => $id]));
+	}
+
+	/**
+	 * card.php l.2339-2362: the ReinitPassword ($send false) or SendNewPassword button shown and enabled.
+	 */
+	private function passwordButton(User $user, bool $send): bool
+	{
+		if ($this->config->string('USER_PASSWORD_GENERATED') === 'none' || $user->status !== 1) {
+			return false;
+		}
+
+		return $send
+			? $this->perms->canSendNewPassword($user, $user->isLdapManaged) && $user->email !== null && $user->email !== ''
+			: $this->perms->canReinitPassword($user, $user->isLdapManaged);
 	}
 
 	/**
@@ -443,7 +472,8 @@ final class UserController
 			return new RedirectResponse(SafeRedirect::relativePath($candidate === '' ? null : $candidate, $this->config->urlRoot()) ?? $card);
 		}
 
-		if (!$this->perms->canEdit($existing)) {
+		// prepareEdit(): canModify() or canModifyForPassword()
+		if (!$this->perms->canModify($existing)) {
 			return $this->updatePasswordOnly($r, $existing, $doActions) ?? new RedirectResponse($card);
 		}
 
@@ -594,7 +624,8 @@ final class UserController
 
 	/**
 	 * card.php l.79, l.119, l.152-154 (read access) and l.478 (edit or password right): the user, the domains
-	 * and the hooks of the edit view.
+	 * and the hooks of the edit view. The view and its POST also need the Modify button (l.2307-2318:
+	 * canModify() or canModifyForPassword()).
 	 *
 	 * @throws NotFoundException
 	 * @throws AccessDeniedException
@@ -602,7 +633,7 @@ final class UserController
 	private function prepareEdit(int $id): User
 	{
 		$user = $this->findReadable($id);
-		if (!$this->perms->canEdit($user) && !$this->perms->canSetPassword($user)) {
+		if (!$this->perms->canModify($user) && !$this->perms->canModifyForPassword($user, $user->isLdapManaged)) {
 			throw new AccessDeniedException();
 		}
 		foreach ([...self::DOMAINS, 'errors'] as $domain) {
@@ -658,12 +689,13 @@ final class UserController
 			$this->t->load('salaries');
 		}
 		$canEditAdminFlag = $this->perms->canEditAdminFlag($existing);
+		$credentials = $this->perms->canChangeCredentials($existing);
 		$rights = new UserEditRights(
-			$this->perms->canEdit($existing),
-			$this->perms->canSetPassword($existing),
-			$this->perms->canSendPassword($existing),
-			$this->perms->canEditLogin($existing, $existing->isLdapManaged),
-			$this->me->isAdmin() && !$this->perms->isSelf($existing),
+			$this->perms->canModify($existing),
+			$this->perms->canSetPassword($existing) && $credentials,
+			$this->perms->canSendPassword($existing) && $credentials,
+			$this->perms->canEditLogin($existing, $existing->isLdapManaged) && $credentials,
+			$this->perms->canLinkCompany($existing),
 			$this->repo->countInEntity()
 		);
 		// card.php l.977-979

@@ -219,6 +219,43 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canEditAdminFlag(new User(id: 0, entity: 1, login: '')));
 	}
 
+	public function testCredentialsOfAnAdminAreProtected(): void
+	{
+		$plain = $this->user(id: 6);
+		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);
+		$superadmin = new User(id: 9, entity: 0, login: 'root', admin: true);
+		$writer = $this->checker(me: 5, rights: ['user.user.write', 'user.user.password']);
+		$entityAdmin = $this->checker(me: 5, admin: true, rights: ['user.user.password']);
+		$superAdmin = $this->checker(me: 5, admin: true, rights: ['user.user.password'], meEntity: 0);
+
+		// A non-admin never changes the password, login or email of an admin
+		self::assertTrue($writer->canChangeCredentials($plain));
+		self::assertFalse($writer->canChangeCredentials($admin));
+		self::assertFalse($writer->canSendNewPassword($admin, false));
+		self::assertTrue($writer->canSendNewPassword($plain, false));
+		// An admin of an entity never changes those of a superadmin, nor his admin flag
+		self::assertTrue($entityAdmin->canChangeCredentials($admin));
+		self::assertFalse($entityAdmin->canChangeCredentials($superadmin));
+		self::assertFalse($entityAdmin->canReinitPassword($superadmin, false));
+		self::assertFalse($entityAdmin->canSendNewPassword($superadmin, false));
+		self::assertFalse($entityAdmin->canModifyForPassword($superadmin, false));
+		self::assertFalse($entityAdmin->canEditAdminFlag($superadmin));
+		self::assertTrue($entityAdmin->canEditAdminFlag($admin));
+		// A superadmin does
+		self::assertTrue($superAdmin->canChangeCredentials($superadmin));
+		self::assertTrue($superAdmin->canReinitPassword($superadmin, false));
+		self::assertTrue($superAdmin->canEditAdminFlag($superadmin));
+		// Oneself always
+		self::assertTrue($this->checker(me: 9, admin: true)->canChangeCredentials($superadmin));
+	}
+
+	public function testOnlyAnAdminOnAnotherUserLinksTheCompany(): void
+	{
+		self::assertTrue($this->checker(me: 5, admin: true)->canLinkCompany($this->user(id: 6)));
+		self::assertFalse($this->checker(me: 5, admin: true)->canLinkCompany($this->user(id: 5)));
+		self::assertFalse($this->checker(me: 5, rights: ['user.user.write'])->canLinkCompany($this->user(id: 6)));
+	}
+
 	public function testOnlyAdminCanDeleteAdmin(): void
 	{
 		$admin = new User(id: 8, entity: 1, login: 'u8', admin: true);

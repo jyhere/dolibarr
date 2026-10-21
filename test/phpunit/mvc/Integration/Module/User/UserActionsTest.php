@@ -20,6 +20,7 @@ use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Legacy\LegacyTranslator;
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
+use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\View\Confirm;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Controller\UserListController;
@@ -98,13 +99,11 @@ final class UserActionsTest extends TestCase
 	{
 		$actor = $this->disposable('Actor');
 
-		// card.php l.216: a user can't disable himself, nothing is said
-		$response = $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.delete']))
-			->setStatus($this->post($actor->id, ['action' => 'confirm_disable', 'confirm' => 'yes']), $actor->id);
+		// card.php l.216 and l.2371: a user can't disable himself, his button is disabled: the POST is refused
+		$this->assertForbidden(fn () => $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.delete']))
+			->setStatus($this->post($actor->id, ['action' => 'confirm_disable', 'confirm' => 'yes']), $actor->id));
 
-		$this->assertRedirectsToCard($response, $actor->id);
 		self::assertSame(1, $this->repo()->find($actor->id)?->status);
-		self::assertArrayNotHasKey('errors', $_SESSION['dol_events'] ?? []);
 	}
 
 	public function testNonAdminCannotDisableAdmin(): void
@@ -220,14 +219,12 @@ final class UserActionsTest extends TestCase
 		$target = $this->disposable('Superadmin', true);
 		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
 
-		// An admin of entity 1 (not a superadmin)
-		$response = $this->controller(new RightsCurrentUser($actor->id, true, [], 0, 1))
-			->delete($this->post($target->id, ['action' => 'confirm_delete', 'confirm' => 'yes']), $target->id);
+		// An admin of entity 1 (not a superadmin): card.php l.2382-2383 shows him no DeleteUser button on a user of
+		// entity 0 (the refusal of l.264-267 is behind it), the POST is refused
+		$this->assertForbidden(fn () => $this->controller(new RightsCurrentUser($actor->id, true, [], 0, 1))
+			->delete($this->post($target->id, ['action' => 'confirm_delete', 'confirm' => 'yes']), $target->id));
 
-		$this->assertRedirectsToCard($response, $target->id);
 		self::assertNotNull($this->repo()->find($target->id));
-		// card.php l.264-267
-		self::assertSame([$this->trans('OnlySuperAdminUsersCanDeleteSuperAdminUsers')], $_SESSION['dol_events']['errors'] ?? []);
 	}
 
 	public function testResetPasswordReturnsNewClearAndFlashesIt(): void
@@ -293,11 +290,55 @@ final class UserActionsTest extends TestCase
 		$target = $this->disposable('Target');
 		$before = $this->passCrypted($target->id);
 
-		// card.php l.156: setting another user's password also needs to be an admin
-		$this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.password']))
-			->setPassword($this->post($target->id, ['action' => 'confirm_password', 'confirm' => 'yes']), $target->id);
+		// card.php l.156: setting another user's password also needs to be an admin (no ReinitPassword button)
+		$this->assertForbidden(fn () => $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.password']))
+			->setPassword($this->post($target->id, ['action' => 'confirm_password', 'confirm' => 'yes']), $target->id));
 
 		self::assertSame($before, $this->passCrypted($target->id));
+	}
+
+	public function testAdminOfAnEntityCannotResetThePasswordOfASuperadmin(): void
+	{
+		$actor = $this->disposable('Actor', true);
+		$target = $this->disposable('Superadmin', true, 'mvc_test_'.uniqid().'@example.com');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
+		$before = $this->passCrypted($target->id);
+		$me = new RightsCurrentUser($actor->id, true, ['user.user.read', 'user.user.password'], 0, 1);
+
+		$this->assertForbidden(fn () => $this->controller($me)->setPassword($this->post($target->id, ['action' => 'confirm_password', 'confirm' => 'yes']), $target->id));
+		$this->assertForbidden(fn () => $this->controller($me)->setPassword($this->post($target->id, ['action' => 'confirm_passwordsend', 'confirm' => 'yes']), $target->id));
+
+		self::assertSame($before, $this->passCrypted($target->id));
+	}
+
+	public function testNonAdminCannotSendANewPasswordToAnAdmin(): void
+	{
+		$actor = $this->disposable('Actor');
+		$target = $this->disposable('Admin', true, 'mvc_test_'.uniqid().'@example.com');
+		$before = $this->passCrypted($target->id);
+
+		$this->assertForbidden(fn () => $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.password']))
+			->setPassword($this->post($target->id, ['action' => 'confirm_passwordsend', 'confirm' => 'yes']), $target->id));
+
+		self::assertSame($before, $this->passCrypted($target->id));
+	}
+
+	public function testActionsWithoutTheirButtonAreForbidden(): void
+	{
+		$actor = $this->disposable('Actor');
+		$target = $this->disposable('Target');
+		$reader = $this->nonAdmin($actor, ['user.user.read']);
+
+		// No DeleteUser button without the delete right (card.php l.2382)
+		$this->assertForbidden(fn () => $this->controller($reader)->delete($this->post($target->id, ['action' => 'confirm_delete', 'confirm' => 'yes']), $target->id));
+		// No Reactivate button on an enabled user (l.2365), no DisableUser button without the right (l.2371)
+		$this->assertForbidden(fn () => $this->controller()->setStatus($this->post($target->id, ['action' => 'confirm_enable', 'confirm' => 'yes']), $target->id));
+		$this->assertForbidden(fn () => $this->controller($reader)->setStatus($this->post($target->id, ['action' => 'confirm_disable', 'confirm' => 'yes']), $target->id));
+		// No ReinitPassword button on a disabled user (l.2340)
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET statut = 0 WHERE rowid = '.$target->id);
+		$this->assertForbidden(fn () => $this->controller()->setPassword($this->post($target->id, ['action' => 'confirm_password', 'confirm' => 'yes']), $target->id));
+
+		self::assertNotNull($this->repo()->find($target->id));
 	}
 
 	public function testAddAndRemoveGroup(): void
@@ -443,6 +484,19 @@ final class UserActionsTest extends TestCase
 	private function trans(string $key, string ...$args): string
 	{
 		return (new LegacyTranslator($this->ctx->langs))->trans($key, ...$args);
+	}
+
+	/**
+	 * @param callable(): mixed $action
+	 */
+	private function assertForbidden(callable $action): void
+	{
+		try {
+			$action();
+			self::fail('AccessDeniedException expected');
+		} catch (AccessDeniedException) {
+			$this->addToAssertionCount(1);
+		}
 	}
 
 	private function assertNoIsPreselected(string $dialog): void

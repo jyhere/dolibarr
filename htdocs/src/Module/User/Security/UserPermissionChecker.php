@@ -208,27 +208,52 @@ final class UserPermissionChecker implements EntityPermissions
 	}
 
 	/**
-	 * Modify button through the password right, when canModify() is false: card.php l.2315.
+	 * Modify button through the password right, when canModify() is false: card.php l.2315, hardened with
+	 * canChangeCredentials() (the only thing that form lets change is the password).
 	 */
 	public function canModifyForPassword(User $target, bool $ldapManaged): bool
 	{
-		return $this->canSetPassword($target) && !$ldapManaged && $this->inEditableEntity($target);
+		return $this->canSetPassword($target) && !$ldapManaged && $this->inEditableEntity($target) && $this->canChangeCredentials($target);
 	}
 
 	/**
-	 * ReinitPassword button on an enabled user: card.php l.2344.
+	 * ReinitPassword button on an enabled user: card.php l.2344, hardened with canChangeCredentials().
 	 */
 	public function canReinitPassword(User $target, bool $ldapManaged): bool
 	{
-		return !$this->isSelf($target) && $this->canSetPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target);
+		return !$this->isSelf($target) && $this->canSetPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target)
+			&& $this->canChangeCredentials($target);
 	}
 
 	/**
-	 * SendNewPassword button on an enabled user: card.php l.2353.
+	 * SendNewPassword button on an enabled user: card.php l.2353, hardened with canChangeCredentials().
 	 */
 	public function canSendNewPassword(User $target, bool $ldapManaged): bool
 	{
-		return !$this->isSelf($target) && $this->canSendPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target);
+		return !$this->isSelf($target) && $this->canSendPassword($target) && $target->login !== '' && !$ldapManaged && $this->inManageableEntity($target)
+			&& $this->canChangeCredentials($target);
+	}
+
+	/**
+	 * Hardening over card.php (which only protects the admins against a deletion or a disabling): the
+	 * password, the login and the email of an admin are only changed by an admin, those of a superadmin
+	 * (an admin without entity) only by a superadmin. Oneself always.
+	 */
+	public function canChangeCredentials(User $target): bool
+	{
+		if ($this->isSelf($target) || !$target->admin) {
+			return true;
+		}
+
+		return $this->me->isAdmin() && !($target->entity === 0 && $this->me->entity() !== 0);
+	}
+
+	/**
+	 * Third party and contact fields of the edit form: card.php l.2557, an admin on another user.
+	 */
+	public function canLinkCompany(User $target): bool
+	{
+		return $this->me->isAdmin() && !$this->isSelf($target);
 	}
 
 	/**
@@ -277,11 +302,12 @@ final class UserPermissionChecker implements EntityPermissions
 	/**
 	 * Admin flag editable: card.php l.520-524 on update (an admin, not on himself), l.1184 on
 	 * creation (admin only) and l.2620-2626 (never on an external user). The "last superadmin"
-	 * protection of l.2627-2630 needs user counts and is left to the form.
+	 * protection of l.2627-2630 needs user counts and is left to the form. Hardened over card.php: the flag of a
+	 * superadmin is only changed by a superadmin (canChangeCredentials()).
 	 */
 	public function canEditAdminFlag(User $target): bool
 	{
-		return $this->me->isAdmin() && !$this->isSelf($target) && !$target->isExternal();
+		return $this->me->isAdmin() && !$this->isSelf($target) && !$target->isExternal() && $this->canChangeCredentials($target);
 	}
 
 	/**

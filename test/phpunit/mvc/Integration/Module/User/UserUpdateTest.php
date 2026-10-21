@@ -301,6 +301,62 @@ final class UserUpdateTest extends TestCase
 		self::assertSame($admin->login, $after?->login);
 	}
 
+	public function testExternalSelfEditorCannotUnlinkCompany(): void
+	{
+		$target = $this->disposable('External');
+		$companyId = $this->company('MVC external company');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_soc = '.$companyId.' WHERE rowid = '.$target->id);
+		$target = $this->repo()->find($target->id);
+		self::assertNotNull($target);
+
+		// An external user editing his own card is not shown the selectors (card.php l.2557)
+		$me = new RightsCurrentUser($target->id, false, ['user.self.write'], $companyId);
+		$response = $this->controller($me)->update(
+			$this->request('POST', [], $this->posted($target, ['lastname' => 'Renamed', 'contactid' => '0', 'socid' => '0']), $target->id),
+			$target->id
+		);
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		$row = $this->connection->fetchOne('SELECT lastname, fk_soc FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$target->id);
+		self::assertSame('Renamed', $row?->lastname);
+		self::assertSame($companyId, (int) $row?->fk_soc, 'fk_soc unchanged');
+	}
+
+	public function testNonAdminWriterKeepsTheEmailOfAnAdmin(): void
+	{
+		$actor = $this->disposable('Actor');
+		$admin = $this->disposable('Admin', true);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET email = 'admin@example.com' WHERE rowid = ".$admin->id);
+		$admin = $this->repo()->find($admin->id);
+		self::assertNotNull($admin);
+
+		$this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.write']))->update(
+			$this->request('POST', [], $this->posted($admin, ['job' => 'Pilot', 'email' => 'hacker@example.com']), $admin->id),
+			$admin->id
+		);
+
+		$after = $this->repo()->find($admin->id);
+		self::assertSame('Pilot', $after?->job);
+		self::assertSame('admin@example.com', $after?->email);
+	}
+
+	public function testEditOfAnLdapUserByAPasswordOnlyActorIsForbidden(): void
+	{
+		$actor = $this->disposable('Actor');
+		$target = $this->disposable('Target');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET ldap_sid = 'S-1-5-21' WHERE rowid = ".$target->id);
+		$before = $this->passCrypted($target->id);
+		// No Modify button (card.php l.2315: !$object->ldap_sid): the POST is refused too
+		$me = new RightsCurrentUser($actor->id, true, ['user.user.read', 'user.user.password']);
+
+		try {
+			$this->controller($me)->update($this->request('POST', [], $this->posted($target, ['password' => 'Changed-Pass-456!']), $target->id), $target->id);
+			self::fail('AccessDeniedException expected');
+		} catch (AccessDeniedException) {
+		}
+		self::assertSame($before, $this->passCrypted($target->id));
+	}
+
 	public function testPasswordOnlyActorCanOnlyChangePassword(): void
 	{
 		$actor = $this->disposable('Actor');
