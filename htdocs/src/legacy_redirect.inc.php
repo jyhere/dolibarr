@@ -8,11 +8,10 @@
 
 declare(strict_types=1);
 
-if (!class_exists(\Dolibarr\Core\Legacy\Redirect\LegacyRedirectBootstrap::class)) {
-	require_once __DIR__.'/autoload.php';
-}
-
 try {
+	if (!class_exists(\Dolibarr\Core\Legacy\Redirect\LegacyRedirectBootstrap::class)) {
+		require_once __DIR__.'/autoload.php';
+	}
 	$mvcRedirectEnabled = \Dolibarr\Core\Legacy\Redirect\LegacyRedirectBootstrap::isEnabled(
 		isset($dolibarr_main_mvc_legacy_redirects) && is_scalar($dolibarr_main_mvc_legacy_redirects) ? (string) $dolibarr_main_mvc_legacy_redirects : null,
 		getDolGlobalString('MAIN_MVC_LEGACY_REDIRECTS', '1')

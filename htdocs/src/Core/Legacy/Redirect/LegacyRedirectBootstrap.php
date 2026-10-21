@@ -35,9 +35,27 @@ final class LegacyRedirectBootstrap
 		if ($target === null) {
 			return;
 		}
+		if (self::emit($target)) {
+			exit;
+		}
+	}
+
+	/**
+	 * Send the 302. False (nothing sent, the legacy page renders) when output has already started.
+	 *
+	 * @param (callable(): bool)|null $headersSent Replaces headers_sent(), for tests
+	 */
+	public static function emit(string $target, ?callable $headersSent = null): bool
+	{
+		if ($headersSent !== null ? $headersSent() : headers_sent()) {
+			self::log('MVC legacy redirect: headers already sent, not redirecting to '.$target);
+
+			return false;
+		}
 		header('Location: '.$target, true, 302);
 		header('Cache-Control: no-store');
-		exit;
+
+		return true;
 	}
 
 	/**
@@ -100,6 +118,7 @@ final class LegacyRedirectBootstrap
 	 * @param list<ModuleInterface>|null $modules  Modules, src/modules.php when null (tests inject a list)
 	 * @param string|null                $dataRoot Cache root, DOL_DATA_ROOT when null
 	 * @param bool|null                  $prod     Production mode (no freshness check), from conf.php when null
+	 * @param (\Closure(): list<\Dolibarr\Core\Routing\RouteDefinition>)|null $definitions Route definitions provider, the cached loader when null (tests spy on it)
 	 */
 	public static function target(
 		string $method,
@@ -109,7 +128,8 @@ final class LegacyRedirectBootstrap
 		bool $enabled,
 		?array $modules = null,
 		?string $dataRoot = null,
-		?bool $prod = null
+		?bool $prod = null,
+		?\Closure $definitions = null
 	): ?string {
 		if (!$enabled) {
 			return null;
@@ -125,11 +145,31 @@ final class LegacyRedirectBootstrap
 				$modules = require $modulesFile;
 			}
 
+			// Hot path: stamp from the module class names only, then the cached rules of this script only.
 			$loader = new RouteDefinitionsLoader($dataRoot, $prod, (string) \constant('DOL_VERSION'), $modules, $modulesFile);
-			$definitions = $loader->load();
-			$table = self::table($modules, $definitions, $loader->stamp(), $dataRoot, $prod, $modulesFile);
+			$definitions ??= static fn (): array => $loader->load();
+			$stamp = $loader->stamp();
+			$cache = new RedirectCache($dataRoot.'/cache/legacy_redirects.php');
 
-			return (new LegacyRedirector($table, new UrlGenerator($definitions, DOL_URL_ROOT)))->resolve($method, $script, $query, $headers);
+			$rows = self::cachedRows($cache, $stamp, $modules, $prod, $modulesFile);
+			if ($rows !== null) {
+				$rows = array_values(array_filter($rows, static fn (array $row): bool => $row['script'] === $script));
+				if ($rows === []) {
+					return null;
+				}
+				$routes = $definitions();
+				$table = LegacyRedirectTable::fromArray($rows);
+			} else {
+				$routes = $definitions();
+				$table = LegacyRedirectTable::fromModules($modules, $routes);
+				try {
+					$cache->store($table->toArray(), $stamp);
+				} catch (\RuntimeException $e) {
+					self::log('MVC legacy redirect: table cache not written: '.$e->getMessage());
+				}
+			}
+
+			return (new LegacyRedirector($table, new UrlGenerator($routes, DOL_URL_ROOT)))->resolve($method, $script, $query, $headers);
 		} catch (\Throwable $e) {
 			self::log('MVC legacy redirect: '.get_class($e).': '.$e->getMessage());
 
@@ -138,18 +178,14 @@ final class LegacyRedirectBootstrap
 	}
 
 	/**
-	 * @param list<ModuleInterface>                        $modules
-	 * @param list<\Dolibarr\Core\Routing\RouteDefinition> $definitions
+	 * Rows of the redirect cache, or null on a miss (absent, stale, other stamp): the table must then be rebuilt.
+	 *
+	 * @param list<ModuleInterface> $modules
+	 * @return list<array<string,mixed>>|null
 	 */
-	private static function table(array $modules, array $definitions, string $stamp, string $dataRoot, bool $prod, ?string $modulesFile): LegacyRedirectTable
+	private static function cachedRows(RedirectCache $cache, string $stamp, array $modules, bool $prod, ?string $modulesFile): ?array
 	{
-		$file = $dataRoot.'/cache/legacy_redirects.php';
-		$cache = new RedirectCache($file);
-
-		$rows = null;
-		if ($prod) {
-			$rows = $cache->load($stamp);
-		} else {
+		if (!$prod) {
 			$files = $modulesFile !== null ? [$modulesFile] : [];
 			foreach ($modules as $module) {
 				$moduleFile = (new \ReflectionClass($module))->getFileName();
@@ -157,22 +193,12 @@ final class LegacyRedirectBootstrap
 					$files[] = $moduleFile;
 				}
 			}
-			if ((new RouteCache($file))->isFresh($files)) {
-				$rows = $cache->load($stamp);
+			if (!(new RouteCache($cache->file()))->isFresh($files)) {
+				return null;
 			}
 		}
-		if ($rows !== null) {
-			return LegacyRedirectTable::fromArray($rows);
-		}
 
-		$table = LegacyRedirectTable::fromModules($modules, $definitions);
-		try {
-			$cache->store($table->toArray(), $stamp);
-		} catch (\RuntimeException $e) {
-			self::log('MVC legacy redirect: table cache not written: '.$e->getMessage());
-		}
-
-		return $table;
+		return $cache->load($stamp);
 	}
 
 	private static function log(string $message): void

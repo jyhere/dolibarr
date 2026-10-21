@@ -15,6 +15,11 @@ final class RedirectCache
 	{
 	}
 
+	public function file(): string
+	{
+		return $this->file;
+	}
+
 	/**
 	 * @param string $expectedStamp Stamp the cache must have been stored with
 	 * @return list<RuleArray>|null Null when there is no usable cache: missing, malformed or stored with another stamp

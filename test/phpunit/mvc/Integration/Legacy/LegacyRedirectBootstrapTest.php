@@ -76,9 +76,35 @@ final class LegacyRedirectBootstrapTest extends TestCase
 	{
 		$root = __DIR__.'/../../../../../htdocs';
 		$main = (string) file_get_contents($root.'/main.inc.php');
-		self::assertStringContainsString("if (!defined('DOL_MVC_FRONT') && !defined('NOREDIRECTLEGACY') && PHP_SAPI !== 'cli' && is_readable(DOL_DOCUMENT_ROOT.'/src/legacy_redirect.inc.php')) {", $main);
+		self::assertMatchesRegularExpression("/if \\(!defined\\(\\s*'DOL_MVC_FRONT'\\s*\\)[^\\n]*legacy_redirect\\.inc\\.php/", $main);
 		$app = (string) file_get_contents($root.'/app.php');
-		self::assertLessThan(strpos($app, "require __DIR__.'/main.inc.php'"), strpos($app, "define('DOL_MVC_FRONT'"));
+		$define = preg_match("/define\\(\\s*'DOL_MVC_FRONT'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
+		$require = preg_match("/require\\s+__DIR__\\s*\\.\\s*'\\/main\\.inc\\.php'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
+		self::assertNotFalse($define);
+		self::assertNotFalse($require);
+		self::assertLessThan($require, $define);
+	}
+
+	public function testWarmCacheWithoutRuleForScriptDoesNotLoadRoutes(): void
+	{
+		self::assertSame(DOL_URL_ROOT.'/user/5', $this->target(['id' => '5'])); // builds the caches
+		$calls = 0;
+		$spy = function () use (&$calls): array {
+			$calls++;
+
+			return (new \Dolibarr\Core\Routing\RouteCompiler())->compile([FakeController::class]);
+		};
+		foreach ([false, true] as $prod) {
+			self::assertNull(LegacyRedirectBootstrap::target('GET', 'other/page.php', ['id' => '5'], [], true, $this->modules(), $this->dir, $prod, $spy));
+			self::assertSame(0, $calls, 'no rule for the script: routes not loaded (prod='.var_export($prod, true).')');
+		}
+		self::assertSame(DOL_URL_ROOT.'/user/5', LegacyRedirectBootstrap::target('GET', 'user/card.php', ['id' => '5'], [], true, $this->modules(), $this->dir, true, $spy));
+		self::assertSame(1, $calls);
+	}
+
+	public function testNoRedirectWhenHeadersAlreadySent(): void
+	{
+		self::assertFalse(LegacyRedirectBootstrap::emit('/user/5', static fn (): bool => true));
 	}
 
 	public function testExceptionFallsBackToLegacy(): void
