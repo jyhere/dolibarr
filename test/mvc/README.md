@@ -13,6 +13,8 @@ The route cache lives in `DOL_DATA_ROOT/cache/routes.php` and the legacy redirec
 
 Variables, parameters and properties use descriptive names, in PHP code and in Latte templates alike: `$response`, `$user`, `$form`, never `$r`, `$u`, `$f`. Only two exceptions are allowed: `$i`/`$j` as loop counters, and `$e` for the exception caught by a `catch`. The unit test `ReadableNamesTest` enforces the rule on `htdocs/src` and `test/phpunit/mvc`.
 
+Latte templates are indented with tabs, one level per open HTML element or Latte block (`{if}`, `{foreach}`, `{block}`, `{define}`); `{else}`/`{elseif}` sit at the level of their `{if}`. Template tests strip the leading indentation before asserting on the markup.
+
 ## Apache
 
 An Apache 2.4 service (`httpd:2.4` + `mod_proxy_fcgi` to the same `php-fpm`) is available as an alternative to nginx, on port 8481:

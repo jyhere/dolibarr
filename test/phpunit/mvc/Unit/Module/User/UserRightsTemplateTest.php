@@ -119,7 +119,7 @@ final class UserRightsTemplateTest extends TestCase
 			'idHtml' => $canEdit ? '<i data-frag="id"></i>' : '',
 		];
 
-		return $renderer->render('user:user_rights', [
+		return self::withoutIndentation($renderer->render('user:user_rights', [
 			'layout' => $layout,
 			'outputBeforeHeader' => '',
 			'title' => 'T',
@@ -143,6 +143,14 @@ final class UserRightsTemplateTest extends TestCase
 			'headerHookHtml' => '<i data-frag="headerHook"></i>',
 			'footerHookHtml' => '<i data-frag="footerHook"></i>',
 			'rights' => [],
-		]);
+		]));
+	}
+
+	/**
+	 * The templates are indented for reading: the assertions compare the markup, not the leading tabs.
+	 */
+	private static function withoutIndentation(string $html): string
+	{
+		return (string) preg_replace('/^[\t ]+/m', '', $html);
 	}
 }

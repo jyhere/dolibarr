@@ -101,7 +101,7 @@ final class UserListTemplateTest extends TestCase
 			'hookHtml' => $frag('rowHook'),
 		]] : [];
 
-		return $renderer->render('user:user_list', [
+		return self::withoutIndentation($renderer->render('user:user_list', [
 			'layout' => $layout,
 			'outputBeforeHeader' => '',
 			'title' => 'Users',
@@ -132,6 +132,14 @@ final class UserListTemplateTest extends TestCase
 			'total' => count($rows),
 			'page' => 0,
 			'limit' => 20,
-		]);
+		]));
+	}
+
+	/**
+	 * The templates are indented for reading: the assertions compare the markup, not the leading tabs.
+	 */
+	private static function withoutIndentation(string $html): string
+	{
+		return (string) preg_replace('/^[\t ]+/m', '', $html);
 	}
 }
