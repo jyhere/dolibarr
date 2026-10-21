@@ -6,6 +6,7 @@ namespace Dolibarr\Module\User\Security;
 
 use Dolibarr\Core\Config;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyHooks;
@@ -125,12 +126,18 @@ final class SessionAuthenticator
 			}
 			$this->connection->commit();
 		} catch (\Throwable $e) {
-			$this->connection->rollback();
-			// Its data is emptied too: nothing may see a logged user for the rest of the request
-			$this->session->destroy();
-			$this->log->error('Error in some triggers USER_LOGIN or in some hooks afterLogin: '.$e->getMessage());
+			$cause = $e;
+			try {
+				$this->connection->rollback();
+			} catch (DatabaseException $rollback) {
+				$cause = new DatabaseException('ROLLBACK failed: '.$rollback->getMessage(), $rollback->getCode(), $e);
+			} finally {
+				// Even when the rollback fails: nothing may see a logged user for the rest of the request
+				$this->session->destroy();
+			}
+			$this->log->error('Error in some triggers USER_LOGIN or in some hooks afterLogin: '.$cause->getMessage());
 
-			throw $e instanceof AuthenticationException ? $e : new AuthenticationException('Error in some triggers USER_LOGIN or in some hooks afterLogin', 0, $e);
+			throw $cause === $e && $e instanceof AuthenticationException ? $e : new AuthenticationException('Error in some triggers USER_LOGIN or in some hooks afterLogin', 0, $cause);
 		}
 	}
 

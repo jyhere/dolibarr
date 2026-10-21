@@ -358,6 +358,39 @@ final class NotesControllerTest extends TestCase
 		}
 	}
 
+	public function testFailingRollbackAfterATriggerFailureChainsTheTriggerException(): void
+	{
+		$target = $this->disposable('Target');
+		$dispatcher = new EventDispatcher();
+		$dispatcher->addListener(NoteUpdated::class, static function (): void {
+			throw new NoteTriggerException(['Trigger says no']);
+		});
+		$db = new class extends \DoliDBMysqli {
+			public function __construct()
+			{
+			}
+
+			public function begin($textinlog = '')
+			{
+				return 1;
+			}
+
+			public function rollback($log = '')
+			{
+				$this->lasterror = 'forced rollback failure';
+
+				return false;
+			}
+		};
+
+		try {
+			$this->controller(null, null, $dispatcher, new Connection($db))->update($this->post($target->id, ['action' => 'setnote_public', 'note_public' => 'x']), 'user', $target->id);
+			self::fail('DatabaseException expected');
+		} catch (DatabaseException $e) {
+			self::assertInstanceOf(NoteTriggerException::class, $e->getPrevious());
+		}
+	}
+
 	private function assertRedirectsToNotes(mixed $response, int $id): void
 	{
 		self::assertInstanceOf(RedirectResponse::class, $response);

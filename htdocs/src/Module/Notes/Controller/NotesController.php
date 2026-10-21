@@ -6,6 +6,7 @@ namespace Dolibarr\Module\Notes\Controller;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Core\Entity\EntityRegistry;
@@ -22,7 +23,6 @@ use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyObjectLoader;
 use Dolibarr\Core\Routing\Route;
 use Dolibarr\Core\Routing\UrlGenerator;
-use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Security\AccessDeniedException;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Core\Translator;
