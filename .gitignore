@@ -93,6 +93,7 @@ phpstan_custom.neon
 
 # ignore .htaccess files
 .htaccess
+!/htdocs/.htaccess
 /.run-phpstan
 
 # IA setup

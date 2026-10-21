@@ -1,0 +1,38 @@
+# Dolibarr MVC front controller rules for Apache (equivalent to the nginx configuration).
+# Requires: mod_rewrite, and AllowOverride FileInfo (or All) on this directory.
+# Without AllowOverride, copy these rules into the vhost: see dev/examples/apache/dolibarr-vhost.conf
+# PHP must be executed by PHP-FPM (proxy:fcgi) or mod_php.
+
+Options -Indexes
+DirectoryIndex index.php
+# "/user" (MVC route, a directory without index.php) must reach app.php, not get mod_dir's 301 to "/user/"
+# (needs AllowOverride Indexes or All; in the vhost it needs no override)
+DirectorySlash Off
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Dolibarr installed in a subdirectory (DOL_URL_ROOT=/dolibarr): uncomment and adapt.
+#RewriteBase /dolibarr/
+
+# 1. Source code is never served
+RewriteRule ^src/ - [F,L]
+
+# 2. Static assets: served if present, otherwise a plain 404 (never app.php: no session, no database)
+RewriteCond %{REQUEST_URI} \.(png|jpe?g|gif|svg|webp|ico|css|js|map|woff2?|ttf|eot)$ [NC]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ - [R=404,L]
+
+# 3. Existing files are served as is (.php executed by PHP-FPM; PATH_INFO such as api/index.php/explorer/ is kept)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# 4. A directory with an index.php runs that script (never served raw)
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_FILENAME}/index.php -f
+RewriteRule ^(.*?)/?$ /$1/index.php [L]
+
+# 5. Anything else (unknown path, directory without index.php, missing .php) goes to the MVC front controller.
+#    REQUEST_URI is preserved: the kernel routes on it.
+RewriteRule ^ app.php [L]
+</IfModule>
