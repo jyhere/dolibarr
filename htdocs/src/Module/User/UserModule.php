@@ -254,7 +254,8 @@ final class UserModule implements ModuleInterface
 			'search_category_user_operator', 'catid', 'sortfield', 'sortorder', 'limit', 'page', 'pageplusone',
 			'optioncss', 'mode', 'contextpage', 'restore_lastsearch_values', 'mainmenu', 'leftmenu', 'show_files'
 		);
-		$id = ['id' => '\d+'];
+		// id=0 (and a leading 0) stays legacy: card.php?id=0 is not a user card
+		$id = ['id' => '[1-9]\d*'];
 
 		return [
 			new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id'], required: ['id'], carry: ['backtopage', 'save_lastsearch_values', 'mainmenu', 'leftmenu', 'optioncss'], requirements: $id),

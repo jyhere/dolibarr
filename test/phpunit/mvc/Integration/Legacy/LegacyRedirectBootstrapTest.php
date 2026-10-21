@@ -88,7 +88,7 @@ final class LegacyRedirectBootstrapTest extends TestCase
 	{
 		$root = __DIR__.'/../../../../../htdocs';
 		$main = (string) file_get_contents($root.'/main.inc.php');
-		self::assertMatchesRegularExpression("/if \\(!defined\\(\\s*'DOL_MVC_FRONT'\\s*\\)[^\\n]*legacy_redirect\\.inc\\.php/", $main);
+		self::assertMatchesRegularExpression("/if \\(PHP_VERSION_ID >= 80200 && !defined\\(\\s*'DOL_MVC_FRONT'\\s*\\)[^\\n]*legacy_redirect\\.inc\\.php/", $main);
 		$app = (string) file_get_contents($root.'/app.php');
 		$define = preg_match("/define\\(\\s*'DOL_MVC_FRONT'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
 		$require = preg_match("/require\\s+__DIR__\\s*\\.\\s*'\\/main\\.inc\\.php'/", $app, $m, PREG_OFFSET_CAPTURE) === 1 ? $m[0][1] : false;
