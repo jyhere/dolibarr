@@ -22,4 +22,9 @@ final class FakeController
 	public function list(): void
 	{
 	}
+
+	#[Route('/bye', name: 'bye', constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED'])]
+	public function bye(): void
+	{
+	}
 }

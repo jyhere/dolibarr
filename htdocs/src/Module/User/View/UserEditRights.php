@@ -16,6 +16,7 @@ final class UserEditRights
 	 * @param bool $canSendPassword $permissiontoeditpasswordandsend (l.166)
 	 * @param bool $canEditLogin    l.2544: an admin, on a user not managed by LDAP
 	 * @param bool $canLinkCompany  l.2557: an admin on another user picks the third party and the contact
+	 * @param bool $canEditEmail    canChangeCredentials(): else the e-mail is shown as text (UserInput ignores it)
 	 * @param int  $nbOfUsers       l.964-974: the hierarchy rows need more than one user
 	 */
 	public function __construct(
@@ -24,6 +25,7 @@ final class UserEditRights
 		public readonly bool $canSendPassword,
 		public readonly bool $canEditLogin,
 		public readonly bool $canLinkCompany,
+		public readonly bool $canEditEmail,
 		public readonly int $nbOfUsers
 	) {
 	}

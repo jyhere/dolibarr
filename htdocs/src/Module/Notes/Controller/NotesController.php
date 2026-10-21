@@ -6,6 +6,7 @@ namespace Dolibarr\Module\Notes\Controller;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Core\Entity\EntityRegistry;
@@ -141,17 +142,29 @@ final class NotesController
 			$this->events->dispatch(new NoteUpdated($definition->element, $definition->tableElement, $id, $field));
 			$this->connection->commit();
 		} catch (NoteTriggerException $e) {
-			$this->connection->rollback();
+			$this->rollbackAfter($e);
 			foreach ($e->errors as $error) {
 				$this->flash->error($error);
 			}
 		} catch (\Throwable $e) {
-			$this->connection->rollback();
+			$this->rollbackAfter($e);
 
 			throw $e;
 		}
 
 		return $back;
+	}
+
+	/**
+	 * ROLLBACK after $original failed the transaction: a failing ROLLBACK must not hide it (as UserService::transactional()).
+	 */
+	private function rollbackAfter(\Throwable $original): void
+	{
+		try {
+			$this->connection->rollback();
+		} catch (DatabaseException $rollback) {
+			throw new DatabaseException('ROLLBACK failed: '.$rollback->getMessage(), $rollback->getCode(), $original);
+		}
 	}
 
 	/**

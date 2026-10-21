@@ -25,6 +25,7 @@ For users:
 ----------
 NEW: Experimental MVC core (htdocs/src, app.php front controller) with /login, /logout and /user/{id} coexisting with legacy pages. Requires PHP 8.2+.
 NEW: Experimental MVC core - User module complete (list, create, edit, status, delete, password, notes, rights) and Apache configuration.
+NEW: Experimental MVC core - legacy user pages redirect to their rewritten routes (switch: MAIN_MVC_LEGACY_REDIRECTS). Redirects start after the first page served by app.php; requires the nginx try_files rule or the Apache rules.
 
 
 ***** ChangeLog for 24.0.2 compared to 24.0.1 *****

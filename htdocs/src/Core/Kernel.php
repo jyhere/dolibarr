@@ -13,13 +13,13 @@ use Dolibarr\Core\Http\Response;
 use Dolibarr\Core\Http\TextResponse;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyInputFilter;
+use Dolibarr\Core\Legacy\Redirect\FrontControllerMarker;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Routing\ArgumentResolver;
 use Dolibarr\Core\Routing\MatchedRoute;
 use Dolibarr\Core\Routing\MethodNotAllowedException;
-use Dolibarr\Core\Routing\RouteCache;
-use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\RouteDefinition;
+use Dolibarr\Core\Routing\RouteDefinitionsLoader;
 use Dolibarr\Core\Routing\RouteMatcher;
 use Dolibarr\Core\Routing\RouteNotFoundException;
 use Dolibarr\Core\Security\AccessDeniedException;
@@ -117,7 +117,8 @@ final class Kernel
 	}
 
 	/**
-	 * Answer the request once main.inc.php has been included. Any uncaught error is logged
+	 * Answer the request once main.inc.php has been included. A matched route first creates the marker
+	 * cache/mvc_front_ok (FrontControllerMarker) when missing. Any uncaught error is logged
 	 * and answered with a bare 500: its message (SQL, paths) never reaches the client.
 	 *
 	 * @param MatchResult $matchResult
@@ -126,6 +127,10 @@ final class Kernel
 	public function run(array $matchResult, mixed $mainIncResult): Response
 	{
 		$request = $this->requestForRun();
+		if ($matchResult['matched'] !== null) {
+			// A route reached app.php: the rewrite works, the legacy redirects may start (LegacyRedirectBootstrap)
+			(new FrontControllerMarker($this->dataRoot))->mark();
+		}
 		$responder = null;
 		try {
 			return $this->handle($matchResult, $mainIncResult, $request, $responder);
@@ -292,46 +297,11 @@ final class Kernel
 	 */
 	private function definitions(): array
 	{
-		if ($this->definitions !== null) {
-			return $this->definitions;
+		if ($this->definitions === null) {
+			$modulesFile = $this->modules === null ? $this->modulesFile() : null;
+			$this->definitions = (new RouteDefinitionsLoader($this->dataRoot, $this->prod, $this->version, $this->modules(), $modulesFile))->load();
 		}
 
-		$modulesFromFile = $this->modules === null;
-		$controllers = [];
-		foreach ($this->modules() as $module) {
-			foreach ($module->controllers() as $controller) {
-				$controllers[] = $controller;
-			}
-		}
-
-		$stamp = $this->version.'|'.sha1(implode(',', array_map(static fn (ModuleInterface $m): string => $m::class, $this->modules())));
-		$cache = new RouteCache($this->dataRoot.'/cache/routes.php');
-		$definitions = null;
-		if ($this->prod) {
-			$definitions = $cache->load($stamp);
-		} else {
-			$files = $modulesFromFile ? [$this->modulesFile()] : [];
-			foreach ($controllers as $controller) {
-				$file = (new \ReflectionClass($controller))->getFileName();
-				if ($file !== false) {
-					$files[] = $file;
-				}
-			}
-			if ($cache->isFresh($files)) {
-				$definitions = $cache->load($stamp);
-			}
-		}
-
-		if ($definitions === null) {
-			$definitions = (new RouteCompiler())->compile($controllers);
-			try {
-				$cache->store($definitions, $stamp);
-			} catch (\RuntimeException $e) {
-				// The Logger service needs main.inc.php, not loaded yet: use the PHP error log.
-				error_log('Dolibarr MVC: route cache not written, routes compiled for this request only: '.$e->getMessage());
-			}
-		}
-
-		return $this->definitions = $definitions;
+		return $this->definitions;
 	}
 }

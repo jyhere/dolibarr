@@ -114,17 +114,21 @@ token_from() { # <jar> <path>
 JSON=(-H 'Accept: application/json')
 
 echo "== Anonymous"
+# First a served route: app.php then creates cache/mvc_front_ok, without which no legacy page is redirected
+expect_code "login page 200 (arms the legacy redirects)" 200 "$BASE/login"
 expect_code "404 unknown route" 404 "$BASE/nexistepas"
 expect_code "404 unknown route json" 404 "${JSON[@]}" "$BASE/nexistepas"
 expect_grep "404 json body" '{"error":"not_found"}' 1 "${JSON[@]}" "$BASE/nexistepas"
 expect_code "src not served" 403 "$BASE/src/Core/Kernel.php"
-expect_code "legacy card without session" 200 "$BASE/user/card.php?id=1"
+expect_code "legacy card without session" 200 "$BASE/user/card.php"
 expect_code "root / 200" 200 "$BASE/"
 GREP_OPTS=-i expect_grep "root / is text/html (not a download)" '^content-type: text/html' 1 -D - -o /dev/null "$BASE/"
 expect_grep "root / shows login form" 'name="username"' 1 "$BASE/"
 expect_grep "admin/ index.php is executed, not served raw" '<?php' 0 "$BASE/admin/"
 expect_grep "install/ index.php is executed, not served raw" '<?php' 0 "$BASE/install/"
-expect_grep "legacy card shows login form" 'name="username"' 1 "$BASE/user/card.php?id=1"
+expect_grep "legacy card shows login form" 'name="username"' 1 "$BASE/user/card.php"
+expect_location_suffix "legacy card.php?id=1 anonymous redirects to /user/1" "/user/1" "$BASE/user/card.php?id=1"
+expect_grep "legacy card.php?id=1 anonymous ends on the login form" 'name="username"' 1 -L "$BASE/user/card.php?id=1"
 expect_code "user/1 anonymous 302" 302 "$BASE/user/1"
 LOC="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/user/1")"
 case "$LOC" in "$BASE/login?backtopage="*) ok "user/1 redirects to login?backtopage";; *) fail "user/1 redirect target" "$LOC";; esac
@@ -157,8 +161,8 @@ expect_location_suffix "POST /login open redirect ignored" "/index.php" -b "$J1"
 	--data-urlencode "backtopage=https://evil.example" "$BASE/login"
 
 echo "== Logged in (new world)"
-expect_grep "legacy card has no login form" 'name="username"' 0 -b "$J1" "$BASE/user/card.php?id=1"
-expect_code "legacy card 200" 200 -b "$J1" "$BASE/user/card.php?id=1"
+expect_grep "legacy card has no login form" 'name="username"' 0 -b "$J1" "$BASE/user/card.php"
+expect_code "legacy card 200" 200 -b "$J1" "$BASE/user/card.php"
 expect_code "user/1 200" 200 -b "$J1" "$BASE/user/1"
 expect_grep "user/1 mainbody" 'id="mainbody"' 1 -b "$J1" "$BASE/user/1"
 # The card and the documents/events blocks below it (card.php l.1755 and l.3316)
@@ -324,7 +328,7 @@ OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" 
 ok "POST /user/1/note setnote_public 302"
 # editfieldval() (textarea type) prints the note as HTML, as user/note.php does
 expect_grep "the note is shown as HTML" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/1/note"
-expect_grep "legacy note.php shows the same note" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/note.php?id=1"
+expect_grep "legacy note.php shows the same note" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/note.php?id=1&action=legacy&token=$TN"
 expect_grep "json exposes the public note" '"notePublic":"<b>smoke</b>"' 1 "${JSON[@]}" -b "$J1" "$BASE/user/1/note"
 OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=setnote_public&note_public=bogus" "$BASE/user/1/note")"
 [ "$OUT" = "302" ] && [ "$(smoke_sql "SELECT note_public FROM llx_user WHERE rowid = 1")" = "<b>smoke</b>" ] && ok "invalid token writes no note" || fail "invalid token writes no note" "$OUT"
@@ -458,7 +462,7 @@ if [ -n "$TL" ]; then
 else
 	expect_location_suffix "GET /logout 302 to index.php" "/index.php" -b "$J1" -c "$J1" "$BASE/logout"
 fi
-expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php?id=1"
+expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php"
 
 echo "== Logout open redirect (logged in)"
 newjar J3
@@ -466,8 +470,77 @@ T3="$(token_from "$J3" /login)"
 curl -s -o /dev/null -b "$J3" -c "$J3" -X POST --data-urlencode "token=$T3" -d "actionlogin=login&loginfunction=loginfunction" \
 	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/login"
 expect_code "J3 logged in" 200 -b "$J3" "$BASE/user/1"
+
+echo "== Legacy redirects (logged in)"
+TR="$(token_from "$J3" /user/1)"
+expect_location_suffix "card.php?id=1 redirects to /user/1" "/user/1" -b "$J3" "$BASE/user/card.php?id=1"
+expect_location_suffix "list.php redirects to /user" "/user" -b "$J3" "$BASE/user/list.php"
+expect_location_suffix "list.php search is carried" "/user?search_login=adm&sortfield=u.email&page=2" -b "$J3" "$BASE/user/list.php?search_login=adm&sortfield=u.email&page=2"
+expect_location_suffix "note.php?id=1 redirects to /user/1/note" "/user/1/note" -b "$J3" "$BASE/user/note.php?id=1"
+expect_location_suffix "perms.php?id=1 redirects to /user/1/rights" "/user/1/rights" -b "$J3" "$BASE/user/perms.php?id=1"
+expect_location_suffix "logout.php?noredirect=1 redirects to /logout?noredirect=1" "/logout?noredirect=1" -b "$J3" "$BASE/user/logout.php?noredirect=1"
+expect_grep "note.php edit link with token ends on the edit mode page" '<form method="post" action="/user/1/note">' 1 -L -b "$J3" "$BASE/user/note.php?id=1&action=editnote_public&token=$TR"
+expect_code "card.php?id=1&action=clone stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=clone&token=$TR"
+expect_code "list.php?massaction stays legacy 200" 200 -b "$J3" "$BASE/user/list.php?massaction=preaffecttag&token=$TR"
+# Rules that carry a query or an action (the redirect does not check that the id exists: user 1 is only redirected, never changed)
+expect_location_suffix "card.php?id=1&action=edit redirects to /user/1/edit" "/user/1/edit" -b "$J3" "$BASE/user/card.php?id=1&action=edit"
+expect_location_suffix "card.php?id=1&action=disable redirects to /user/1?confirm=disable" "/user/1?confirm=disable" -b "$J3" "$BASE/user/card.php?id=1&action=disable"
+expect_location_suffix "card.php?action=create redirects to /user/new" "/user/new" -b "$J3" "$BASE/user/card.php?action=create"
+expect_location_suffix "list.php?search_login=adm redirects to /user?search_login=adm" "/user?search_login=adm" -b "$J3" "$BASE/user/list.php?search_login=adm"
+# Parameters kept: employee on the creation rule, the global display/context parameters on every rule (lang among them)
+expect_location_suffix "card.php?action=create&employee=1 redirects to /user/new?employee=1" "/user/new?employee=1" -b "$J3" "$BASE/user/card.php?action=create&employee=1"
+expect_grep "card.php?action=create&employee=1 ends on the employee creation page" '<title>New employee</title>' 1 -L -b "$J3" "$BASE/user/card.php?action=create&employee=1&lang=en_US"
+expect_location_suffix "logout.php?noredirect=1&dol_use_jmobile=1 keeps dol_use_jmobile" "/logout?noredirect=1&dol_use_jmobile=1" -b "$J3" "$BASE/user/logout.php?noredirect=1&dol_use_jmobile=1"
+# Not redirected: the legacy page answers
+expect_code "card.php?id=1&action=presend stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=presend"
+expect_code "card.php without id stays legacy 200" 200 -b "$J3" "$BASE/user/card.php"
+# A POST is never redirected to an MVC route
+for POSTLABEL in "without token" "with token"; do
+	POSTDATA="action=update"
+	[ "$POSTLABEL" = "with token" ] && POSTDATA="action=update&token=$TR"
+	OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" -X POST -d "$POSTDATA" "$BASE/user/card.php?id=1")"
+	LOC="${OUT#* }"; LOC="${LOC#"$BASE"}"
+	case "$LOC" in /user/*) fail "POST card.php $POSTLABEL never redirects to a route" "$OUT";; *) ok "POST card.php $POSTLABEL not redirected to a route ($OUT)";; esac
+done
+# No loop: every covered URL ends on a 200 within 2 redirects
+for URL in "card.php?id=1" "card.php?id=1&action=edit" "card.php?id=1&action=disable" "card.php?action=create" "list.php" \
+	"list.php?search_login=adm" "note.php?id=1" "perms.php?id=1"; do
+	OUT="$(curl -s -L --max-redirs 5 -o /dev/null -w '%{num_redirects} %{http_code}' -b "$J3" "$BASE/user/$URL")"
+	[ "${OUT#* }" = "200" ] && [ "${OUT%% *}" -le 2 ] && ok "no redirect loop from $URL ($OUT)" || fail "redirect loop from $URL" "$OUT"
+done
+# Switch: MAIN_MVC_LEGACY_REDIRECTS=0 (read per request) leaves the legacy page alone; restored right after
+restore_redirect_switch() { smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_MVC_LEGACY_REDIRECTS'" > /dev/null || true; }
+trap 'restore_redirect_switch; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+restore_redirect_switch
+smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_MVC_LEGACY_REDIRECTS', '0', 'chaine', 0, 1)" > /dev/null
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" "$BASE/user/card.php?id=1")"
+restore_redirect_switch
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$OUT" = "200 " ] && ok "MAIN_MVC_LEGACY_REDIRECTS=0 disables the redirect (card.php?id=1 200, no Location)" || fail "redirect switch" "$OUT"
+expect_location_suffix "redirect back on once the switch row is removed" "/user/1" -b "$J3" "$BASE/user/card.php?id=1"
 OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" "$BASE/logout?urlfrom=//evil.example/x")"
 case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the host";; *) fail "logout urlfrom=//evil" "$OUT";; esac
+# Last: it ends the J3 session
+OUT="$(curl -s -L --max-redirs 5 -o /dev/null -w '%{num_redirects} %{http_code}' -b "$J3" "$BASE/user/logout.php?noredirect=1")"
+[ "${OUT#* }" = "200" ] && ok "logout.php?noredirect=1 ends ($OUT)" || fail "logout loop" "$OUT"
+
+echo "== Logout while only other logins are allowed (MAIN_ONLY_LOGIN_ALLOWED)"
+newjar J4
+T4="$(token_from "$J4" /login)"
+curl -s -o /dev/null -b "$J4" -c "$J4" -X POST --data-urlencode "token=$T4" -d "actionlogin=login&loginfunction=loginfunction" \
+	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/login"
+expect_code "J4 logged in" 200 -b "$J4" "$BASE/user/1"
+restore_only_login() { smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_ONLY_LOGIN_ALLOWED' AND value = 'smoke_nobody'" > /dev/null || true; }
+trap 'restore_only_login; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_const WHERE name = 'MAIN_ONLY_LOGIN_ALLOWED'")" = "0" ] || fail "MAIN_ONLY_LOGIN_ALLOWED not set before the smoke" "already set"
+smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_ONLY_LOGIN_ALLOWED', 'smoke_nobody', 'chaine', 0, 1)" > /dev/null
+expect_grep "a non-allowed session gets the offline message" 'application is offline' 1 -b "$J4" "$BASE/user/1"
+expect_location_suffix "offline: user/logout.php redirects to /logout" "/logout" -b "$J4" -c "$J4" "$BASE/user/logout.php"
+OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J4" -c "$J4" "$BASE/logout")"
+restore_only_login
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$OUT" = "302 $BASE/index.php" ] && ok "offline: /logout disconnects (302 to index.php, not the offline message)" || fail "offline logout" "$OUT"
+expect_code "J4 session destroyed (user/1 302)" 302 -b "$J4" "$BASE/user/1"
 
 echo "== Legacy login -> new world"
 newjar J2
@@ -478,7 +551,8 @@ curl -s -o /dev/null -b "$J2" -c "$J2" -X POST --data-urlencode "token=$TLEG" \
 	-d "actionlogin=login&loginfunction=loginfunction" \
 	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/index.php"
 expect_code "user/1 after legacy login" 200 -b "$J2" "$BASE/user/1"
-curl -s -o /dev/null -b "$J2" -c "$J2" "$BASE/user/logout.php"
+# user/logout.php now redirects to /logout: followed
+curl -sL -o /dev/null -b "$J2" -c "$J2" "$BASE/user/logout.php"
 ok "legacy logout requested"
 expect_code "user/1 after legacy logout 302" 302 -b "$J2" "$BASE/user/1"
 

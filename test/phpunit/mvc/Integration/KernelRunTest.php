@@ -96,6 +96,18 @@ final class KernelRunTest extends TestCase
 		self::assertStringContainsString('405', $response->body());
 	}
 
+	public function testAMatchedRouteMarksTheFrontControllerAsServing(): void
+	{
+		$this->runKernel('GET', '/fixture/nothere', true);
+		self::assertFileDoesNotExist($this->dataRoot.'/cache/mvc_front_ok', 'a 404 does not prove the rewrite');
+		$this->runKernel('POST', '/fixture/get-only', true);
+		self::assertFileDoesNotExist($this->dataRoot.'/cache/mvc_front_ok', 'nor does a 405');
+
+		$this->runKernel('GET', '/fixture/get-only', true);
+
+		self::assertFileExists($this->dataRoot.'/cache/mvc_front_ok');
+	}
+
 	/**
 	 * @param array<string, string> $templateDirs
 	 */

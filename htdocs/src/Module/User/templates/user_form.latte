@@ -211,7 +211,7 @@
 <tr><td>{='Fax'|trans}</td>
 <td>{if $canEdit && !$ldap}{$f['officeFax']|noescape}{else}{$f['officeFaxPicto']|noescape}<input type="hidden" name="office_fax" value="{$u->officeFax ?? ''}">{$u->officeFax}{/if}</td></tr>
 <tr><td n:class="$show['emailRequired'] ? fieldrequired">{='EMail'|trans}</td>
-<td>{$f['emailPicto']|noescape}{if $canEdit && !$ldap}<input class="minwidth100 maxwidth500 widthcentpercentminusx" type="text" name="email" value="{$u->email ?? ''}">{else}<input type="hidden" name="email" value="{$u->email ?? ''}">{$u->email}{/if}</td></tr>
+<td>{$f['emailPicto']|noescape}{if !$canEditEmail}{$u->email}{elseif $canEdit && !$ldap}<input class="minwidth100 maxwidth500 widthcentpercentminusx" type="text" name="email" value="{$u->email ?? ''}">{else}<input type="hidden" name="email" value="{$u->email ?? ''}">{$u->email}{/if}</td></tr>
 {* social networks (card.php l.3011-3031): not rendered, deferred *}
 </table><hr><table class="border centpercent">
 {if $show['warehouse']}

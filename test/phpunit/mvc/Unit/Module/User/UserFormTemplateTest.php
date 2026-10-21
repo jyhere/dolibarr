@@ -44,7 +44,7 @@ final class UserFormTemplateTest extends TestCase
 	{
 		$values = new User(7, 1, 'lo"gin', lastname: '<b>x</b>', job: '"><script>', email: "a'b@c.d", officePhone: '<i>1</i>');
 
-		$html = $this->render($values, '', 'edit', ['canEdit' => true, 'canEditLogin' => true, 'ldap' => false]);
+		$html = $this->render($values, '', 'edit', ['canEdit' => true, 'canEditLogin' => true, 'canEditEmail' => true, 'ldap' => false]);
 		self::assertStringContainsString('<form action="/user/7/edit" method="POST" name="updateuser" enctype="multipart/form-data">', $html);
 		self::assertStringContainsString('<input type="hidden" name="action" value="update">', $html);
 		self::assertStringContainsString('name="lastname" value="&lt;b&gt;x&lt;/b&gt;"', $html);
@@ -55,13 +55,25 @@ final class UserFormTemplateTest extends TestCase
 		self::assertStringNotContainsString('name="createuser"', $html);
 
 		// Read-only (password-only actor): hidden inputs and texts, escaped too
-		$html = $this->render($values, '', 'edit', ['canEdit' => false, 'canEditLogin' => false, 'ldap' => false]);
+		$html = $this->render($values, '', 'edit', ['canEdit' => false, 'canEditLogin' => false, 'canEditEmail' => true, 'ldap' => false]);
 		self::assertStringContainsString('<input type="hidden" name="lastname" value="&lt;b&gt;x&lt;/b&gt;">&lt;b&gt;x&lt;/b&gt;', $html);
 		self::assertStringContainsString('<input type="hidden" name="login" value="lo&quot;gin">lo"gin', $html);
 		self::assertStringContainsString('<input type="hidden" name="office_phone" value="&lt;i&gt;1&lt;/i&gt;">&lt;i&gt;1&lt;/i&gt;', $html);
 		self::assertStringContainsString('<input type="hidden" name="job" value="&quot;&gt;&lt;script&gt;">"&gt;&lt;script&gt;', $html);
 		self::assertStringNotContainsString('<b>x</b>', $html);
 		self::assertStringNotContainsString('<i>1</i>', $html);
+	}
+
+	public function testEmailIsPlainTextWhenCredentialsAreProtected(): void
+	{
+		$values = new User(7, 1, 'login', lastname: 'x', email: 'a"<b>@c.d');
+
+		$html = $this->render($values, '', 'edit', ['canEdit' => true, 'canEditLogin' => false, 'canEditEmail' => false, 'ldap' => false]);
+		self::assertStringContainsString('a"&lt;b&gt;@c.d</td>', $html);
+		self::assertStringNotContainsString('name="email"', $html);
+
+		$html = $this->render($values, '', 'edit', ['canEdit' => true, 'canEditLogin' => true, 'canEditEmail' => true, 'ldap' => false]);
+		self::assertStringContainsString('type="text" name="email" value="a&quot;&lt;b&gt;@c.d"', $html);
 	}
 
 	/**

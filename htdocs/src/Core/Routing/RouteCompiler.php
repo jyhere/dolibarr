@@ -44,7 +44,8 @@ final class RouteCompiler
 						$route->requirements,
 						$route->public,
 						$regex,
-						$variables
+						$variables,
+						array_values(array_unique($route->constants))
 					);
 				}
 			}

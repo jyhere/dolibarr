@@ -13,6 +13,11 @@ final class FixtureController
 	{
 	}
 
+	#[Route('/fixture/out', name: 'fixture_out', constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED', 'NOREDIRECTBYMAINTOLOGIN'])]
+	public function out(): void
+	{
+	}
+
 	#[Route('/fixture/{id}', name: 'fixture_show', requirements: ['id' => '\d+'])]
 	public function show(int $id): void
 	{

@@ -25,6 +25,16 @@ final class RouteCompilerTest extends TestCase
 		self::assertSame(['GET', 'POST'], $byName['login']['methods']);
 		self::assertSame(FakeController::class, $byName['login']['controller']);
 		self::assertSame('login', $byName['login']['action']);
+		self::assertSame([], $byName['login']['constants']);
+		self::assertSame(['EVEN_IF_ONLY_LOGIN_ALLOWED'], $byName['bye']['constants']);
+	}
+
+	public function testCachedArrayWithoutConstantsDefaultsToNone(): void
+	{
+		$a = (new RouteCompiler())->compile([FakeController::class])[0]->toArray();
+		unset($a['constants']);
+
+		self::assertSame([], RouteDefinition::fromArray($a)->constants);
 	}
 
 	public function testRepeatedAttributesDefaultNameRequirementAndEscaping(): void

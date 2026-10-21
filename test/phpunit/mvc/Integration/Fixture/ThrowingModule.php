@@ -7,6 +7,7 @@ namespace Dolibarr\Tests\Integration\Fixture;
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Legacy\Redirect\LegacyRedirect;
 use Dolibarr\Core\Module\ModuleInterface;
 
 final class ThrowingModule implements ModuleInterface
@@ -54,5 +55,13 @@ final class ThrowingModule implements ModuleInterface
 	public function templateDirs(): array
 	{
 		return $this->templateDirs;
+	}
+
+	/**
+	 * @return list<LegacyRedirect>
+	 */
+	public function legacyRedirects(): array
+	{
+		return [];
 	}
 }

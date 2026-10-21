@@ -688,6 +688,7 @@ final class UserController
 			$this->perms->canSendPassword($existing) && $credentials,
 			$this->perms->canEditLogin($existing, $existing->isLdapManaged) && $credentials,
 			$this->perms->canLinkCompany($existing),
+			$credentials,
 			$this->repo->countInEntity()
 		);
 		$fields = $this->formFields($existing, $rights->nbOfUsers);
@@ -707,6 +708,7 @@ final class UserController
 			'entity' => $existing->entity,
 			'canEdit' => $rights->canEdit,
 			'canEditLogin' => $rights->canEditLogin,
+			'canEditEmail' => $rights->canEditEmail,
 			'ldap' => $existing->isLdapManaged,
 			'canSeeSalary' => $canSeeSalary,
 			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
