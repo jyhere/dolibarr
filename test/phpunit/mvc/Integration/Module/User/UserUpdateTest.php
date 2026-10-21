@@ -274,6 +274,31 @@ final class UserUpdateTest extends TestCase
 		self::assertSame([$tagId], array_map(static fn (object $r): int => (int) $r->fk_categorie, $tags));
 	}
 
+	public function testEditorWithoutTheTagsRightKeepsTheTags(): void
+	{
+		$actor = $this->disposable('Actor');
+		$target = $this->disposable('Tagged');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
+		$tagId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'categorie');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
+		$modules = $this->ctx->conf->modules;
+		$this->ctx->conf->modules['categorie'] = 'categorie';
+		try {
+			// The tags row needs categorie->read (card.php l.1478): the form has no usercats, nothing is wiped
+			$response = $this->controller($this->nonAdmin($actor, ['user.user.read', 'user.user.write']))->update(
+				$this->request('POST', [], $this->posted($target, ['job' => 'Pilot']), $target->id),
+				$target->id
+			);
+		} finally {
+			$this->ctx->conf->modules = $modules;
+		}
+
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertSame('Pilot', $this->repo()->find($target->id)?->job);
+		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
+		self::assertSame([$tagId], array_map(static fn (object $r): int => (int) $r->fk_categorie, $tags));
+	}
+
 	public function testUpdateByNonAdminOnAdminIsForbidden(): void
 	{
 		$actor = $this->disposable('Actor');
@@ -415,8 +440,12 @@ final class UserUpdateTest extends TestCase
 	{
 		$target = $this->disposable('Target');
 
+		// The row is only in the form with the dolibarr authentication (card.php l.2860): else the flag is kept
 		$this->controller()->update($this->request('POST', [], $this->posted($target, ['forcepasswordchange' => '1']), $target->id), $target->id);
+		self::assertFalse($this->repo()->find($target->id)?->forcePasswordChange);
 
+		$_SESSION['dol_authmode'] = 'dolibarr';
+		$this->controller()->update($this->request('POST', [], $this->posted($target, ['forcepasswordchange' => '1']), $target->id), $target->id);
 		self::assertTrue($this->repo()->find($target->id)?->forcePasswordChange);
 	}
 

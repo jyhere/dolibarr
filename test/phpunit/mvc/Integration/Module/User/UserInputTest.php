@@ -10,6 +10,7 @@ use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
+use Dolibarr\Module\User\Service\UserFormFields;
 use Dolibarr\Module\User\Service\UserInput;
 use Dolibarr\Tests\Integration\Fixture\GlobalsRequest;
 use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
@@ -73,7 +74,7 @@ final class UserInputTest extends TestCase
 		$ctx = LegacyContext::fromGlobals();
 		$config = new LegacyConfig($ctx);
 
-		$input = UserInput::fromRequest($request, $this->checker(admin: true), null, $config);
+		$input = UserInput::fromRequest($request, $this->checker(admin: true), null, $config, $this->fields());
 		$entity = $input->toEntity(null, 1);
 
 		self::assertSame('Doe', $entity->lastname);
@@ -112,13 +113,13 @@ final class UserInputTest extends TestCase
 		$request = GlobalsRequest::create('POST', '/user', [], ['lastname' => 'Doe', 'login' => 'jdoe', 'salary' => '1 234,5', 'weeklyhours' => '35', 'admin' => '1']);
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 
-		$allowed = UserInput::fromRequest($request, $this->checker(rights: ['salaries.readall']), null, $config)->toEntity(null, 1);
+		$allowed = UserInput::fromRequest($request, $this->checker(rights: ['salaries.readall']), null, $config, $this->fields())->toEntity(null, 1);
 		self::assertSame(1234.5, $allowed->salary);
 		self::assertSame(35.0, $allowed->weeklyHours);
 		self::assertFalse($allowed->admin, 'a non admin cannot set the admin flag');
 
 		$base = new User(id: 9, entity: 1, login: 'old', admin: true, salary: 10.0, lastname: 'Old', notePublic: 'keep', extraFields: ['options_a' => 'x']);
-		$kept = UserInput::fromRequest($request, $this->checker(), $base, $config)->toEntity($base, 1);
+		$kept = UserInput::fromRequest($request, $this->checker(), $base, $config, $this->fields())->toEntity($base, 1);
 		self::assertSame(10.0, $kept->salary);
 		self::assertTrue($kept->admin);
 		self::assertSame('Doe', $kept->lastname);
@@ -133,16 +134,16 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 		$base = new User(id: 9, entity: 1, login: 'old', refEmployee: 'E1', warehouseId: 4, companyId: 2, contactId: 3);
 
-		$entity = UserInput::fromRequest($request, $this->checker(), $base, $config)->toEntity($base, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(), $base, $config, $this->fields(['warehouse']))->toEntity($base, 1);
 
 		self::assertSame('old', $entity->login);
 		self::assertSame('E1', $entity->refEmployee, 'ref_employee absent from the form is kept');
-		self::assertSame(4, $entity->warehouseId, 'fk_warehouse needs the stock module');
+		self::assertSame(4, $entity->warehouseId, 'fk_warehouse hidden: kept');
 		// card.php l.2557: the third party and contact fields are only an admin's on another user
 		self::assertSame(2, $entity->companyId, 'socid is ignored from a non-admin');
 		self::assertSame(3, $entity->contactId, 'contactid is ignored from a non-admin');
 
-		$byAdmin = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config);
+		$byAdmin = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config, $this->fields());
 		self::assertSame(0, $byAdmin->contactId);
 		self::assertSame(7, $byAdmin->toEntity($base, 1)->companyId);
 		self::assertNull($byAdmin->toEntity($base, 1)->contactId);
@@ -154,7 +155,7 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 		$admin = new User(id: 9, entity: 1, login: 'old', admin: true, email: 'admin@example.com');
 
-		$input = UserInput::fromRequest($request, $this->checker(rights: ['user.user.write', 'user.user.password']), $admin, $config);
+		$input = UserInput::fromRequest($request, $this->checker(rights: ['user.user.write', 'user.user.password']), $admin, $config, $this->fields());
 		self::assertSame('admin@example.com', $input->toEntity($admin, 1)->email);
 		self::assertSame('old', $input->toEntity($admin, 1)->login);
 		self::assertNull($input->password);
@@ -162,7 +163,7 @@ final class UserInputTest extends TestCase
 		// An admin of an entity on a superadmin: neither the email, nor the login, nor the password, nor the flag
 		$superadmin = new User(id: 9, entity: 0, login: 'root', admin: true, email: 'root@example.com');
 		$entityAdmin = new UserPermissionChecker(new RightsCurrentUser(5, true, ['user.user.password'], 0, 1), false, true);
-		$input = UserInput::fromRequest($request->withInputFilter(new LegacyInputFilter()), $entityAdmin, $superadmin, $config);
+		$input = UserInput::fromRequest($request->withInputFilter(new LegacyInputFilter()), $entityAdmin, $superadmin, $config, $this->fields());
 		$entity = $input->toEntity($superadmin, 0);
 		self::assertSame('root@example.com', $entity->email);
 		self::assertSame('root', $entity->login);
@@ -171,7 +172,7 @@ final class UserInputTest extends TestCase
 
 		// A plain target: the email posted is taken
 		$plain = new User(id: 9, entity: 1, login: 'old', email: 'plain@example.com');
-		self::assertSame('hacker@example.com', UserInput::fromRequest($request, $this->checker(rights: ['user.user.write']), $plain, $config)->toEntity($plain, 1)->email);
+		self::assertSame('hacker@example.com', UserInput::fromRequest($request, $this->checker(rights: ['user.user.write']), $plain, $config, $this->fields())->toEntity($plain, 1)->email);
 	}
 
 	public function testNonAdminKeepsAdminFlagAndSelfEditKeepsLogin(): void
@@ -180,13 +181,13 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 
 		$other = new User(id: 9, entity: 1, login: 'old', admin: true, nationalRegistrationNumber: '111');
-		$entity = UserInput::fromRequest($request, $this->checker(rights: ['user.user.write']), $other, $config)->toEntity($other, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(rights: ['user.user.write']), $other, $config, $this->fields())->toEntity($other, 1);
 		self::assertTrue($entity->admin);
 		self::assertSame('old', $entity->login);
 		self::assertSame('999', $entity->nationalRegistrationNumber);
 
 		$self = new User(id: 5, entity: 1, login: 'me');
-		self::assertSame('me', UserInput::fromRequest($request, $this->checker(), $self, $config)->toEntity($self, 1)->login);
+		self::assertSame('me', UserInput::fromRequest($request, $this->checker(), $self, $config, $this->fields())->toEntity($self, 1)->login);
 	}
 
 	public function testLdapManagedLoginIsKeptEvenForAnAdmin(): void
@@ -195,12 +196,12 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 
 		$ldap = new User(id: 9, entity: 1, login: 'old', isLdapManaged: true);
-		$entity = UserInput::fromRequest($request, $this->checker(admin: true), $ldap, $config)->toEntity($ldap, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(admin: true), $ldap, $config, $this->fields())->toEntity($ldap, 1);
 		self::assertSame('old', $entity->login);
 		self::assertTrue($entity->isLdapManaged);
 
 		$local = new User(id: 9, entity: 1, login: 'old');
-		self::assertSame('hacked', UserInput::fromRequest($request, $this->checker(admin: true), $local, $config)->toEntity($local, 1)->login);
+		self::assertSame('hacked', UserInput::fromRequest($request, $this->checker(admin: true), $local, $config, $this->fields())->toEntity($local, 1)->login);
 	}
 
 	public function testContactIdOnUpdateSetsContactAndCompany(): void
@@ -209,7 +210,7 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 		$base = new User(id: 9, entity: 1, login: 'old');
 
-		$entity = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config)->toEntity($base, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config, $this->fields())->toEntity($base, 1);
 
 		self::assertSame(12, $entity->contactId);
 		self::assertSame(7, $entity->companyId);
@@ -222,7 +223,7 @@ final class UserInputTest extends TestCase
 			'dateofbirthday' => '30', 'dateofbirthmonth' => '2', 'dateofbirthyear' => '1980',
 			'dateemploymentday' => '1', 'dateemploymentmonth' => '1', 'dateemploymentyear' => '10000',
 		]);
-		$entity = UserInput::fromRequest($request, $this->checker(), null, new LegacyConfig(LegacyContext::fromGlobals()))->toEntity(null, 1);
+		$entity = UserInput::fromRequest($request, $this->checker(), null, new LegacyConfig(LegacyContext::fromGlobals()), $this->fields())->toEntity(null, 1);
 
 		self::assertNull($entity->birth);
 		self::assertNull($entity->dateEmployment);
@@ -255,12 +256,12 @@ final class UserInputTest extends TestCase
 		$config = new LegacyConfig(LegacyContext::fromGlobals());
 		$base = new User(id: 9, entity: 1, login: 'old', extraFields: ['options_a' => 'x', 'options_b' => 'old']);
 
-		$input = UserInput::fromRequest($request, $this->checker(), $base, $config);
+		$input = UserInput::fromRequest($request, $this->checker(), $base, $config, $this->fields());
 
 		self::assertTrue($filter->lastUpdate);
 		self::assertSame('required', $input->extraFieldsError);
 		self::assertSame(['options_a' => 'x', 'options_b' => 'new'], $input->toEntity($base, 1)->extraFields);
-		self::assertNull(UserInput::fromRequest($request->withInputFilter(new LegacyInputFilter()), $this->checker(), $base, $config)->extraFieldsError);
+		self::assertNull(UserInput::fromRequest($request->withInputFilter(new LegacyInputFilter()), $this->checker(), $base, $config, $this->fields())->extraFieldsError);
 	}
 
 	public function testLegacyOptionalsReturnsAnArrayWithoutDefinitions(): void
@@ -269,6 +270,66 @@ final class UserInputTest extends TestCase
 
 		self::assertArrayNotHasKey('options_zzz', (new LegacyInputFilter())->optionals('user', true));
 		self::assertArrayNotHasKey('options_zzz', (new LegacyInputFilter())->optionals('user'));
+	}
+
+	public function testHiddenRowsKeepTheStoredValuesOnUpdate(): void
+	{
+		$request = GlobalsRequest::create('POST', '/user', [], [
+			'lastname' => 'Doe', 'login' => 'jdoe', 'accountancy_code' => '999', 'fk_warehouse' => '8', 'color' => '#000000',
+			'civility_code' => 'MME', 'default_lang' => 'de_DE', 'state_id' => '3', 'fk_user' => '11',
+			'fk_user_expense_validator' => '12', 'fk_user_holiday_validator' => '13', 'forcepasswordchange' => '0', 'usercats' => ['3'],
+		]);
+		$config = new LegacyConfig(LegacyContext::fromGlobals());
+		$base = new User(
+			id: 9, entity: 1, login: 'old', civility: 'MR', lang: 'fr_FR', color: 'aabbcc', stateId: 2, supervisorId: 4,
+			expenseValidatorId: 5, holidayValidatorId: 6, accountancyCode: '421', warehouseId: 7, forcePasswordChange: true
+		);
+		$hidden = ['accountancyCode', 'warehouse', 'color', 'civility', 'language', 'state', 'hierarchy', 'expenseValidator', 'holidayValidator', 'forcePasswordChange', 'categories'];
+
+		$input = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config, $this->fields($hidden));
+		$entity = $input->toEntity($base, 1);
+
+		self::assertSame('421', $entity->accountancyCode, 'accountancy code hidden (accounting off): kept');
+		self::assertSame(7, $entity->warehouseId, 'warehouse hidden (MAIN_DEFAULT_WAREHOUSE_USER unset): kept');
+		self::assertSame('aabbcc', $entity->color, 'color hidden (agenda off): kept');
+		self::assertSame('MR', $entity->civility);
+		self::assertSame('fr_FR', $entity->lang);
+		self::assertSame(2, $entity->stateId);
+		self::assertSame(4, $entity->supervisorId);
+		self::assertSame(5, $entity->expenseValidatorId);
+		self::assertSame(6, $entity->holidayValidatorId);
+		self::assertTrue($entity->forcePasswordChange);
+		self::assertNull($input->categoryIds, 'tags hidden: left as they are');
+
+		// The same rows shown: what is posted
+		$shown = UserInput::fromRequest($request, $this->checker(admin: true), $base, $config, $this->fields());
+		$entity = $shown->toEntity($base, 1);
+		self::assertSame('999', $entity->accountancyCode);
+		self::assertSame(8, $entity->warehouseId);
+		self::assertSame('000000', $entity->color);
+		self::assertSame('MME', $entity->civility);
+		self::assertSame(11, $entity->supervisorId);
+		self::assertFalse($entity->forcePasswordChange);
+		self::assertSame([3], $shown->categoryIds);
+
+		// A creation with the rows hidden: nothing taken from the POST
+		$created = UserInput::fromRequest($request, $this->checker(admin: true), null, $config, $this->fields($hidden));
+		self::assertNull($created->toEntity(null, 1)->accountancyCode);
+		self::assertNull($created->toEntity(null, 1)->warehouseId);
+		self::assertNull($created->toEntity(null, 1)->color);
+		self::assertFalse($created->toEntity(null, 1)->forcePasswordChange);
+	}
+
+	/**
+	 * Every row of the form shown, except $hidden (names of UserFormFields).
+	 *
+	 * @param list<string> $hidden
+	 */
+	private function fields(array $hidden = []): UserFormFields
+	{
+		$names = array_map(static fn (\ReflectionParameter $p): string => $p->getName(), (new \ReflectionMethod(UserFormFields::class, '__construct'))->getParameters());
+
+		return new UserFormFields(...array_fill_keys(array_diff($names, $hidden), true) + array_fill_keys($hidden, false));
 	}
 
 	/**

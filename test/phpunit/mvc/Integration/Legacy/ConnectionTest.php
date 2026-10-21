@@ -19,6 +19,63 @@ final class ConnectionTest extends TestCase
 		self::assertSame("O\\'Neil", $c->escape("O'Neil"));
 	}
 
+	public function testRealTransactionRunsWithoutException(): void
+	{
+		$c = new Connection($GLOBALS['db']);
+		$c->begin();
+		$c->begin();
+		$c->commit();
+		$c->rollback();
+		self::assertSame(0, (int) $GLOBALS['db']->transaction_opened);
+	}
+
+	public function testFailedBeginCommitOrRollbackThrowsTheDriverError(): void
+	{
+		$c = new Connection($this->failingDb());
+		foreach (['begin', 'commit', 'rollback'] as $method) {
+			try {
+				$c->$method();
+				self::fail($method.'() should throw');
+			} catch (DatabaseException $e) {
+				self::assertSame('forced '.$method.' failure', $e->getMessage());
+			}
+		}
+	}
+
+	/**
+	 * A driver whose BEGIN, COMMIT and ROLLBACK fail as DoliDB reports it: 0 (begin, commit) or false (rollback,
+	 * the result of query()), with lasterror set.
+	 */
+	private function failingDb(): \DoliDB
+	{
+		return new class extends \DoliDBMysqli {
+			public function __construct()
+			{
+			}
+
+			public function begin($textinlog = '')
+			{
+				$this->lasterror = 'forced begin failure';
+
+				return 0;
+			}
+
+			public function commit($log = '')
+			{
+				$this->lasterror = 'forced commit failure';
+
+				return 0;
+			}
+
+			public function rollback($log = '')
+			{
+				$this->lasterror = 'forced rollback failure';
+
+				return false;
+			}
+		};
+	}
+
 	public function testInvalidSqlThrowsDatabaseException(): void
 	{
 		$this->expectException(DatabaseException::class);

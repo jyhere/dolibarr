@@ -67,19 +67,41 @@ final class Connection
 		return (int) $this->db->last_insert_id($table);
 	}
 
+	/**
+	 * DoliDB::begin(): 1 when the transaction is opened (or only its nesting level raised), 0 when BEGIN fails.
+	 *
+	 * @throws DatabaseException When BEGIN fails
+	 */
 	public function begin(): void
 	{
-		$this->db->begin();
+		if (!$this->db->begin()) {
+			throw new DatabaseException($this->db->lasterror(), (int) $this->db->lasterrno());
+		}
 	}
 
+	/**
+	 * DoliDB::commit(): 1 when committed (or only its nesting level lowered), 0 when COMMIT fails.
+	 *
+	 * @throws DatabaseException When COMMIT fails
+	 */
 	public function commit(): void
 	{
-		$this->db->commit();
+		if (!$this->db->commit()) {
+			throw new DatabaseException($this->db->lasterror(), (int) $this->db->lasterrno());
+		}
 	}
 
+	/**
+	 * DoliDB::rollback(): the result of query('ROLLBACK') (false when it fails), or 1 when only lowering the
+	 * nesting level.
+	 *
+	 * @throws DatabaseException When ROLLBACK fails
+	 */
 	public function rollback(): void
 	{
-		$this->db->rollback();
+		if (!$this->db->rollback()) {
+			throw new DatabaseException($this->db->lasterror(), (int) $this->db->lasterrno());
+		}
 	}
 
 	public function legacy(): \DoliDB

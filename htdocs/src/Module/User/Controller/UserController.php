@@ -26,6 +26,7 @@ use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Entity\Visibility;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
+use Dolibarr\Module\User\Service\UserFormFields;
 use Dolibarr\Module\User\Service\UserInput;
 use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\Service\UserValidator;
@@ -381,7 +382,7 @@ final class UserController
 		// A hook that fails (< 0, its errors flashed) or replaces the action (> 0) vetoes the creation.
 		$doActions = $this->doActions($blank, 'add');
 		if ($doActions->code !== 0) {
-			$in = UserInput::fromRequest($r, $this->perms, null, $this->config);
+			$in = UserInput::fromRequest($r, $this->perms, null, $this->config, $this->formFields($blank, null));
 
 			return $this->form($r, $in->toEntity(null, $this->entityFor($in)), $in->password, $in->forcePasswordChange, $doActions);
 		}
@@ -396,7 +397,7 @@ final class UserController
 			return new RedirectResponse(SafeRedirect::relativePath($candidate, $urlRoot) ?? $this->urls->generate('user_list'));
 		}
 
-		$in = UserInput::fromRequest($r, $this->perms, null, $this->config);
+		$in = UserInput::fromRequest($r, $this->perms, null, $this->config, $this->formFields($blank, null));
 		$values = $in->toEntity(null, $this->entityFor($in));
 
 		$errors = $this->validator->validate($in, true, $this->repo->countForQuota());
@@ -408,8 +409,8 @@ final class UserController
 		}
 
 		try {
-			// card.php l.424-428: the tags only with the category module
-			$created = $this->service->create($values, $in->password, $this->config->isModuleEnabled('category') ? $in->categoryIds : []);
+			// card.php l.424-428: the tags only with the category module (and the right to see them, UserFormFields)
+			$created = $this->service->create($values, $in->password, $in->categoryIds);
 		} catch (ValidationException $e) {
 			$this->flashErrors($e->messages);
 
@@ -459,7 +460,7 @@ final class UserController
 		// card.php l.185-191: the standard actions only when doActions returns 0
 		$doActions = $this->doActionsEdit($r, $existing, 'update');
 		if ($doActions->code !== 0) {
-			$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config);
+			$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
 
 			return $this->editView($existing, $in->toEntity($existing, $this->entityForUpdate($in, $existing)), $in->forcePasswordChange, true, $doActions);
 		}
@@ -477,7 +478,7 @@ final class UserController
 			return $this->updatePasswordOnly($r, $existing, $doActions) ?? new RedirectResponse($card);
 		}
 
-		$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config);
+		$in = UserInput::fromRequest($r, $this->perms, $existing, $this->config, $this->formFields($existing, $this->repo->countInEntity()));
 		$values = $in->toEntity($existing, $this->entityForUpdate($in, $existing));
 
 		$errors = $this->validator->validate($in, false, 0);
@@ -688,7 +689,6 @@ final class UserController
 		if ($canSeeSalary) {
 			$this->t->load('salaries');
 		}
-		$canEditAdminFlag = $this->perms->canEditAdminFlag($existing);
 		$credentials = $this->perms->canChangeCredentials($existing);
 		$rights = new UserEditRights(
 			$this->perms->canModify($existing),
@@ -698,6 +698,7 @@ final class UserController
 			$this->perms->canLinkCompany($existing),
 			$this->repo->countInEntity()
 		);
+		$fields = $this->formFields($existing, $rights->nbOfUsers);
 		// card.php l.977-979
 		$personName = $existing->firstname !== null && $existing->firstname !== '' ? $existing->lastname.', '.$existing->firstname : (string) $existing->lastname;
 
@@ -719,10 +720,10 @@ final class UserController
 			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
 			// card.php l.3263: the dash only between two posted employment dates
 			'employmentDash' => $redisplay && $values->dateEmployment !== null && $values->dateEmploymentEnd !== null,
-			'show' => $this->formChrome->visibility($canSeeSalary, $canEditAdminFlag, $rights->nbOfUsers > 1),
+			'show' => $this->formChrome->visibility($fields),
 			'titleHtml' => '',
 			'loginJs' => '',
-			'f' => $this->formChrome->fragments($values, 'edit', $canSeeSalary, $canEditAdminFlag, null, $rights),
+			'f' => $this->formChrome->fragments($values, 'edit', $fields, null, $rights),
 		]);
 	}
 
@@ -798,7 +799,7 @@ final class UserController
 		if ($canSeeSalary) {
 			$this->t->load('salaries');
 		}
-		$canEditAdminFlag = $this->perms->canEditAdminFlag($values);
+		$fields = $this->formFields($values, null);
 		// card.php l.981-985
 		$title = $this->t->trans($r->getInt('employee') > 0 ? 'NewEmployee' : 'NewUser');
 
@@ -815,11 +816,21 @@ final class UserController
 			'entity' => $this->config->entity(),
 			'canSeeSalary' => $canSeeSalary,
 			'currencySymbol' => $canSeeSalary ? $this->formChrome->currencySymbol() : '',
-			'show' => $this->formChrome->visibility($canSeeSalary, $canEditAdminFlag),
+			'show' => $this->formChrome->visibility($fields),
 			'titleHtml' => $this->formChrome->title($title),
 			'loginJs' => $this->formChrome->loginJs(),
-			'f' => $this->formChrome->fragments($values, 'create', $canSeeSalary, $canEditAdminFlag, $password),
+			'f' => $this->formChrome->fragments($values, 'create', $fields, $password),
 		]);
+	}
+
+	/**
+	 * The rows of the form shown to the current user for $target (a new user: id 0), the same for the form and
+	 * for what UserInput reads. $nbOfUsers: on an edit, the hierarchy rows need more than one user (l.2697);
+	 * null on a creation, where they are always shown.
+	 */
+	private function formFields(User $target, ?int $nbOfUsers): UserFormFields
+	{
+		return $this->formChrome->fields($this->me, $this->perms->canSeeSalary($target), $this->perms->canEditAdminFlag($target), $nbOfUsers === null || $nbOfUsers > 1);
 	}
 
 	/**

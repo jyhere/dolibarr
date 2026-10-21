@@ -6,6 +6,7 @@ namespace Dolibarr\Module\User\Service;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\User\Entity\User;
@@ -39,17 +40,17 @@ final class UserService
 	/**
 	 * user/card.php l.442-475.
 	 *
-	 * @param list<int> $categoryIds
+	 * @param list<int>|null $categoryIds The tags, null when the form does not show them
 	 * @throws ValidationException
 	 */
-	public function create(User $u, ?string $password, array $categoryIds): User
+	public function create(User $u, ?string $password, ?array $categoryIds): User
 	{
 		return $this->transactional(function () use ($u, $password, $categoryIds): User {
 			$id = $this->writer->insert($u, $this->me->id());
 			if ($password !== null && $password !== '') {
 				$this->writer->setPassword($id, $password, false, $this->me->id());
 			}
-			if ($categoryIds !== []) {
+			if ($categoryIds !== null && $categoryIds !== []) {
 				$this->writer->setCategories($id, $categoryIds);
 			}
 			$created = $this->load($id);
@@ -60,19 +61,20 @@ final class UserService
 	}
 
 	/**
-	 * user/card.php l.497-745: update, contact link when posted, tags (always replaced).
+	 * user/card.php l.497-745: update, contact link when posted, tags replaced when the form shows them (card.php
+	 * always replaces them, wiping them when the row is hidden; null here leaves them).
 	 *
 	 * $password, when given and not the current one, is set in the same transaction: on the card update()
 	 * calls setPassword() itself (user.class.php l.2474-2481) and a refused password cancels the whole update.
 	 * The writer does not copy the password, hence the explicit call; setPassword() resets force_pass_change.
 	 *
-	 * @param list<int> $categoryIds
-	 * @param ?int      $contactId   null when the contact field was not posted
+	 * @param list<int>|null $categoryIds null when the tags row is not shown: left as they are
+	 * @param ?int           $contactId   null when the contact field was not posted
 	 * @param ?string   $password    The clear password posted, null or '' to keep it
 	 * @throws ValidationException
 	 * @throws NotFoundException
 	 */
-	public function update(User $u, array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
+	public function update(User $u, ?array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
 	{
 		return $this->transactional(function () use ($u, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
 			$before = $this->load($u->id);
@@ -84,7 +86,9 @@ final class UserService
 				$this->events->dispatch(new UserPasswordChanged($u->id, false));
 			}
 			$mismatch = $contactId !== null && $this->writer->linkToContact($u->id, $contactId, $companyId ?? 0);
-			$this->writer->setCategories($u->id, $categoryIds);
+			if ($categoryIds !== null) {
+				$this->writer->setCategories($u->id, $categoryIds);
+			}
 			$after = $this->load($u->id);
 			$this->events->dispatch(new UserUpdated($before, $after));
 
@@ -271,6 +275,9 @@ final class UserService
 	}
 
 	/**
+	 * A failed BEGIN, COMMIT or ROLLBACK throws DatabaseException (Connection); a COMMIT failure still rolls
+	 * back, and a ROLLBACK failure keeps the exception of the work as its previous one.
+	 *
 	 * @template T
 	 * @param callable(): T $work
 	 * @return T
@@ -280,11 +287,15 @@ final class UserService
 		$this->db->begin();
 		try {
 			$result = $work();
+			$this->db->commit();
 		} catch (\Throwable $e) {
-			$this->db->rollback();
+			try {
+				$this->db->rollback();
+			} catch (DatabaseException $rollback) {
+				throw new DatabaseException('ROLLBACK failed: '.$rollback->getMessage(), $rollback->getCode(), $e);
+			}
 			throw $e;
 		}
-		$this->db->commit();
 
 		return $result;
 	}

@@ -27,6 +27,10 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
  * non-admin's to change, a superadmin's not an entity admin's), and the third party and contact only when
  * canLinkCompany() does (the form only shows them to an admin on another user, card.php l.2557).
  *
+ * Only the fields of the rows the form shows are read (UserFormFields, the conditions the form is drawn with):
+ * a row hidden by the setup (module off, option unset) keeps the stored value on an update, null (or the
+ * default) on a creation; the tags are then not touched (categoryIds null).
+ *
  * The extrafields come from ExtraFields::setOptionalsFromPost() (see InputFilter::optionals()): on an update
  * only the keys the form carries are returned and toEntity() merges them over the existing ones.
  *
@@ -36,7 +40,7 @@ final class UserInput
 {
 	/**
 	 * @param array<string, mixed> $extraFields 'options_<name>' => value
-	 * @param list<int>            $categoryIds
+	 * @param list<int>|null       $categoryIds null when the tags row is not shown: the tags are left as they are
 	 */
 	public function __construct(
 		public readonly ?string $lastname = null,
@@ -79,7 +83,7 @@ final class UserInput
 		public readonly ?\DateTimeImmutable $birth = null,
 		public readonly array $extraFields = [],
 		public readonly ?string $password = null,
-		public readonly array $categoryIds = [],
+		public readonly ?array $categoryIds = null,
 		/** Update only: the posted contact (0 for none), null when the form does not carry contactid */
 		public readonly ?int $contactId = null,
 		/** Update only: the posted third party (0 for none), null when the form does not carry contactid */
@@ -93,9 +97,10 @@ final class UserInput
 	}
 
 	/**
-	 * @param User|null $existing The user being edited, null on a creation
+	 * @param User|null      $existing The user being edited, null on a creation
+	 * @param UserFormFields $fields   The rows the form shows to the current user for that user
 	 */
-	public static function fromRequest(Request $r, UserPermissionChecker $perms, ?User $existing, Config $config): self
+	public static function fromRequest(Request $r, UserPermissionChecker $perms, ?User $existing, Config $config, UserFormFields $fields): self
 	{
 		$update = $existing !== null;
 		// A new user is asked to the checker as a user without id: it is not oneself, not external.
@@ -114,10 +119,8 @@ final class UserInput
 		// l.392-414 and l.595-606: the superadmin flag and the entity are only meaningful to the controller.
 		$entity = $r->isSet('entity') ? (int) $r->getPost('entity', 'int', 0) : null;
 
-		// l.553-556 (update): the warehouse is only in the form when the stock module is enabled.
-		$warehouseId = $update && !$config->isModuleEnabled('stock')
-			? $existing->warehouseId
-			: self::id($r, 'fk_warehouse');
+		// l.553-556 (update): the warehouse is only in the form with the stock module and MAIN_DEFAULT_WAREHOUSE_USER (l.1541).
+		$warehouseId = $fields->warehouse ? self::id($r, 'fk_warehouse') : $existing?->warehouseId;
 
 		// l.653 (update): the contact link (raw UPDATE of fk_socpeople/fk_soc) only runs when the form carries
 		// contactid, which it only does for an admin on another user (l.2557). Null tells the caller not to touch
@@ -131,7 +134,8 @@ final class UserInput
 		$salaryAllowed = $perms->canSeeSalary($target);
 		$money = static fn (string $name, ?float $current): ?float => $salaryAllowed ? self::money($r, $name) : $current;
 
-		$color = self::text($r, 'color');
+		$color = $fields->color ? self::text($r, 'color') : null;
+		$color = $color === null ? null : str_replace('#', '', $color);
 
 		// l.311-314 and l.522-525: the national registration number is protected like the ref employee.
 		$nationalNumber = $update && !$r->isSet('national_registration_number')
@@ -142,15 +146,19 @@ final class UserInput
 		$extraError = $extra[InputFilter::OPTIONALS_ERROR] ?? null;
 		unset($extra[InputFilter::OPTIONALS_ERROR]);
 
-		$categories = $r->getPost('usercats', 'array:int', []);
+		$categoryIds = null;
+		if ($fields->categories) {
+			$categories = $r->getPost('usercats', 'array:int', []);
+			$categoryIds = is_array($categories) ? array_values(array_map('intval', $categories)) : [];
+		}
 
 		return new self(
 			lastname: self::text($r, 'lastname') ?? '',
 			login: $perms->canEditLogin($target, $existing->isLdapManaged ?? false) && $credentials ? (self::text($r, 'login') ?? '') : ($existing === null ? '' : $existing->login),
 			firstname: self::text($r, 'firstname'),
 			gender: self::text($r, 'gender', 'aZ09'),
-			civility: self::text($r, 'civility_code', 'aZ09'),
-			lang: self::text($r, 'default_lang', 'aZ09'),
+			civility: $fields->civility ? self::text($r, 'civility_code', 'aZ09') : $existing?->civility,
+			lang: $fields->language ? self::text($r, 'default_lang', 'aZ09') : $existing?->lang,
 			email: $credentials ? self::email($r) : $existing?->email,
 			job: self::text($r, 'job'),
 			officePhone: self::text($r, 'office_phone'),
@@ -160,18 +168,18 @@ final class UserInput
 			zip: self::text($r, 'zipcode'),
 			town: self::text($r, 'town'),
 			countryId: (int) $r->getPost('country_id', 'int', 0),
-			stateId: (int) $r->getPost('state_id', 'int', 0),
+			stateId: $fields->state ? (int) $r->getPost('state_id', 'int', 0) : $existing?->stateId,
 			signature: self::text($r, 'signature', 'restricthtml'),
 			notePublic: $update ? null : self::text($r, 'note_public', 'restricthtml'),
 			notePrivate: $update ? null : self::text($r, 'note_private', 'restricthtml'),
-			accountancyCode: self::text($r, 'accountancy_code'),
+			accountancyCode: $fields->accountancyCode ? self::text($r, 'accountancy_code') : $existing?->accountancyCode,
 			refEmployee: $refEmployee,
-			color: $color === null ? null : str_replace('#', '', $color),
+			color: $fields->color ? $color : $existing?->color,
 			admin: $perms->canEditAdminFlag($target) ? (bool) $r->getPost('admin', 'int', 0) : ($existing->admin ?? false),
 			employee: (bool) $r->getPost('employee', 'int', 0),
-			supervisorId: self::id($r, 'fk_user'),
-			expenseValidatorId: self::id($r, 'fk_user_expense_validator'),
-			holidayValidatorId: self::id($r, 'fk_user_holiday_validator'),
+			supervisorId: $fields->hierarchy ? self::id($r, 'fk_user') : $existing?->supervisorId,
+			expenseValidatorId: $fields->expenseValidator ? self::id($r, 'fk_user_expense_validator') : $existing?->expenseValidatorId,
+			holidayValidatorId: $fields->holidayValidator ? self::id($r, 'fk_user_holiday_validator') : $existing?->holidayValidatorId,
 			warehouseId: $warehouseId,
 			salary: $money('salary', $existing?->salary),
 			salaryExtra: $money('salaryextra', $existing?->salaryExtra),
@@ -185,10 +193,10 @@ final class UserInput
 			birth: self::dateFromParts($r, 'dateofbirth'),
 			extraFields: $extra,
 			password: $password,
-			categoryIds: is_array($categories) ? array_values(array_map('intval', $categories)) : [],
+			categoryIds: $categoryIds,
 			contactId: $contactId,
 			companyId: $companyId,
-			forcePasswordChange: (bool) $r->getPost('forcepasswordchange', 'int', 0),
+			forcePasswordChange: $fields->forcePasswordChange ? (bool) $r->getPost('forcepasswordchange', 'int', 0) : ($existing->forcePasswordChange ?? false),
 			superadmin: (bool) $r->getPost('superadmin', 'int', 0),
 			entity: $entity,
 			nationalRegistrationNumber: $nationalNumber,

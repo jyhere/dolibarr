@@ -13,11 +13,13 @@ final class ArrayConfig implements Config
 {
 	/**
 	 * @param array<string,string> $constants
+	 * @param list<string>         $modules   The modules enabled
 	 */
 	public function __construct(
 		private readonly array $constants = [],
 		private readonly int $limitUsers = 0,
-		private readonly string $badChars = ',@<>"\''
+		private readonly string $badChars = ',@<>"\'',
+		private readonly array $modules = []
 	) {
 	}
 
@@ -33,7 +35,7 @@ final class ArrayConfig implements Config
 
 	public function isModuleEnabled(string $module): bool
 	{
-		return false;
+		return in_array($module, $this->modules, true);
 	}
 
 	public function entity(): int

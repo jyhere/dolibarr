@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Dolibarr\Module\User\View;
 
+use Dolibarr\Core\CurrentUser;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Module\User\Entity\User;
+use Dolibarr\Module\User\Service\UserFormFields;
 
 /**
  * @internal legacy adapter
@@ -64,38 +67,22 @@ final class UserFormChrome
 	}
 
 	/**
-	 * Rows of the form shown or not, with the conditions of card.php.
-	 *
-	 * $hierarchy: the supervisor and validator rows, always on a creation, with more than one user on an
-	 * edit (l.2697). technicalId (l.2509) and member (l.3124) are rows of the edit form only, smallScreen
-	 * its layout of the force password change row (l.2866).
+	 * The rows of the form shown or not for the current user $me (UserFormFields, shared with UserInput).
+	 */
+	public function fields(CurrentUser $me, bool $canSeeSalary, bool $canEditAdminFlag, bool $hierarchy = true): UserFormFields
+	{
+		return UserFormFields::resolve(new LegacyConfig($this->ctx), $me, $this->ctx->authMode(), $canSeeSalary, $canEditAdminFlag, $hierarchy);
+	}
+
+	/**
+	 * The rows shown, for the template: the UserFormFields plus smallScreen, the layout of the force password
+	 * change row of the edit form (l.2866).
 	 *
 	 * @return array{civility: bool, admin: bool, superadmin: bool, expenseValidator: bool, holidayValidator: bool, forcePasswordChange: bool, accountancyCode: bool, color: bool, categories: bool, language: bool, state: bool, warehouse: bool, emailRequired: bool, salary: bool, hierarchy: bool, technicalId: bool, member: bool, smallScreen: bool}
 	 */
-	public function visibility(bool $canSeeSalary, bool $canEditAdminFlag, bool $hierarchy = true): array
+	public function visibility(UserFormFields $fields): array
 	{
-		$me = $this->ctx->user;
-
-		return [
-			'hierarchy' => $hierarchy,
-			'technicalId' => getDolGlobalString('MAIN_SHOW_TECHNICAL_ID') !== '',
-			'member' => isModEnabled('member'),
-			'smallScreen' => !empty($this->ctx->conf->dol_optimize_smallscreen),				// l.2866
-			'civility' => getDolGlobalString('MAIN_USE_TITLE_FOR_USER') !== '',						// l.1081
-			'admin' => $canEditAdminFlag,															// l.1171, !empty($user->admin)
-			'superadmin' => $canEditAdminFlag && isModEnabled('multicompany') && $me !== null && empty($me->entity),	// l.1176
-			'expenseValidator' => $hierarchy && isModEnabled('expensereport'),					// l.1235, l.2715
-			'holidayValidator' => $hierarchy && isModEnabled('holiday'),							// l.1248, l.2735
-			'forcePasswordChange' => $this->ctx->authMode() === 'dolibarr',						// l.1324
-			'accountancyCode' => isModEnabled('accounting'),										// l.1462
-			'color' => isModEnabled('agenda'),														// l.1470
-			'categories' => isModEnabled('category') && $me !== null && $me->hasRight('categorie', 'read'),	// l.1478
-			'language' => getDolGlobalInt('MAIN_MULTILANGS') > 0,									// l.1485
-			'state' => !getDolGlobalString('USER_DISABLE_STATE'),									// l.1392
-			'warehouse' => isModEnabled('stock') && getDolGlobalString('MAIN_DEFAULT_WAREHOUSE_USER') !== '',	// l.1541
-			'emailRequired' => getDolGlobalString('USER_MAIL_REQUIRED') !== '',					// l.1438
-			'salary' => $canSeeSalary,																// l.1553
-		];
+		return $fields->toArray() + ['smallScreen' => !empty($this->ctx->conf->dol_optimize_smallscreen)];
 	}
 
 	/**
@@ -103,19 +90,20 @@ final class UserFormChrome
 	 *
 	 * @param User                $values   The values to show: the defaults or the stored ones, or what was posted on a redisplay
 	 * @param string              $mode     'create' or 'edit'
+	 * @param UserFormFields      $fields   The rows shown (fields())
 	 * @param string|null         $password Creation: the password to show, null for a generated one (l.1287-1291)
 	 * @param UserEditRights|null $edit     Edit: what the current user may change (required)
 	 *
 	 * @return array<string, string>
 	 */
-	public function fragments(User $values, string $mode, bool $canSeeSalary, bool $canEditAdminFlag, ?string $password = null, ?UserEditRights $edit = null): array
+	public function fragments(User $values, string $mode, UserFormFields $fields, ?string $password = null, ?UserEditRights $edit = null): array
 	{
 		if ($mode === 'edit') {
 			if ($edit === null) {
 				throw new \InvalidArgumentException('The edit fragments need the UserEditRights');
 			}
 
-			return $this->editFragments($values, $canSeeSalary, $canEditAdminFlag, $edit);
+			return $this->editFragments($values, $fields, $edit);
 		}
 		$this->requireHelpers();
 
@@ -131,7 +119,7 @@ final class UserFormChrome
 			// The posted extrafields of a redisplay, as setOptionalsFromPost() leaves them on $object
 			$object->array_options = $values->extraFields;
 		}
-		$show = $this->visibility($canSeeSalary, $canEditAdminFlag);
+		$show = $this->visibility($fields);
 		$formName = $mode === 'create' ? 'createuser' : 'updateuser';
 		$entity = (string) $conf->entity;
 		$exclude = [$values->id > 0 ? $values->id : null];
@@ -274,7 +262,7 @@ final class UserFormChrome
 	 *
 	 * @return array<string, string>
 	 */
-	private function editFragments(User $values, bool $canSeeSalary, bool $canEditAdminFlag, UserEditRights $edit): array
+	private function editFragments(User $values, UserFormFields $fields, UserEditRights $edit): array
 	{
 		$this->requireHelpers();
 		$langs = $this->ctx->langs;
@@ -289,7 +277,7 @@ final class UserFormChrome
 		if ($values->extraFields !== []) {
 			$object->array_options = array_merge(is_array($object->array_options) ? $object->array_options : [], $values->extraFields);
 		}
-		$show = $this->visibility($canSeeSalary, $canEditAdminFlag, $edit->nbOfUsers > 1);
+		$show = $this->visibility($fields);
 		$canEdit = $edit->canEdit;
 		$ldap = $values->isLdapManaged;
 		$domainUser = $ldap ? ' ('.$langs->trans('DomainUser').')' : '';
@@ -330,7 +318,7 @@ final class UserFormChrome
 
 		// l.2613-2694: the admin flag
 		$f['adminLabel'] = $this->capture(static fn () => $form->textwithpicto($langs->trans('Administrator'), $langs->trans('AdministratorDesc')));
-		$f['admin'] = $this->adminEdit($object, $values, $canEditAdminFlag);
+		$f['admin'] = $this->adminEdit($object, $values, $fields->admin);
 
 		if ($show['civility'] && $canEdit && !$ldap) {
 			// l.2700
