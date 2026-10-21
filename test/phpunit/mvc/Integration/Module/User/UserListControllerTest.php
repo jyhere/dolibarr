@@ -30,11 +30,13 @@ use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
 use Dolibarr\Module\User\Repository\UserRepository;
+use Dolibarr\Module\User\Repository\UserSearch;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\Service\UserService;
 use Dolibarr\Module\User\View\UserListChrome;
 use Dolibarr\Tests\Integration\Fixture\LimitUsersConfig;
 use Dolibarr\Tests\Integration\Fixture\OverridesLegacyConf;
+use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
 use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
 use PHPUnit\Framework\TestCase;
 
@@ -262,6 +264,82 @@ final class UserListControllerTest extends TestCase
 		self::assertFalse($vm->data['show']['u.lastname']);
 	}
 
+	public function testGrandTotalAndFooterHookGetTheListSql(): void
+	{
+		$a = $this->disposable('Paid');
+		$b = $this->disposable('Paid2');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1000 WHERE rowid IN ('.$a->id.', '.$b->id.')');
+		$this->setConf('MAIN_GRANDTOTAL_LIST_SHOW', 1);
+		$modules = $this->ctx->conf->modules;
+		$this->ctx->conf->modules['salaries'] = 'salaries';
+		$user = $this->ctx->user;
+		self::assertNotNull($user);
+		$user->conf->MAIN_SELECTEDFIELDS_userlist = 'u.login,u.salary,';
+		$hooks = new ScriptedHooks([]);
+		$hm = new \HookManager($this->ctx->db);
+		ScriptedHooks::register($hm, 'userlist', $hooks);
+		$me = new RightsCurrentUser((int) $user->id, false, ['user.user.read', 'salaries.read', 'salaries.readall']);
+
+		try {
+			// One row per page: the grand total (list_print_total.tpl.php l.140-170) sums the whole list
+			$vm = $this->list('GET', ['search_lastname' => 'mvc_list_Paid', 'limit' => '1'], [], false, null, $me, $hm);
+		} finally {
+			$this->ctx->conf->modules = $modules;
+		}
+
+		self::assertInstanceOf(ViewModel::class, $vm);
+		self::assertTrue($vm->data['show']['u.salary']);
+		$totals = (string) $vm->data['totalsHtml'];
+		self::assertStringContainsString('<tr class="liste_total">', $totals);
+		self::assertStringContainsString('<tr class="liste_grandtotal">', $totals);
+		self::assertStringContainsString(price(2000), $totals);
+		// list.php l.1477: the footer hooks get the list query
+		$sql = $hooks->parameters['printFieldListFooter']['sql'] ?? '';
+		self::assertIsString($sql);
+		self::assertStringStartsWith('SELECT DISTINCT u.rowid', $sql);
+		self::assertStringContainsString(' ORDER BY ', $sql);
+		self::assertStringNotContainsString(' LIMIT ', $sql);
+	}
+
+	public function testGetNeverWrites(): void
+	{
+		$target = $this->disposable('Target');
+		$me = $this->ctx->user;
+		self::assertNotNull($me);
+
+		// A GET with a valid token runs neither the mass action nor the selected fields save
+		$this->list('GET', ['massaction' => 'disable', 'confirmmassaction' => 'Confirm', 'toselect' => [(string) $target->id], 'token' => 'checked-by-main-inc']);
+		self::assertSame(1, $this->repo()->find($target->id)?->status);
+
+		$vm = $this->list('GET', ['formfilteraction' => 'listafterchangingselectedfields', 'selectedfields' => 'u.login,', 'token' => 'checked-by-main-inc']);
+		self::assertInstanceOf(ViewModel::class, $vm);
+		self::assertNull($this->connection->fetchOne('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist' AND value = 'u.login,'"));
+	}
+
+	public function testApiKeyTitleOnlyForReaders(): void
+	{
+		$target = $this->disposable('Keyed');
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET api_key = 'secret-api-key-123' WHERE rowid = ".$target->id);
+		$row = (new UserRepository($this->connection, (int) $this->ctx->conf->entity))->search(
+			UserSearch::fromRequest(\Dolibarr\Tests\Integration\Fixture\GlobalsRequest::create('GET', '/user', ['search_lastname' => 'mvc_list_Keyed']), new LegacyConfig($this->ctx), false, 20),
+			null,
+			null,
+			[],
+			true
+		)->items[0];
+		$urls = new UrlGenerator((new RouteCompiler())->compile([UserController::class, UserListController::class]), '');
+		$chrome = new UserListChrome($this->ctx, $urls);
+		$arrayfields = ['u.api_key' => ['checked' => 1]];
+		$total = ['nbfield' => 0];
+
+		$hidden = $chrome->rowBeforeHook($row, $chrome->legacyRow($row), 0, $arrayfields, $total, false, false);
+		self::assertSame('', $hidden['apiKeyTitle']);
+		self::assertStringNotContainsString('secret-api-key', (string) $hidden['apiKey']);
+
+		$shown = $chrome->rowBeforeHook($row, $chrome->legacyRow($row), 0, $arrayfields, $total, false, true);
+		self::assertSame('secret-api-key-123', $shown['apiKeyTitle']);
+	}
+
 	public function testTagMassActionIsForwardedToListPhp(): void
 	{
 		$target = $this->disposable('Target');
@@ -321,7 +399,7 @@ final class UserListControllerTest extends TestCase
 	 * @param array<string, mixed> $get
 	 * @param array<string, mixed> $post
 	 */
-	private function list(string $method, array $get, array $post = [], bool $json = false, ?Config $config = null, ?CurrentUser $me = null): mixed
+	private function list(string $method, array $get, array $post = [], bool $json = false, ?Config $config = null, ?CurrentUser $me = null, ?\HookManager $hm = null): mixed
 	{
 		$_GET = $get;
 		$_POST = $post;
@@ -335,7 +413,7 @@ final class UserListControllerTest extends TestCase
 		}
 		$request = Request::fromGlobals('')->withInputFilter(new LegacyInputFilter());
 
-		return $this->controller($config, $me)->list($request);
+		return $this->controller($config, $me, $hm)->list($request);
 	}
 
 	private function legacyMe(): CurrentUser
@@ -346,7 +424,7 @@ final class UserListControllerTest extends TestCase
 		return new LegacyCurrentUser($legacyUser);
 	}
 
-	private function controller(?Config $config = null, ?CurrentUser $me = null): UserListController
+	private function controller(?Config $config = null, ?CurrentUser $me = null, ?\HookManager $hm = null): UserListController
 	{
 		$ctx = $this->ctx;
 		$me ??= $this->legacyMe();
@@ -357,7 +435,7 @@ final class UserListControllerTest extends TestCase
 			$this->repo(),
 			new UserPermissionChecker($me, false, false, false, [$me->id()], false, false, (int) $ctx->conf->entity),
 			$me,
-			new LegacyHooks($ctx->hookmanager),
+			new LegacyHooks($hm ?? $ctx->hookmanager),
 			new LegacyTranslator($ctx->langs),
 			new UserListChrome($ctx, $urls),
 			new FlashBag(),

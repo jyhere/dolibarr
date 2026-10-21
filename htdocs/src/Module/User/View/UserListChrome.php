@@ -591,7 +591,8 @@ final class UserListChrome
 		$apiKeyTitle = '';
 		if ($checked('u.api_key')) {
 			$clear = dolDecrypt((string) ($row['api_key'] ?? ''));
-			$apiKeyTitle = (string) $clear;
+			// list.php l.1268 puts the clear key in the title for every viewer: only for those who may read it here
+			$apiKeyTitle = $canReadSecretApi ? (string) $clear : '';
 			if ($clear) {
 				$apiKey = $canReadSecretApi
 					? '<span class="opacitymedium">'.showValueWithClipboardCPButton($object->api_key, 1, dol_trunc($clear, 3)).'</span>'
@@ -711,17 +712,19 @@ final class UserListChrome
 	}
 
 	/**
-	 * l.1461: the total line (list_print_total.tpl.php), '' when no column is totalized.
+	 * l.1461: the total line (list_print_total.tpl.php), '' when no column is totalized. With
+	 * MAIN_GRANDTOTAL_LIST_SHOW, the template sums the columns over $sql, its select $sqlfields replaced.
 	 *
 	 * @param array<string, mixed> $totalarray
+	 * @param string               $sql       The list query (UserPage::$sql)
+	 * @param string               $sqlfields Its SELECT part (UserPage::$sqlFields)
 	 */
-	public function totals(array $totalarray, int $num, int $limit, int $offset): string
+	public function totals(array $totalarray, int $num, int $limit, int $offset, string $sql, string $sqlfields): string
 	{
 		$conf = $this->ctx->conf;
 		$langs = $this->ctx->langs;
 		$db = $this->ctx->db;
 		$form = $this->ctx->form();
-		$sql = '';
 		ob_start();
 		try {
 			include DOL_DOCUMENT_ROOT.'/core/tpl/list_print_total.tpl.php';

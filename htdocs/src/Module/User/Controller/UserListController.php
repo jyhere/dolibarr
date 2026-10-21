@@ -21,6 +21,7 @@ use Dolibarr\Core\View\ViewModel;
 use Dolibarr\Module\User\Entity\UserView;
 use Dolibarr\Module\User\Entity\Visibility;
 use Dolibarr\Module\User\Repository\UserListRow;
+use Dolibarr\Module\User\Repository\UserPage;
 use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Repository\UserSearch;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
@@ -95,6 +96,14 @@ final class UserListController
 		$arrayfields = $this->chrome->arrayFields($employeeList, $this->perms->canReadHr(), $this->me->isAdmin(), $this->me->hasRight('salaries', 'readall'));
 		$this->hook('completeArrayFields', ['arrayfields' => &$arrayfields], $action);
 		$arrayfields = $this->chrome->completeArrayFields($arrayfields);
+		// Only the columns enabled for the viewer may sort the list (no sort on a hidden salary or api key)
+		$sortable = [];
+		foreach ($arrayfields as $key => $field) {
+			if (!array_key_exists('enabled', $field) || !empty($field['enabled'])) {
+				$sortable[] = (string) $key;
+			}
+		}
+		$search = $search->withSortableColumns($sortable);
 
 		// l.258-264
 		$massaction = $this->param($r, 'massaction', 'alpha');
@@ -192,7 +201,7 @@ final class UserListController
 			return $vm;
 		}
 
-		return $this->view($vm, $r, $search, $page->items, $page->total, $page->hasMore, $arrayfields, $searchOptions, $htmlOfSelectArray, $massaction, $toselect, $employeeList, $doActions, $action);
+		return $this->view($vm, $r, $search, $page, $page->items, $page->total, $page->hasMore, $arrayfields, $searchOptions, $htmlOfSelectArray, $massaction, $toselect, $employeeList, $doActions, $action);
 	}
 
 	/**
@@ -203,7 +212,7 @@ final class UserListController
 	 * @param array<string, mixed>                $searchOptions
 	 * @param list<int>                           $toselect
 	 */
-	private function view(ViewModel $vm, Request $r, UserSearch $s, array $rows, int $total, bool $hasMore, array $arrayfields, array $searchOptions, string $htmlOfSelectArray, string $massaction, array $toselect, bool $employeeList, HookResult $doActions, string $action): ViewModel
+	private function view(ViewModel $vm, Request $r, UserSearch $s, UserPage $page, array $rows, int $total, bool $hasMore, array $arrayfields, array $searchOptions, string $htmlOfSelectArray, string $massaction, array $toselect, bool $employeeList, HookResult $doActions, string $action): ViewModel
 	{
 		$noAction = '';
 		$num = count($rows) + ($hasMore ? 1 : 0);
@@ -244,7 +253,7 @@ final class UserListController
 			$rowObject = $this->chrome->legacyRow($row);
 			$id = $row->user->id;
 			$selected = $selectionMode ? (int) in_array($id, $toselect, true) : -1;
-			$before = $this->chrome->rowBeforeHook($row, $rowObject, $i, $arrayfields, $totalarray, $this->canReadHrmData($id), $this->me->id() === $id || $this->me->isAdmin());
+			$before = $this->chrome->rowBeforeHook($row, $rowObject, $i, $arrayfields, $totalarray, $this->canReadHrmData($id), $this->perms->canReadApiKey($row->user));
 			$hookRow = $rowObject;
 			$value = $this->hooks->execute('printFieldListValue', ['arrayfields' => $arrayfields, 'object' => $rowObject, 'obj' => (object) $row->row, 'i' => $i, 'totalarray' => &$totalarray], $hookRow, $noAction);
 			$after = $this->chrome->rowAfterHook($row, $rowObject, $i, $arrayfields, $totalarray);
@@ -267,7 +276,7 @@ final class UserListController
 			}
 		}
 
-		$footer = $this->hook('printFieldListFooter', ['arrayfields' => $arrayfields, 'sql' => ''], $action);
+		$footer = $this->hook('printFieldListFooter', ['arrayfields' => $arrayfields, 'sql' => $page->sql], $action);
 		$show = [];
 		foreach ($arrayfields as $key => $val) {
 			$show[$key] = !empty($val['checked']);
@@ -296,7 +305,7 @@ final class UserListController
 			->with('titlesAfter', $titlesAfter)
 			->with('kanbanColspan', (int) $titleTotal['nbfield'])
 			->with('rows', $rowsView)
-			->with('totalsHtml', $this->chrome->totals($totalarray, $num, $s->limit, $s->offset()))
+			->with('totalsHtml', $this->chrome->totals($totalarray, $num, $s->limit, $s->offset(), $page->sql, $page->sqlFields))
 			->with('colspan', $colspan)
 			->with('footerHookHtml', $footer->output.$footer->print);
 	}

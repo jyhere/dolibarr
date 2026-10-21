@@ -49,6 +49,18 @@ final class UserSearchTest extends TestCase
 		self::assertSame('ef.myfield', $this->search(['sortfield' => 'ef.myfield'], ['ef.myfield'])->sortField);
 	}
 
+	public function testSortIsLimitedToTheVisibleColumns(): void
+	{
+		// The salary column disabled for the viewer: no sort on it
+		self::assertSame('u.login', $this->search(['sortfield' => 'u.salary'])->withSortableColumns(['u.login', 'u.email'])->sortField);
+		self::assertSame('u.login', $this->search(['sortfield' => 'u.email,u.api_key'])->withSortableColumns(['u.login', 'u.email'])->sortField);
+		self::assertSame('u.email', $this->search(['sortfield' => 'u.email'])->withSortableColumns(['u.login', 'u.email'])->sortField);
+		$s = $this->search(['sortfield' => 'u.salary', 'sortorder' => 'DESC', 'page' => 2])->withSortableColumns(['u.salary']);
+		self::assertSame('u.salary', $s->sortField);
+		self::assertSame('DESC', $s->sortOrder);
+		self::assertSame(2, $s->page);
+	}
+
 	public function testSortOrderWhitelist(): void
 	{
 		self::assertSame('ASC', $this->search([])->sortOrder);

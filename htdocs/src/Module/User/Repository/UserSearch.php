@@ -198,6 +198,25 @@ final class UserSearch
 	}
 
 	/**
+	 * The same criteria with the sort limited to the columns the viewer has ($arrayfields without the ones
+	 * disabled for him: salary, HR, api key...): another sort field falls back to u.login.
+	 *
+	 * @param list<string> $columns
+	 */
+	public function withSortableColumns(array $columns): self
+	{
+		$sortField = $this->sortField;
+		foreach (explode(',', $sortField) as $part) {
+			if (!in_array($part, $columns, true)) {
+				$sortField = 'u.login';
+				break;
+			}
+		}
+
+		return new self($this->filters, $sortField, $this->sortOrder, $this->limit, $this->page, $this->optioncss, $this->mode, $this->contextpage, $this->employeeList, $this->searchAllFields, $this->countTotal, $this->loginsPrivacy);
+	}
+
+	/**
 	 * The same criteria on the first page (list.php l.548-551: a page beyond the total).
 	 */
 	public function firstPage(): self

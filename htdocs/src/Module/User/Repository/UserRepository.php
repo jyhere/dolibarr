@@ -196,14 +196,15 @@ final class UserRepository implements EntityRepository
 		}
 
 		$db = $this->c->legacy();
-		$rows = $this->c->fetchAll($select.$sql.$db->order($s->sortField, $s->sortOrder).$db->plimit($s->limit + 1, $s->offset()));
+		$listSql = $select.$sql.$db->order($s->sortField, $s->sortOrder);
+		$rows = $this->c->fetchAll($listSql.$db->plimit($s->limit + 1, $s->offset()));
 		$hasMore = count($rows) > $s->limit;
 		$items = [];
 		foreach (array_slice($rows, 0, $s->limit) as $row) {
 			$items[] = $this->listRow($row);
 		}
 
-		return new UserPage($items, $total, $s->page, $s->limit, $hasMore);
+		return new UserPage($items, $total, $s->page, $s->limit, $hasMore, $listSql, $select);
 	}
 
 	private function fetch(string $where, string $order = ''): ?User
