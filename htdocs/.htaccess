@@ -1,12 +1,14 @@
 # Dolibarr MVC front controller rules for Apache (equivalent to the nginx configuration).
-# Requires: mod_rewrite, and AllowOverride FileInfo (or All) on this directory.
-# Without AllowOverride, copy these rules into the vhost: see dev/examples/apache/dolibarr-vhost.conf
+# Requires: mod_rewrite, and "AllowOverride All" (or "AllowOverride FileInfo Indexes Options") on this directory:
+# FileInfo for the rewrite rules, Indexes for DirectoryIndex/DirectorySlash, Options for "Options -Indexes".
+# If AllowOverride is None, these rules are ignored: put them in the vhost (see dev/examples/apache/dolibarr-vhost.conf);
+# otherwise MVC URLs return 404 and /src/ is not blocked by a rule.
 # PHP must be executed by PHP-FPM (proxy:fcgi) or mod_php.
 
 Options -Indexes
 DirectoryIndex index.php
 # "/user" (MVC route, a directory without index.php) must reach app.php, not get mod_dir's 301 to "/user/"
-# (needs AllowOverride Indexes or All; in the vhost it needs no override)
+# (needs AllowOverride Indexes; in the vhost it needs no override)
 DirectorySlash Off
 
 <IfModule mod_rewrite.c>
