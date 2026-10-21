@@ -118,7 +118,7 @@ final class Kernel
 
 	/**
 	 * Answer the request once main.inc.php has been included. A matched route first creates the marker
-	 * cache/mvc_front_ok (FrontControllerMarker) when missing. Any uncaught error is logged
+	 * cache/mvc_front_ok (FrontControllerMarker) when missing, unless the URL names /app.php itself. Any uncaught error is logged
 	 * and answered with a bare 500: its message (SQL, paths) never reaches the client.
 	 *
 	 * @param MatchResult $matchResult
@@ -127,8 +127,10 @@ final class Kernel
 	public function run(array $matchResult, mixed $mainIncResult): Response
 	{
 		$request = $this->requestForRun();
-		if ($matchResult['matched'] !== null) {
-			// A route reached app.php: the rewrite works, the legacy redirects may start (LegacyRedirectBootstrap)
+		$throughAppPhp = $request->path() === '/app.php' || str_starts_with($request->path(), '/app.php/');
+		if ($matchResult['matched'] !== null && !$throughAppPhp) {
+			// A route reached app.php: the rewrite works, the legacy redirects may start (LegacyRedirectBootstrap).
+			// Not for /app.php/...: a URL naming app.php itself works without any rewrite.
 			(new FrontControllerMarker($this->dataRoot))->mark();
 		}
 		$responder = null;

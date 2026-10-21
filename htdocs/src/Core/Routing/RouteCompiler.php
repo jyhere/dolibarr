@@ -14,9 +14,15 @@ final class RouteCompiler
 	private const DEFAULT_REQUIREMENT = '[^/]+';
 
 	/**
+	 * Constants a route may declare (#[Route(constants: ...)]), defined before main.inc.php. Those that lift a
+	 * security check (NOLOGIN, NOCSRFCHECK, NOIPCHECK...) are refused: a public route uses public: true.
+	 */
+	private const ALLOWED_CONSTANTS = ['EVEN_IF_ONLY_LOGIN_ALLOWED', 'NOREDIRECTBYMAINTOLOGIN', 'NOREQUIREMENU', 'NOREQUIREHTML', 'NOREQUIREAJAX', 'NOTOKENRENEWAL'];
+
+	/**
 	 * @param list<class-string> $controllers
 	 * @return list<RouteDefinition>
-	 * @throws \LogicException When two routes have the same name
+	 * @throws \LogicException When two routes have the same name, or a route declares a constant outside ALLOWED_CONSTANTS
 	 */
 	public function compile(array $controllers): array
 	{
@@ -34,6 +40,11 @@ final class RouteCompiler
 						throw new \LogicException('Route name "'.$name.'" is declared twice: by '.$declaredBy[$name].' and by '.$where);
 					}
 					$declaredBy[$name] = $where;
+					foreach ($route->constants as $constant) {
+						if (!in_array($constant, self::ALLOWED_CONSTANTS, true)) {
+							throw new \LogicException('Route constant "'.$constant.'" declared by '.$where.' is not allowed (RouteCompiler::ALLOWED_CONSTANTS)');
+						}
+					}
 					[$regex, $variables] = $this->compilePath($route->path, $route->requirements);
 					$definitions[] = new RouteDefinition(
 						$name,
