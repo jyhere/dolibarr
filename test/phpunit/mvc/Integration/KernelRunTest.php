@@ -108,6 +108,14 @@ final class KernelRunTest extends TestCase
 		self::assertFileExists($this->dataRoot.'/cache/mvc_front_ok');
 	}
 
+	public function testARouteReachedThroughAppPhpDoesNotProveTheRewrite(): void
+	{
+		$response = $this->runKernel('GET', '/app.php/loose', true);
+
+		self::assertSame(200, $response->status(), 'the loose route matches /app.php/loose');
+		self::assertFileDoesNotExist($this->dataRoot.'/cache/mvc_front_ok');
+	}
+
 	/**
 	 * @param array<string, string> $templateDirs
 	 */

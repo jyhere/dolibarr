@@ -509,15 +509,25 @@ for URL in "card.php?id=1" "card.php?id=1&action=edit" "card.php?id=1&action=dis
 	[ "${OUT#* }" = "200" ] && [ "${OUT%% *}" -le 2 ] && ok "no redirect loop from $URL ($OUT)" || fail "redirect loop from $URL" "$OUT"
 done
 # Switch: MAIN_MVC_LEGACY_REDIRECTS=0 (read per request) leaves the legacy page alone; restored right after
+# A row the instance already had is saved here and put back at the end (or on exit)
+SAVED_SWITCH="$(smoke_sql "SELECT CONCAT(entity, ',', QUOTE(value)) FROM llx_const WHERE name = 'MAIN_MVC_LEGACY_REDIRECTS'" || true)"
 restore_redirect_switch() { smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_MVC_LEGACY_REDIRECTS'" > /dev/null || true; }
-trap 'restore_redirect_switch; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+put_back_saved_switch() {
+	local row
+	restore_redirect_switch
+	while IFS= read -r row; do
+		[ -n "$row" ] && smoke_sql "INSERT INTO llx_const (name, entity, value, type, visible) VALUES ('MAIN_MVC_LEGACY_REDIRECTS', $row, 'chaine', 0)" < /dev/null > /dev/null || true
+	done <<< "$SAVED_SWITCH"
+}
+trap 'put_back_saved_switch; cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 restore_redirect_switch
 smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_MVC_LEGACY_REDIRECTS', '0', 'chaine', 0, 1)" > /dev/null
 OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" "$BASE/user/card.php?id=1")"
 restore_redirect_switch
-trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 [ "$OUT" = "200 " ] && ok "MAIN_MVC_LEGACY_REDIRECTS=0 disables the redirect (card.php?id=1 200, no Location)" || fail "redirect switch" "$OUT"
 expect_location_suffix "redirect back on once the switch row is removed" "/user/1" -b "$J3" "$BASE/user/card.php?id=1"
+put_back_saved_switch
+trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" "$BASE/logout?urlfrom=//evil.example/x")"
 case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the host";; *) fail "logout urlfrom=//evil" "$OUT";; esac
 # Last: it ends the J3 session

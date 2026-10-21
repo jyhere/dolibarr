@@ -29,4 +29,10 @@ final class ThrowingController
 	{
 		return new ViewModel('core:error404');
 	}
+
+	#[Route('/{segment}/loose', name: 'fixture_loose', public: true)]
+	public function loose(): ViewModel
+	{
+		return new ViewModel('core:error404');
+	}
 }

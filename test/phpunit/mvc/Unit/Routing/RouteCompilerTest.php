@@ -10,6 +10,7 @@ use Dolibarr\Tests\Unit\Routing\Fixture\DuplicateNameController;
 use Dolibarr\Tests\Unit\Routing\Fixture\FakeController;
 use Dolibarr\Tests\Unit\Routing\Fixture\MethodsController;
 use Dolibarr\Tests\Unit\Routing\Fixture\UnnamedController;
+use Dolibarr\Tests\Unit\Routing\Fixture\UnsafeConstantController;
 use PHPUnit\Framework\TestCase;
 
 final class RouteCompilerTest extends TestCase
@@ -35,6 +36,13 @@ final class RouteCompilerTest extends TestCase
 		unset($data['constants']);
 
 		self::assertSame([], RouteDefinition::fromArray($data)->constants);
+	}
+
+	public function testAConstantOutsideTheAllowlistIsRefused(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessageMatches('/"NOCSRFCHECK".*UnsafeConstantController::unsafe\(\)/');
+		(new RouteCompiler())->compile([UnsafeConstantController::class]);
 	}
 
 	public function testRepeatedAttributesDefaultNameRequirementAndEscaping(): void
