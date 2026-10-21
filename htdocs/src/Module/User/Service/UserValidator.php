@@ -56,7 +56,8 @@ final class UserValidator
 
 		if ($this->config->string('USER_MAIL_REQUIRED') !== '' && $this->config->string('USER_MAIL_REQUIRED') !== '0'
 			&& filter_var($in->email ?? '', FILTER_VALIDATE_EMAIL) === false) {
-			$errors[] = $this->t->trans('ErrorBadEMail', $in->email ?? '');
+			// The email posted goes into a flash message (HTML)
+			$errors[] = $this->t->transHtml('ErrorBadEMail', $in->email ?? '');
 		}
 
 		return $errors;

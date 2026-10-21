@@ -18,6 +18,14 @@ final class FakeTranslator implements Translator
 		return 'TN:'.$key;
 	}
 
+	/**
+	 * 'TH:<key>', then ':' and the arguments escaped, joined by '|', when there are some.
+	 */
+	public function transHtml(string $key, string ...$args): string
+	{
+		return 'TH:'.$key.($args === [] ? '' : ':'.implode('|', array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args)));
+	}
+
 	public function load(string $domain): void
 	{
 	}

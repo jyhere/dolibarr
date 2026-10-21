@@ -44,8 +44,10 @@ final class UserValidatorTest extends TestCase
 	{
 		$required = $this->validator(constants: ['USER_MAIL_REQUIRED' => '1']);
 
-		self::assertSame(['TR:ErrorBadEMail'], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe', email: 'nope'), true, 0));
-		self::assertSame(['TR:ErrorBadEMail'], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe'), true, 0));
+		self::assertSame(['TH:ErrorBadEMail:nope'], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe', email: 'nope'), true, 0));
+		self::assertSame(['TH:ErrorBadEMail:'], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe'), true, 0));
+		// The email posted goes into a flash message: escaped
+		self::assertSame(['TH:ErrorBadEMail:&lt;b&gt;x'], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe', email: '<b>x'), true, 0));
 		self::assertSame([], $required->validate(new UserInput(lastname: 'Doe', login: 'jdoe', email: 'a@b.fr'), true, 0));
 		self::assertSame([], $this->validator()->validate(new UserInput(lastname: 'Doe', login: 'jdoe', email: 'nope'), true, 0));
 	}

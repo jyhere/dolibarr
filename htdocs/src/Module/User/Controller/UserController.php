@@ -193,11 +193,11 @@ final class UserController
 			if ($this->writeOrFlash(function () use ($id, &$clear): void {
 				$clear = $this->service->resetPassword($id, false);
 			})) {
-				$this->flash->warning($this->htmlTrans('PasswordChangedTo', $clear));
+				$this->flash->warning($this->t->transHtml('PasswordChangedTo', $clear));
 			}
 		} elseif ($action === 'confirm_passwordsend' && $this->perms->canSendPassword($user)) {
 			if ($this->writeOrFlash(fn () => $this->service->resetPassword($id, true))) {
-				$this->flash->success($this->htmlTrans('PasswordChangedAndSentTo', (string) $user->email));
+				$this->flash->success($this->t->transHtml('PasswordChangedAndSentTo', (string) $user->email));
 			}
 		}
 
@@ -322,7 +322,7 @@ final class UserController
 		if ($dialog !== '') {
 			// card.php l.1697-1719 pass $selectedchoice = 0: "No" is preselected
 			[$route, $title, $question, $confirmAction] = self::DIALOGS[$dialog];
-			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->htmlTrans($question, $user->login), $confirmAction, [], 'no');
+			$confirmDialog = $this->confirm->render($this->urls->generate($route, ['id' => $id]), $this->t->trans($title), $this->t->transHtml($question, $user->login), $confirmAction, [], 'no');
 		}
 
 		return (new ViewModel('user:user_show', [
@@ -595,14 +595,6 @@ final class UserController
 		return !$confirmed || $this->param($r, 'confirm', 'alpha') === 'yes' ? $action : '';
 	}
 
-	/**
-	 * A translation going into HTML (a flash message, a legacy dialog) with its arguments escaped, as the
-	 * legacy \Translate::trans() of card.php escapes them; the tags of the translation itself are kept.
-	 */
-	private function htmlTrans(string $key, string ...$args): string
-	{
-		return $this->t->trans($key, ...array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args));
-	}
 
 	/**
 	 * Runs a write, its refusal flashed as errors.

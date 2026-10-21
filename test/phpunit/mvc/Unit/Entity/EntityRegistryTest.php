@@ -32,6 +32,27 @@ final class EntityRegistryTest extends TestCase
 		self::assertNull($registry->findByElement('thirdparty'));
 	}
 
+	public function testDuplicateSlugThrows(): void
+	{
+		$registry = new EntityRegistry();
+		$registry->register(new EntityDefinition('user', \stdClass::class, 'repo', 'user', 'user', 'checker', 'tabs', 'user_show'));
+
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessage('user');
+		$registry->register(new EntityDefinition('user', \stdClass::class, 'other', 'user', 'user', 'checker', 'tabs', 'user_show'));
+	}
+
+	public function testTwoDefinitionsOfTheSameElementThrow(): void
+	{
+		$registry = new EntityRegistry();
+		$registry->register(new EntityDefinition('user', \stdClass::class, 'repo', 'user', 'user', 'checker', 'tabs', 'user_show'));
+		$registry->register(new EntityDefinition('member_user', \stdClass::class, 'repo', 'user', 'user', 'checker', 'tabs', 'user_show'));
+		self::assertNull($registry->findByElement('societe'));
+
+		$this->expectException(\LogicException::class);
+		$registry->findByElement('user');
+	}
+
 	public function testUnknownSlugThrows(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);

@@ -343,7 +343,7 @@ final class UserListController
 				return;
 			}
 			if ($target->admin) {
-				$this->flash->error($this->htmlTrans($enable ? 'CantEnableAnAdminUserWithMassActions' : 'CantDisableAnAdminUserWithMassActions', $target->login));
+				$this->flash->error($this->t->transHtml($enable ? 'CantEnableAnAdminUserWithMassActions' : 'CantDisableAnAdminUserWithMassActions', $target->login));
 
 				return;
 			}
@@ -421,13 +421,6 @@ final class UserListController
 		};
 	}
 
-	/**
-	 * A translation going into HTML (a flash message) with its arguments escaped, as \Translate::trans() does.
-	 */
-	private function htmlTrans(string $key, string ...$args): string
-	{
-		return $this->t->trans($key, ...array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args));
-	}
 
 	private function param(Request $r, string $name, string $filter = 'alphanohtml'): string
 	{

@@ -26,6 +26,11 @@ final class LegacyTranslator implements Translator
 		return $this->langs->transnoentitiesnoconv($key, ...$this->pad($args));
 	}
 
+	public function transHtml(string $key, string ...$args): string
+	{
+		return $this->trans($key, ...array_map(static fn (string $a): string => htmlspecialchars($a, ENT_COMPAT, 'UTF-8'), $args));
+	}
+
 	public function load(string $domain): void
 	{
 		$this->langs->load($domain);

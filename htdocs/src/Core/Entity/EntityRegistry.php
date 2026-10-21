@@ -12,8 +12,14 @@ final class EntityRegistry
 	/** @var array<string, EntityDefinition> */
 	private array $definitions = [];
 
+	/**
+	 * @throws \LogicException When the slug is already registered (two modules would silently override each other)
+	 */
 	public function register(EntityDefinition $d): void
 	{
+		if (isset($this->definitions[$d->slug])) {
+			throw new \LogicException('Entity slug '.$d->slug.' is already registered');
+		}
 		$this->definitions[$d->slug] = $d;
 	}
 
@@ -27,16 +33,22 @@ final class EntityRegistry
 
 	/**
 	 * The definition whose legacy element is $element (CommonObject::$element), null when none.
+	 *
+	 * @throws \LogicException When two definitions declare that element (which one is meant would be arbitrary)
 	 */
 	public function findByElement(string $element): ?EntityDefinition
 	{
+		$found = null;
 		foreach ($this->definitions as $definition) {
 			if ($definition->element === $element) {
-				return $definition;
+				if ($found !== null) {
+					throw new \LogicException('Entity slugs '.$found->slug.' and '.$definition->slug.' both declare the element '.$element);
+				}
+				$found = $definition;
 			}
 		}
 
-		return null;
+		return $found;
 	}
 
 	public function has(string $slug): bool
