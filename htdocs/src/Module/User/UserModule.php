@@ -237,7 +237,52 @@ final class UserModule implements ModuleInterface
 	 */
 	public function legacyRedirects(): array
 	{
-		return [];
+		// Arrays (search_category_user_list[]) are never carried: such a list URL stays on the legacy page (forbidden).
+		$listCarry = [
+			'search_all', 'search_user', 'search_rowid', 'search_login', 'search_lastname', 'search_firstname',
+			'search_gender', 'search_employee', 'search_accountancy_code', 'search_phonepro', 'search_phonemobile',
+			'search_email', 'search_country', 'search_api_key', 'search_status', 'search_thirdparty', 'search_job',
+			'search_warehouse', 'search_supervisor', 'search_categ',
+		];
+		foreach (['datelastlogin', 'datepreviouslogin'] as $date) {
+			foreach (['day', 'month', 'year'] as $part) {
+				$listCarry[] = 'search_'.$date.$part;
+			}
+		}
+		array_push(
+			$listCarry,
+			'search_category_user_operator', 'catid', 'sortfield', 'sortorder', 'limit', 'page', 'pageplusone',
+			'optioncss', 'mode', 'contextpage', 'restore_lastsearch_values', 'mainmenu', 'leftmenu', 'show_files'
+		);
+		$id = ['id' => '\d+'];
+
+		return [
+			new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id'], required: ['id'], carry: ['backtopage', 'save_lastsearch_values', 'mainmenu', 'leftmenu', 'optioncss'], requirements: $id),
+			new LegacyRedirect('user/card.php', 'user_edit', ['id' => 'id'], required: ['id'], actions: ['edit'], carry: ['backtopage'], requirements: $id),
+			new LegacyRedirect(
+				'user/card.php',
+				'user_show',
+				['id' => 'id'],
+				required: ['id'],
+				actions: ['disable', 'enable', 'delete', 'password', 'passwordsend'],
+				queryFromAction: [
+					'disable' => ['confirm' => 'disable'], 'enable' => ['confirm' => 'enable'], 'delete' => ['confirm' => 'delete'],
+					'password' => ['confirm' => 'password'], 'passwordsend' => ['confirm' => 'passwordsend'],
+				],
+				requirements: $id
+			),
+			new LegacyRedirect('user/card.php', 'user_new', actions: ['create'], carry: ['backtopage', 'backtopageforcancel', 'socid', 'search_employee', 'mainmenu', 'leftmenu']),
+			new LegacyRedirect(
+				'user/list.php',
+				'user_list',
+				forbidden: ['massaction', 'confirmmassaction', 'action', 'button_removefilter_x', 'button_removefilter.x', 'button_removefilter', 'formfilteraction', 'search_category_user_list'],
+				carry: $listCarry,
+				forbiddenValues: ['contextpage' => ['employeelist']]
+			),
+			new LegacyRedirect('user/note.php', 'entity_note', ['id' => 'id'], ['entity' => 'user'], ['id'], ['', 'editnote_public', 'editnote_private'], carry: ['action'], requirements: $id),
+			new LegacyRedirect('user/perms.php', 'user_rights', ['id' => 'id'], required: ['id'], carry: ['updatedmodulename', 'page_y'], requirements: $id),
+			new LegacyRedirect('user/logout.php', 'logout', actions: null, forbidden: [], carry: ['urlfrom', 'noredirect']),
+		];
 	}
 
 	/**

@@ -7,7 +7,7 @@ namespace Dolibarr\Core\Legacy\Redirect;
 /**
  * Immutable declarative rule: a legacy script (and the conditions on its parameters) redirected to a route.
  *
- * @phpstan-type RuleArray array{script: string, route: string, paramMap: array<string,string>, fixedParams: array<string,scalar>, required: list<string>, actions: ?list<string>, forbidden: list<string>, carry: list<string>, queryFromAction: array<string,array<string,scalar>>, requirements: array<string,string>}
+ * @phpstan-type RuleArray array{script: string, route: string, paramMap: array<string,string>, fixedParams: array<string,scalar>, required: list<string>, actions: ?list<string>, forbidden: list<string>, carry: list<string>, queryFromAction: array<string,array<string,scalar>>, requirements: array<string,string>, forbiddenValues: array<string,list<string>>}
  */
 final class LegacyRedirect
 {
@@ -22,6 +22,7 @@ final class LegacyRedirect
 	 * @param list<string>                        $carry           Legacy parameters copied as is to the target query string (whitelist, scalar values only)
 	 * @param array<string,array<string,scalar>>  $queryFromAction Legacy action => query parameters added, e.g. ['disable' => ['confirm' => 'disable']]
 	 * @param array<string,string>                $requirements    Legacy parameter => regex (anchored by the resolver), e.g. ['id' => '\d+']
+	 * @param array<string,list<string>>          $forbiddenValues Legacy parameter => values that prevent the redirection, e.g. ['contextpage' => ['employeelist']]
 	 */
 	public function __construct(
 		public readonly string $script,
@@ -33,7 +34,8 @@ final class LegacyRedirect
 		public readonly array $forbidden = ['massaction', 'confirm'],
 		public readonly array $carry = [],
 		public readonly array $queryFromAction = [],
-		public readonly array $requirements = []
+		public readonly array $requirements = [],
+		public readonly array $forbiddenValues = []
 	) {
 	}
 
@@ -53,6 +55,7 @@ final class LegacyRedirect
 			'carry' => $this->carry,
 			'queryFromAction' => $this->queryFromAction,
 			'requirements' => $this->requirements,
+			'forbiddenValues' => $this->forbiddenValues,
 		];
 	}
 
@@ -71,7 +74,8 @@ final class LegacyRedirect
 			$a['forbidden'],
 			$a['carry'],
 			$a['queryFromAction'],
-			$a['requirements']
+			$a['requirements'],
+			$a['forbiddenValues'] ?? []
 		);
 	}
 }

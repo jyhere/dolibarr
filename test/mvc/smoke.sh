@@ -118,13 +118,13 @@ expect_code "404 unknown route" 404 "$BASE/nexistepas"
 expect_code "404 unknown route json" 404 "${JSON[@]}" "$BASE/nexistepas"
 expect_grep "404 json body" '{"error":"not_found"}' 1 "${JSON[@]}" "$BASE/nexistepas"
 expect_code "src not served" 403 "$BASE/src/Core/Kernel.php"
-expect_code "legacy card without session" 200 "$BASE/user/card.php?id=1"
+expect_code "legacy card without session" 200 "$BASE/user/card.php"
 expect_code "root / 200" 200 "$BASE/"
 GREP_OPTS=-i expect_grep "root / is text/html (not a download)" '^content-type: text/html' 1 -D - -o /dev/null "$BASE/"
 expect_grep "root / shows login form" 'name="username"' 1 "$BASE/"
 expect_grep "admin/ index.php is executed, not served raw" '<?php' 0 "$BASE/admin/"
 expect_grep "install/ index.php is executed, not served raw" '<?php' 0 "$BASE/install/"
-expect_grep "legacy card shows login form" 'name="username"' 1 "$BASE/user/card.php?id=1"
+expect_grep "legacy card shows login form" 'name="username"' 1 "$BASE/user/card.php"
 expect_code "user/1 anonymous 302" 302 "$BASE/user/1"
 LOC="$(curl -s -o /dev/null -w '%{redirect_url}' "$BASE/user/1")"
 case "$LOC" in "$BASE/login?backtopage="*) ok "user/1 redirects to login?backtopage";; *) fail "user/1 redirect target" "$LOC";; esac
@@ -157,8 +157,8 @@ expect_location_suffix "POST /login open redirect ignored" "/index.php" -b "$J1"
 	--data-urlencode "backtopage=https://evil.example" "$BASE/login"
 
 echo "== Logged in (new world)"
-expect_grep "legacy card has no login form" 'name="username"' 0 -b "$J1" "$BASE/user/card.php?id=1"
-expect_code "legacy card 200" 200 -b "$J1" "$BASE/user/card.php?id=1"
+expect_grep "legacy card has no login form" 'name="username"' 0 -b "$J1" "$BASE/user/card.php"
+expect_code "legacy card 200" 200 -b "$J1" "$BASE/user/card.php"
 expect_code "user/1 200" 200 -b "$J1" "$BASE/user/1"
 expect_grep "user/1 mainbody" 'id="mainbody"' 1 -b "$J1" "$BASE/user/1"
 # The card and the documents/events blocks below it (card.php l.1755 and l.3316)
@@ -324,7 +324,7 @@ OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" 
 ok "POST /user/1/note setnote_public 302"
 # editfieldval() (textarea type) prints the note as HTML, as user/note.php does
 expect_grep "the note is shown as HTML" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/1/note"
-expect_grep "legacy note.php shows the same note" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/note.php?id=1"
+expect_grep "legacy note.php shows the same note" '^<b>smoke</b>$' 1 -b "$J1" "$BASE/user/note.php?id=1&action=legacy&token=$TN"
 expect_grep "json exposes the public note" '"notePublic":"<b>smoke</b>"' 1 "${JSON[@]}" -b "$J1" "$BASE/user/1/note"
 OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=setnote_public&note_public=bogus" "$BASE/user/1/note")"
 [ "$OUT" = "302" ] && [ "$(smoke_sql "SELECT note_public FROM llx_user WHERE rowid = 1")" = "<b>smoke</b>" ] && ok "invalid token writes no note" || fail "invalid token writes no note" "$OUT"
@@ -458,7 +458,7 @@ if [ -n "$TL" ]; then
 else
 	expect_location_suffix "GET /logout 302 to index.php" "/index.php" -b "$J1" -c "$J1" "$BASE/logout"
 fi
-expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php?id=1"
+expect_grep "legacy card shows login form after logout" 'name="username"' 1 -b "$J1" "$BASE/user/card.php"
 
 echo "== Logout open redirect (logged in)"
 newjar J3
@@ -466,6 +466,14 @@ T3="$(token_from "$J3" /login)"
 curl -s -o /dev/null -b "$J3" -c "$J3" -X POST --data-urlencode "token=$T3" -d "actionlogin=login&loginfunction=loginfunction" \
 	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/login"
 expect_code "J3 logged in" 200 -b "$J3" "$BASE/user/1"
+
+echo "== Legacy redirects (logged in)"
+TR="$(token_from "$J3" /user/1)"
+expect_location_suffix "card.php?id=1 redirects to /user/1" "/user/1" -b "$J3" "$BASE/user/card.php?id=1"
+expect_location_suffix "list.php redirects to /user" "/user" -b "$J3" "$BASE/user/list.php"
+expect_location_suffix "list.php search is carried" "/user?search_login=adm&sortfield=u.email&page=2" -b "$J3" "$BASE/user/list.php?search_login=adm&sortfield=u.email&page=2"
+expect_code "card.php?id=1&action=clone stays legacy 200" 200 -b "$J3" "$BASE/user/card.php?id=1&action=clone&token=$TR"
+expect_code "list.php?massaction stays legacy 200" 200 -b "$J3" "$BASE/user/list.php?massaction=preaffecttag&token=$TR"
 OUT="$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J3" -c "$J3" "$BASE/logout?urlfrom=//evil.example/x")"
 case "$OUT" in "302 $BASE/index.php") ok "logout urlfrom=//evil stays on the host";; *) fail "logout urlfrom=//evil" "$OUT";; esac
 
@@ -478,7 +486,8 @@ curl -s -o /dev/null -b "$J2" -c "$J2" -X POST --data-urlencode "token=$TLEG" \
 	-d "actionlogin=login&loginfunction=loginfunction" \
 	--data-urlencode "username=$LOGIN" --data-urlencode "password=$PASS_" "$BASE/index.php"
 expect_code "user/1 after legacy login" 200 -b "$J2" "$BASE/user/1"
-curl -s -o /dev/null -b "$J2" -c "$J2" "$BASE/user/logout.php"
+# user/logout.php now redirects to /logout: followed
+curl -sL -o /dev/null -b "$J2" -c "$J2" "$BASE/user/logout.php"
 ok "legacy logout requested"
 expect_code "user/1 after legacy logout 302" 302 -b "$J2" "$BASE/user/1"
 

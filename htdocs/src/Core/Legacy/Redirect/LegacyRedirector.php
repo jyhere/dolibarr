@@ -78,6 +78,12 @@ final class LegacyRedirector
 				return null;
 			}
 		}
+		foreach ($rule->forbiddenValues as $name => $values) {
+			$value = $query[$name] ?? null;
+			if (is_scalar($value) && in_array(trim((string) $value), $values, true)) {
+				return null;
+			}
+		}
 		foreach ($rule->required as $name) {
 			if (!$this->present($query, $name)) {
 				return null;

@@ -44,6 +44,18 @@ final class LegacyRedirectorTest extends TestCase
 		self::assertSame('/user/5', $this->redirector()->resolve('GET', 'user/card.php', ['id' => '5', 'massaction' => ''], []));
 	}
 
+	public function testForbiddenValueBlocksOnlyThatValue(): void
+	{
+		$table = LegacyRedirectTable::fromModules([new StubRedirectModule([
+			new LegacyRedirect('user/list.php', 'user_show', ['id' => 'id'], carry: ['contextpage'], forbiddenValues: ['contextpage' => ['employeelist']]),
+		])], (new RouteCompiler())->compile([FakeController::class]));
+		$redirector = new LegacyRedirector($table, new UrlGenerator((new RouteCompiler())->compile([FakeController::class]), ''));
+
+		self::assertNull($redirector->resolve('GET', 'user/list.php', ['id' => '5', 'contextpage' => 'employeelist'], []));
+		self::assertSame('/user/5?contextpage=userlist', $redirector->resolve('GET', 'user/list.php', ['id' => '5', 'contextpage' => 'userlist'], []));
+		self::assertEquals($table, LegacyRedirectTable::fromArray($table->toArray()));
+	}
+
 	public function testRequiredParamMissing(): void
 	{
 		self::assertNull($this->redirector()->resolve('GET', 'user/card.php', [], []));
