@@ -20,7 +20,10 @@ use Dolibarr\Core\Database\DatabaseException;
  *
  * Writes (save(), delete()) run in Connection::transactional(), so inside the transaction of the legacy code or
  * of the service when there is one. No tms, datec or fk_user_* handling (spec §5.5), no event: the service
- * does both. UPDATE and DELETE target the id, without the entity scope.
+ * does both. UPDATE and DELETE target the id and, for a table with an entity column, the entity scope
+ * ('AND entity IN (:entities)', unless $entityScoped is false: Repository::withoutEntityScope()); a row
+ * missing or outside the scope throws EntityNotFoundException and nothing is written (no extra fields row
+ * either). INSERT leaves the entity column to the service.
  *
  * Entities are readonly: modify() builds a modified copy that keeps the snapshot of the original, so save()
  * updates only what changed. An entity read with a select() lacking mapped columns is partial: save() refuses it
@@ -210,14 +213,20 @@ final class Orm implements QueryExecutor
 	 * An entity built by the code with an id but never read (no snapshot) has every column updated, and its
 	 * extra fields row is looked up.
 	 *
+	 * The UPDATE matching no row is told apart from an UPDATE setting identical values (MySQL counts changed
+	 * rows, not matched ones, and the shared link has no CLIENT_FOUND_ROWS) by a SELECT of the row with the same
+	 * WHERE; so is an update of the extra fields alone, which has no main UPDATE to check the row.
+	 *
 	 * @template T of object
-	 * @param T $entity
+	 * @param T    $entity
+	 * @param bool $entityScoped False: UPDATE without the entity scope (Repository::withoutEntityScope())
 	 * @return T The new entity with its id after an INSERT, $entity after an UPDATE
 	 * @throws \LogicException           A partial entity, or a class that is not an entity
 	 * @throws \InvalidArgumentException Invalid extra field name or value
+	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope (rolled back)
 	 * @throws DatabaseException         The transaction is rolled back
 	 */
-	public function save(object $entity): object
+	public function save(object $entity, bool $entityScoped = true): object
 	{
 		$mapping = $this->mappings->get($entity::class);
 		if ($this->partial->offsetExists($entity)) {
@@ -229,7 +238,7 @@ final class Orm implements QueryExecutor
 		if ($values[$idColumn] === null) {
 			return $this->insert($mapping, $entity, $values, $extraFields);
 		}
-		$this->update($mapping, $entity, $values, $extraFields);
+		$this->update($mapping, $entity, $values, $extraFields, $entityScoped);
 
 		return $entity;
 	}
@@ -246,6 +255,10 @@ final class Orm implements QueryExecutor
 	 */
 	public function modify(object $entity, array $changes): object
 	{
+		$idProperty = $this->mappings->get($entity::class)->idProperty;
+		if (array_key_exists($idProperty, $changes)) {
+			throw new \InvalidArgumentException($entity::class.': modify() cannot change the id $'.$idProperty);
+		}
 		$reflection = $this->reflection($entity::class);
 		$arguments = [];
 		foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
@@ -278,13 +291,16 @@ final class Orm implements QueryExecutor
 	}
 
 	/**
-	 * Deletes the extra fields row, then the row, in one transaction.
+	 * Deletes the extra fields row, then the row (within the entity scope unless $entityScoped is false), in one
+	 * transaction; when the row is missing or outside the scope, the transaction is rolled back (the extra fields
+	 * row stays) and EntityNotFoundException is thrown.
 	 *
 	 * @throws \InvalidArgumentException An entity without id
 	 * @throws \LogicException           A class that is not an entity
+	 * @throws EntityNotFoundException   No such row within the scope
 	 * @throws DatabaseException         The transaction is rolled back
 	 */
-	public function delete(object $entity): void
+	public function delete(object $entity, bool $entityScoped = true): void
 	{
 		$mapping = $this->mappings->get($entity::class);
 		$idColumn = $mapping->id()->name;
@@ -292,11 +308,14 @@ final class Orm implements QueryExecutor
 		if ($id === null) {
 			throw new \InvalidArgumentException($entity::class.': an entity without id cannot be deleted');
 		}
-		$this->connection->transactional(function () use ($mapping, $idColumn, $id): void {
+		[$where, $params] = $this->rowCondition($mapping, $id, $entityScoped);
+		$this->connection->transactional(function () use ($mapping, $id, $where, $params): void {
 			if ($mapping->extraFieldsProperty !== null) {
 				$this->connection->execute('DELETE FROM @'.$mapping->table.'_extrafields WHERE fk_object = :id', ['id' => $id]);
 			}
-			$this->connection->execute('DELETE FROM @'.$mapping->table.' WHERE '.$idColumn.' = :id', ['id' => $id]);
+			if ($this->connection->execute('DELETE FROM @'.$mapping->table.' WHERE '.$where, $params) === 0) {
+				throw new EntityNotFoundException($mapping->class, (int) $id);
+			}
 		});
 		$this->snapshots->forget($entity);
 		$this->extraFields->offsetUnset($entity);
@@ -339,10 +358,10 @@ final class Orm implements QueryExecutor
 	 * @param array<string, int|float|string|null>           $values
 	 * @param array<string, int|float|string|bool|null>|null $extraFields
 	 */
-	private function update(EntityMapping $mapping, object $entity, array $values, ?array $extraFields): void
+	private function update(EntityMapping $mapping, object $entity, array $values, ?array $extraFields, bool $entityScoped): void
 	{
 		$idColumn = $mapping->id()->name;
-		$id = $values[$idColumn];
+		$id = $values[$idColumn] ?? throw new \LogicException('update() of an entity without id');
 		$changes = $this->snapshots->changes($mapping, $entity);
 		unset($changes[$idColumn]);
 
@@ -362,11 +381,15 @@ final class Orm implements QueryExecutor
 			return;
 		}
 
-		$extraExists = $this->connection->transactional(function () use ($mapping, $idColumn, $id, $changes, $extraFields, $extraChanges, $extraExists): ?bool {
+		[$where, $whereParams] = $this->rowCondition($mapping, $id, $entityScoped);
+		$extraExists = $this->connection->transactional(function () use ($mapping, $id, $where, $whereParams, $changes, $extraFields, $extraChanges, $extraExists): ?bool {
+			$updated = 0;
 			if ($changes !== []) {
 				[$assignments, $params] = self::assignments($changes);
-				$params['id'] = $id;
-				$this->connection->execute('UPDATE @'.$mapping->table.' SET '.$assignments.' WHERE '.$idColumn.' = :id', $params);
+				$updated = $this->connection->execute('UPDATE @'.$mapping->table.' SET '.$assignments.' WHERE '.$where, $params + $whereParams);
+			}
+			if ($updated === 0 && $this->connection->fetchOne('SELECT 1 AS found FROM @'.$mapping->table.' WHERE '.$where, $whereParams) === null) {
+				throw new EntityNotFoundException($mapping->class, (int) $id);
 			}
 			if ($extraChanges === []) {
 				return $extraExists;
@@ -388,6 +411,24 @@ final class Orm implements QueryExecutor
 		if ($extraFields !== null) {
 			$this->extraFields->offsetSet($entity, ['exists' => $extraExists === true, 'values' => self::normalizeExtraFields($extraFields)]);
 		}
+	}
+
+	/**
+	 * WHERE of the row of an id: 'rowid = :id', and 'AND entity IN (:entities)' for a scoped table with an entity
+	 * column. Its parameter names do not clash with assignments() ones (:v1…).
+	 *
+	 * @return array{string, array<string, mixed>}
+	 */
+	private function rowCondition(EntityMapping $mapping, int|float|string $id, bool $entityScoped): array
+	{
+		$where = $mapping->id()->name.' = :id';
+		$params = ['id' => $id];
+		if ($entityScoped && $mapping->hasEntityColumn) {
+			$where .= ' AND entity IN (:entities)';
+			$params['entities'] = $this->scope->entitiesFor($mapping->element);
+		}
+
+		return [$where, $params];
 	}
 
 	/**

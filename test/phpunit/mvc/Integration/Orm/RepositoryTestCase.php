@@ -201,7 +201,7 @@ abstract class RepositoryTestCase extends TestCase
 
 		self::assertSame($renamed, $result);
 		self::assertCount(1, $this->recorder->statements);
-		self::assertMatchesRegularExpression('/^UPDATE '.MAIN_DB_PREFIX.'mvc_orm_article SET title = (\?|\$1) WHERE rowid = (\?|\$2(::integer)?)$/', $this->recorder->statements[0]);
+		self::assertMatchesRegularExpression('/^UPDATE '.MAIN_DB_PREFIX.'mvc_orm_article SET title = (\?|\$1) WHERE rowid = (\?|\$2(::integer)?) AND entity IN \((\?|\$3(::integer)?)\)$/', $this->recorder->statements[0]);
 		self::assertSame('After', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
 
 		$this->recorder->statements = [];
@@ -214,6 +214,13 @@ abstract class RepositoryTestCase extends TestCase
 		$row = $this->connection->fetchOne('SELECT title, price, published_on FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]);
 		self::assertNotNull($row);
 		self::assertSame(['After', 4.5, null], [$row['title'], (float) $row['price'], $row['published_on']]);
+
+		try {
+			$this->articles->modify($article, ['id' => $id + 1]);
+			self::fail('modify() changed the id');
+		} catch (\InvalidArgumentException $e) {
+			self::assertStringContainsString('id', $e->getMessage());
+		}
 
 		$this->expectException(\InvalidArgumentException::class);
 		$this->articles->modify($article, ['nope' => 1]);
@@ -251,6 +258,65 @@ abstract class RepositoryTestCase extends TestCase
 		self::assertNotNull($row);
 		self::assertSame(['Rebuilt', 0], [$row['title'], (int) $row['status']]);
 		self::assertSame(['color' => 'red', 'weight' => '7'], $this->articles->findOrFail($id)->extraFields, 'The existing extra fields row is updated');
+	}
+
+	public function testUpdateAndDeleteOutsideTheEntityScopeRefused(): void
+	{
+		$other = $this->insertArticle('Other company', entity: 2, extraFields: ['color' => 'red']);
+		$attempts = [
+			'update' => fn (): mixed => $this->articles->save(new OrmArticle($other, 'Hijacked', extraFields: ['color' => 'stolen'])),
+			'update of the extra fields alone' => fn (): mixed => $this->articles->save($this->articles->modify(
+				$this->articles->withoutEntityScope()->findOrFail($other),
+				['extraFields' => ['color' => 'stolen', 'weight' => null]]
+			)),
+			'delete' => fn () => $this->articles->delete(new OrmArticle($other, 'Other company', entity: 2)),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt();
+				self::fail('Written outside the entity scope: '.$label);
+			} catch (EntityNotFoundException $e) {
+				self::assertSame($other, $e->id, $label);
+			}
+			$row = $this->connection->fetchOne('SELECT title, entity FROM @mvc_orm_article WHERE rowid = :id', ['id' => $other]);
+			self::assertNotNull($row, $label);
+			self::assertSame(['Other company', 2], [$row['title'], (int) $row['entity']], $label);
+			self::assertSame('red', $this->connection->fetchValue('SELECT color FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $other]), $label);
+		}
+
+		$everyEntity = $this->articles->withoutEntityScope();
+		$everyEntity->save(new OrmArticle($other, 'Administered', entity: 2, extraFields: ['color' => 'blue']));
+		self::assertSame('Administered', $everyEntity->findOrFail($other)->title);
+		self::assertSame(['color' => 'blue', 'weight' => null], $everyEntity->findOrFail($other)->extraFields);
+		self::assertNull($this->articles->find($other), 'The repository itself keeps its scope');
+		$everyEntity->delete($everyEntity->findOrFail($other));
+		self::assertSame(0, $this->countArticles());
+	}
+
+	public function testUpdateOrDeleteOfAMissingIdThrows(): void
+	{
+		$missing = $this->insertArticle('Gone') + 1000;
+		try {
+			$this->articles->save(new OrmArticle($missing, 'Ghost', extraFields: ['color' => 'red']));
+			self::fail('UPDATE of a missing id');
+		} catch (EntityNotFoundException $e) {
+			self::assertSame($missing, $e->id);
+		}
+		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @mvc_orm_article_extrafields'), 'No orphan extra fields row');
+
+		$this->expectException(EntityNotFoundException::class);
+		$this->articles->delete(new OrmArticle($missing, 'Ghost'));
+	}
+
+	public function testDetachedSaveOfIdenticalValuesSucceeds(): void
+	{
+		$id = $this->insertArticle('Same', status: 1, price: 2.5, publishedOn: '2026-03-29');
+		$this->recorder->statements = [];
+
+		$this->articles->save(new OrmArticle($id, 'Same', status: 1, price: 2.5, publishedOn: new \DateTimeImmutable('2026-03-29', new \DateTimeZone('UTC'))));
+
+		self::assertStringStartsWith('UPDATE ', $this->recorder->statements[0]);
+		self::assertSame('Same', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
 	}
 
 	public function testDelete(): void
@@ -300,8 +366,10 @@ abstract class RepositoryTestCase extends TestCase
 
 		$this->recorder->statements = [];
 		$this->articles->save($this->articles->modify($article, ['extraFields' => ['color' => 'blue', 'weight' => '5']]));
-		self::assertCount(1, $this->recorder->statements, 'Only the changed extra field');
-		self::assertMatchesRegularExpression('/^UPDATE '.MAIN_DB_PREFIX.'mvc_orm_article_extrafields SET color = \S+ WHERE fk_object = \S+$/', $this->recorder->statements[0]);
+		self::assertCount(2, $this->recorder->statements, 'The row checked in the entity scope, then only the changed extra field');
+		self::assertStringStartsWith('SELECT 1 AS found FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[0]);
+		self::assertStringContainsString(' AND entity IN (', $this->recorder->statements[0]);
+		self::assertMatchesRegularExpression('/^UPDATE '.MAIN_DB_PREFIX.'mvc_orm_article_extrafields SET color = \S+ WHERE fk_object = \S+$/', $this->recorder->statements[1]);
 		self::assertSame(['color' => 'blue', 'weight' => '5'], $this->articles->findOrFail($withExtra)->extraFields);
 
 		$this->articles->save($this->articles->modify($this->articles->findOrFail($withoutExtra), ['extraFields' => ['color' => 'green']]));

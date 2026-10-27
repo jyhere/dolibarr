@@ -11,12 +11,18 @@ use Dolibarr\Core\Database\DatabaseException;
  * returning a Query (spec §5.4). Queries run on the shared Orm (multicompany scope, extra fields, change
  * tracking); see Orm for what save() and delete() write.
  *
+ * Every query, UPDATE and DELETE of an entity with an entity column is limited to the entity scope;
+ * withoutEntityScope() gives a copy of the repository without it (login, multicompany administration), to be
+ * asked for explicitly.
+ *
  * @template T of object
  */
 abstract class Repository
 {
 	/** @var class-string<T> */
 	protected string $entityClass;
+
+	private bool $entityScoped = true;
 
 	public function __construct(protected readonly Orm $orm)
 	{
@@ -28,7 +34,21 @@ abstract class Repository
 	 */
 	public function query(string $alias = 't'): Query
 	{
-		return $this->orm->query($this->entityClass, $alias);
+		$query = $this->orm->query($this->entityClass, $alias);
+
+		return $this->entityScoped ? $query : $query->withoutEntityScope();
+	}
+
+	/**
+	 * A copy of this repository whose queries, UPDATE and DELETE ignore the entity scope (Query::withoutEntityScope()
+	 * on each of its queries). This repository keeps its scope.
+	 */
+	public function withoutEntityScope(): static
+	{
+		$copy = clone $this;
+		$copy->entityScoped = false;
+
+		return $copy;
 	}
 
 	/**
@@ -80,11 +100,12 @@ abstract class Repository
 	 * @return T The saved entity: a new instance with its id after an INSERT
 	 * @throws \InvalidArgumentException Another class, invalid extra fields
 	 * @throws \LogicException           A partial entity (read with a select() lacking mapped columns)
+	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope
 	 * @throws DatabaseException
 	 */
 	public function save(object $entity): object
 	{
-		return $this->orm->save($this->accepted($entity));
+		return $this->orm->save($this->accepted($entity), $this->entityScoped);
 	}
 
 	/**
@@ -94,7 +115,7 @@ abstract class Repository
 	 * @param T                    $entity
 	 * @param array<string, mixed> $changes
 	 * @return T
-	 * @throws \InvalidArgumentException Another class, unknown property or invalid value
+	 * @throws \InvalidArgumentException Another class, the id, unknown property or invalid value
 	 */
 	public function modify(object $entity, array $changes): object
 	{
@@ -104,11 +125,12 @@ abstract class Repository
 	/**
 	 * @param T $entity
 	 * @throws \InvalidArgumentException Another class, or an entity without id
+	 * @throws EntityNotFoundException   No such row within the entity scope
 	 * @throws DatabaseException
 	 */
 	public function delete(object $entity): void
 	{
-		$this->orm->delete($this->accepted($entity));
+		$this->orm->delete($this->accepted($entity), $this->entityScoped);
 	}
 
 	protected function mapping(): EntityMapping
