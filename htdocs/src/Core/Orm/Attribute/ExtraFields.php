@@ -10,7 +10,7 @@ namespace Dolibarr\Core\Orm\Attribute;
  *
  * The names are those Dolibarr defines in llx_extrafields for the mapping's table (elementtype) in entity 0 or
  * the current entity, separators excluded, kept exactly as defined (ExtraFieldCatalog, LegacyExtraFieldCatalog);
- * no definition, no join. save() refuses a key that is not one of them.
+ * no definition (or MAIN_EXTRAFIELDS_DISABLED), no join. save() refuses a key that is not one of them.
  */
 #[\Attribute(\Attribute::TARGET_PROPERTY | \Attribute::TARGET_PARAMETER)]
 final class ExtraFields

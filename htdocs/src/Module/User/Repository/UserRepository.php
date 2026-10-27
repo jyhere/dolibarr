@@ -6,6 +6,7 @@ namespace Dolibarr\Module\User\Repository;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRepository;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
 use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
@@ -106,7 +107,7 @@ final class UserRepository extends Repository implements EntityRepository
 			throw new \InvalidArgumentException('UserRepository: the Orm runs on another connection');
 		}
 		$this->hydrator = new Hydrator();
-		parent::__construct($orm ?? new Orm($connection, new MappingRegistry(), new LegacyEntityScope(), $this->hydrator, new Snapshots($this->hydrator), new LegacyExtraFieldCatalog($connection, new Logger())));
+		parent::__construct($orm ?? new Orm($connection, new MappingRegistry(), new LegacyEntityScope(), $this->hydrator, new Snapshots($this->hydrator), new LegacyExtraFieldCatalog($connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())));
 	}
 
 	/**

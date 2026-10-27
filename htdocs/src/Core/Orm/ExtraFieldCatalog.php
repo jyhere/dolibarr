@@ -12,8 +12,14 @@ namespace Dolibarr\Core\Orm;
 interface ExtraFieldCatalog
 {
 	/**
-	 * The names that can be selected, in their definition order, each an unquoted SQL identifier
-	 * (Orm::isExtraFieldName()), exactly as defined (no case folding).
+	 * False when the extra fields are disabled for the instance (no name, and delete() leaves
+	 * <table>_extrafields alone, like the legacy deleteExtraFields()).
+	 */
+	public function enabled(): bool;
+
+	/**
+	 * The names that can be selected, in their definition order, each a valid extra field column
+	 * (Orm::isExtraFieldName()), exactly as defined (no case folding); [] when disabled.
 	 *
 	 * @param string $elementType The table of the entity without prefix (Dolibarr's table_element: 'user', 'societe')
 	 * @return list<string>

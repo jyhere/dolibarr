@@ -6,6 +6,8 @@ namespace Dolibarr\Tests\Integration\Orm;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Database\DatabaseException;
+use Dolibarr\Core\Legacy\LegacyConfig;
+use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
 use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
 use Dolibarr\Core\Logger;
@@ -15,6 +17,7 @@ use Dolibarr\Core\Orm\MappingRegistry;
 use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Core\Orm\Page;
 use Dolibarr\Core\Orm\Snapshots;
+use Dolibarr\Tests\Integration\Fixture\OverridesLegacyConf;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticleRepository;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmAuthor;
@@ -33,6 +36,8 @@ use PHPUnit\Framework\TestCase;
  */
 abstract class RepositoryTestCase extends TestCase
 {
+	use OverridesLegacyConf;
+
 	private Connection $connection;
 
 	private RecordingDriver $recorder;
@@ -65,13 +70,14 @@ abstract class RepositoryTestCase extends TestCase
 			new LegacyEntityScope(),
 			$hydrator,
 			new Snapshots($hydrator),
-			new LegacyExtraFieldCatalog($this->connection, new Logger())
+			new LegacyExtraFieldCatalog($this->connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())
 		));
 	}
 
 	protected function tearDown(): void
 	{
 		date_default_timezone_set($this->timezone);
+		$this->restoreConf();
 		OrmTestTables::drop($this->connection);
 	}
 
@@ -561,6 +567,25 @@ abstract class RepositoryTestCase extends TestCase
 		self::assertSame(['Shaped'], $this->titles($articles->query()->where('ef.ShapeName', 'round')->get()));
 		$articles->save($articles->modify($article, ['extraFields' => ['ShapeName' => 'square']]));
 		self::assertSame('square', $articles->findOrFail($saved->id)->extraFields['ShapeName']);
+	}
+
+	public function testDisabledExtraFieldsAreNeitherReadNorDeleted(): void
+	{
+		$id = $this->insertArticle('Disabled', extraFields: ['color' => 'red']);
+		$this->setConf('MAIN_EXTRAFIELDS_DISABLED', '1');
+		$articles = $this->repository();
+		$this->recorder->statements = [];
+
+		$article = $articles->findOrFail($id);
+		self::assertSame([], $article->extraFields);
+		self::assertStringNotContainsString('_extrafields', $this->recorder->statements[0], 'No join');
+
+		$this->recorder->statements = [];
+		$articles->delete($article);
+		self::assertCount(1, $this->recorder->statements, 'Only the DELETE of the row, like the legacy deleteExtraFields()');
+		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[0]);
+		self::assertSame(0, $this->countArticles());
+		self::assertSame('red', $this->connection->fetchValue('SELECT color FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $id]), 'The extra fields row is left');
 	}
 
 	public function testEmptyCatalogRunsNoProbeAndNoJoin(): void

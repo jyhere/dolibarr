@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Orm;
 
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Legacy\LegacyConfig;
+use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
 use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
 use Dolibarr\Core\Logger;
@@ -14,8 +16,8 @@ use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Core\Orm\Snapshots;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticleRepository;
-use Dolibarr\Tests\Integration\Orm\Fixture\OrmBadPivotArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmAuthorRepository;
+use Dolibarr\Tests\Integration\Orm\Fixture\OrmBadPivotArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmTestTables;
 use Dolibarr\Tests\Integration\Orm\Fixture\RecordingDriver;
 use PHPUnit\Framework\TestCase;
@@ -317,7 +319,7 @@ abstract class RelationTestCase extends TestCase
 			new LegacyEntityScope(),
 			$hydrator,
 			new Snapshots($hydrator),
-			new LegacyExtraFieldCatalog($this->connection, new Logger())
+			new LegacyExtraFieldCatalog($this->connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())
 		);
 	}
 

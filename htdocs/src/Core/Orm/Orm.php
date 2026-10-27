@@ -53,6 +53,12 @@ final class Orm implements QueryExecutor
 	/** An unquoted SQL identifier: the only names interpolated as extra field columns. */
 	private const EXTRA_FIELD_NAME = '/^[A-Za-z_][A-Za-z0-9_]*$/D';
 
+	/**
+	 * Longest extra field name: its select alias 'ef__<name>' must fit the 63 bytes of a PostgreSQL identifier
+	 * (a longer alias is truncated, so the value would read as null), on both dialects.
+	 */
+	public const EXTRA_FIELD_NAME_MAX_LENGTH = 63 - 4;
+
 	private ?Grammar $grammar = null;
 
 	private ?RelationLoader $relationLoader = null;
@@ -317,7 +323,8 @@ final class Orm implements QueryExecutor
 	 * Deletes the extra fields row, then the row, in one transaction, once the row is known to exist within the
 	 * entity scope (unless $entityScoped is false): a SELECT with the scoped WHERE comes first for an entity with
 	 * extra fields, so a refused delete has deleted nothing even inside an enclosing transaction (whose nested
-	 * rollback undoes nothing). Without extra fields the scoped DELETE is the first statement.
+	 * rollback undoes nothing). Without extra fields, or with the extra fields disabled (MAIN_EXTRAFIELDS_DISABLED:
+	 * the extra fields row is left, like the legacy deleteExtraFields()), the scoped DELETE is the first statement.
 	 *
 	 * @throws \InvalidArgumentException An entity without id
 	 * @throws \LogicException           A class that is not an entity
@@ -334,7 +341,7 @@ final class Orm implements QueryExecutor
 		}
 		[$where, $params] = $this->rowCondition($mapping, $id, $entityScoped);
 		$this->connection->transactional(function () use ($mapping, $id, $where, $params): void {
-			if ($mapping->extraFieldsProperty !== null) {
+			if ($mapping->extraFieldsProperty !== null && $this->extraFieldCatalog->enabled()) {
 				$this->requireRow($mapping, $id, $where, $params);
 				$this->connection->execute('DELETE FROM @'.$mapping->table.'_extrafields WHERE fk_object = :id', ['id' => $id]);
 			}
@@ -620,14 +627,16 @@ final class Orm implements QueryExecutor
 	}
 
 	/**
-	 * Whether a name can be an extra field column: an unquoted SQL identifier that is neither a technical column of
-	 * <table>_extrafields nor a secret column (compared without case: MySQL and PostgreSQL ignore it).
+	 * Whether a name can be an extra field column: an unquoted SQL identifier of at most
+	 * EXTRA_FIELD_NAME_MAX_LENGTH characters that is neither a technical column of <table>_extrafields nor a secret
+	 * column (compared without case: MySQL and PostgreSQL ignore it).
 	 */
 	public static function isExtraFieldName(string $name): bool
 	{
 		$lowerCase = strtolower($name);
 
 		return preg_match(self::EXTRA_FIELD_NAME, $name) === 1
+			&& strlen($name) <= self::EXTRA_FIELD_NAME_MAX_LENGTH
 			&& !in_array($lowerCase, self::EXTRA_FIELDS_TECHNICAL, true)
 			&& !in_array($lowerCase, MappingReader::SECRET_COLUMNS, true);
 	}

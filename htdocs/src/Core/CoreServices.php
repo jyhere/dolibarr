@@ -74,6 +74,7 @@ final class CoreServices
 		// One catalog per request: llx_extrafields read once per element type
 		$container->set(ExtraFieldCatalog::class, static fn (Container $container): ExtraFieldCatalog => new LegacyExtraFieldCatalog(
 			self::get($container, Connection::class),
+			self::get($container, Config::class),
 			self::get($container, Logger::class)
 		));
 		// One Orm, so one Snapshots, per request: shared by every repository
