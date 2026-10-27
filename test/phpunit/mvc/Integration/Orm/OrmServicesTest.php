@@ -9,7 +9,9 @@ use Dolibarr\Core\CoreServices;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
 use Dolibarr\Core\Orm\EntityScope;
+use Dolibarr\Core\Orm\ExtraFieldCatalog;
 use Dolibarr\Core\Orm\MappingRegistry;
 use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticle;
@@ -41,6 +43,7 @@ final class OrmServicesTest extends TestCase
 		CoreServices::register($container, LegacyContext::fromGlobals(), new Request('GET', '/', [], [], [], []), [], [], $this->dataRoot, '', false);
 
 		self::assertInstanceOf(LegacyEntityScope::class, $container->get(EntityScope::class));
+		self::assertInstanceOf(LegacyExtraFieldCatalog::class, $container->get(ExtraFieldCatalog::class));
 		$orm = $container->get(Orm::class);
 		self::assertInstanceOf(Orm::class, $orm);
 		self::assertSame($orm, $container->get(Orm::class), 'One Orm (one Snapshots) per request');

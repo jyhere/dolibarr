@@ -6,6 +6,8 @@ namespace Dolibarr\Tests\Integration\Orm;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
+use Dolibarr\Core\Logger;
 use Dolibarr\Core\Orm\Hydrator;
 use Dolibarr\Core\Orm\MappingRegistry;
 use Dolibarr\Core\Orm\Orm;
@@ -39,15 +41,9 @@ abstract class RelationTestCase extends TestCase
 		$this->connection = $this->connection();
 		OrmTestTables::create($this->connection);
 		$this->recorder = new RecordingDriver($this->connection->driver());
-		$hydrator = new Hydrator();
-		$orm = new Orm(new Connection($this->connection->legacy(), $this->recorder), new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator));
+		$orm = $this->orm();
 		$this->articles = new OrmArticleRepository($orm);
 		$this->authors = new OrmAuthorRepository($orm);
-		// The extra field names are read from a row of the extra fields table, once per Orm and only when it has one:
-		// a row and a first query keep that probe out of the statements the tests count.
-		$this->connection->execute('INSERT INTO @mvc_orm_article_extrafields (fk_object) VALUES (0)');
-		$this->articles->query();
-		$this->recorder->statements = [];
 	}
 
 	protected function tearDown(): void
@@ -210,7 +206,7 @@ abstract class RelationTestCase extends TestCase
 		$article = $this->articles->query()->where('id', $id)->with('author', 'tags')->first();
 		self::assertNotNull($article);
 		self::assertSame('Alice', $article->author?->name);
-		self::assertSame(['color' => 'red'], array_intersect_key($article->extraFields, ['color' => 1]));
+		self::assertSame(['color' => 'red', 'weight' => null], $article->extraFields);
 
 		$this->recorder->statements = [];
 		$this->articles->save($article);
@@ -314,7 +310,15 @@ abstract class RelationTestCase extends TestCase
 	{
 		$hydrator = new Hydrator();
 
-		return new Orm(new Connection($this->connection->legacy(), $this->recorder), new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator));
+		// The catalog reads llx_extrafields on the unrecorded connection: the tests count the ORM's own statements
+		return new Orm(
+			new Connection($this->connection->legacy(), $this->recorder),
+			new MappingRegistry(),
+			new LegacyEntityScope(),
+			$hydrator,
+			new Snapshots($hydrator),
+			new LegacyExtraFieldCatalog($this->connection, new Logger())
+		);
 	}
 
 	/**

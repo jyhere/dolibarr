@@ -6,6 +6,8 @@ namespace Dolibarr\Tests\Integration\Orm;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
+use Dolibarr\Core\Logger;
 use Dolibarr\Core\Orm\Hydrator;
 use Dolibarr\Core\Orm\MappingRegistry;
 use Dolibarr\Core\Orm\NaturalSearch;
@@ -80,7 +82,7 @@ abstract class NaturalSearchEquivalenceTestCase extends TestCase
 			);
 		}
 		$hydrator = new Hydrator();
-		$this->orm = new Orm($this->connection, new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator));
+		$this->orm = new Orm($this->connection, new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator), new LegacyExtraFieldCatalog($this->connection, new Logger()));
 	}
 
 	protected function tearDown(): void
