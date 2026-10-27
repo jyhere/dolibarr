@@ -25,6 +25,7 @@ final class Condition
 	 * @param string               $sql      Column SQL ('t.login'), raw SQL or constant condition
 	 * @param array<string, mixed> $params   whereRaw() parameters
 	 * @param list<Condition>      $children Conditions of a group
+	 * @param Query<object>|null   $subquery
 	 */
 	private function __construct(
 		public readonly string $boolean,
@@ -61,6 +62,9 @@ final class Condition
 		return new self($boolean, self::IN, $column, '', $values, $negated);
 	}
 
+	/**
+	 * @param Query<object> $subquery
+	 */
 	public static function inSubquery(string $boolean, string $column, bool $negated, Query $subquery): self
 	{
 		return new self($boolean, self::IN_SUBQUERY, $column, '', null, $negated, $subquery);
@@ -71,6 +75,9 @@ final class Condition
 		return new self($boolean, self::NULL_CHECK, $column, '', null, $negated);
 	}
 
+	/**
+	 * @param Query<object> $subquery
+	 */
 	public static function exists(string $boolean, Query $subquery, bool $negated): self
 	{
 		return new self($boolean, self::EXISTS, '', '', null, $negated, $subquery);
@@ -139,6 +146,9 @@ final class Condition
 		};
 	}
 
+	/**
+	 * @return Query<object>
+	 */
 	private function subquery(): Query
 	{
 		return $this->subquery ?? throw new \LogicException('Condition '.$this->kind.' without subquery');

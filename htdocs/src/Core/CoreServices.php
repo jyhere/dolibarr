@@ -15,6 +15,7 @@ use Dolibarr\Core\Legacy\FlashBag;
 use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
+use Dolibarr\Core\Legacy\LegacyEntityScope;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Legacy\LegacyLayout;
@@ -23,6 +24,13 @@ use Dolibarr\Core\Legacy\LegacySession;
 use Dolibarr\Core\Legacy\LegacyTranslator;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Module\ModuleInterface;
+use Dolibarr\Core\Orm\EntityScope;
+use Dolibarr\Core\Orm\Hydrator;
+use Dolibarr\Core\Orm\MappingCache;
+use Dolibarr\Core\Orm\MappingReader;
+use Dolibarr\Core\Orm\MappingRegistry;
+use Dolibarr\Core\Orm\Orm;
+use Dolibarr\Core\Orm\Snapshots;
 use Dolibarr\Core\Routing\RouteDefinition;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\View\Confirm;
@@ -55,6 +63,24 @@ final class CoreServices
 		$container->set(Session::class, static fn (): Session => new LegacySession());
 		$container->set(Config::class, static fn (): Config => new LegacyConfig($ctx));
 		$container->set(Connection::class, static fn (): Connection => Connection::forLegacy($ctx->db));
+		$container->set(MappingRegistry::class, static fn (): MappingRegistry => new MappingRegistry(
+			new MappingReader(),
+			new MappingCache($dataRoot.'/cache/orm_mappings.php'),
+			(string) \constant('DOL_VERSION')
+		));
+		$container->set(EntityScope::class, static fn (): EntityScope => new LegacyEntityScope());
+		// One Orm, so one Snapshots, per request: shared by every repository
+		$container->set(Orm::class, static function (Container $container): Orm {
+			$hydrator = new Hydrator();
+
+			return new Orm(
+				self::get($container, Connection::class),
+				self::get($container, MappingRegistry::class),
+				self::get($container, EntityScope::class),
+				$hydrator,
+				new Snapshots($hydrator)
+			);
+		});
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {

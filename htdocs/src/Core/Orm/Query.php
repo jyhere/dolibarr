@@ -19,6 +19,8 @@ use Dolibarr\Core\Orm\Cast\CastRegistry;
  *
  * Multicompany: an entity with an 'entity' column gets 'alias.entity IN (:entities)' (the EntityScope) unless
  * withoutEntityScope(). Execution (get, first, count…) belongs to the QueryExecutor given by the Repository.
+ *
+ * @template-covariant T of object The entity class
  */
 final class Query
 {
@@ -32,6 +34,9 @@ final class Query
 
 	/** @var list<string|array{expression: string, alias: string, params: array<string, mixed>}> Resolved column SQL, or a selectRaw() */
 	private array $columns = [];
+
+	/** @var list<string> Resolved column SQL added to any select list (alwaysSelect()) */
+	private array $alwaysSelected = [];
 
 	/** @var list<Condition> */
 	private array $conditions = [];
@@ -74,7 +79,8 @@ final class Query
 
 	/**
 	 * @param EntityScope|null   $entityScope Required to compile an entity with an 'entity' column (unless withoutEntityScope())
-	 * @param QueryExecutor|null $executor    Runs get(), first()…; null for a query only compiled
+	 * @param QueryExecutor|null $executor    Runs get(), first()…; null for a query only compiled (the
+	 *                                        executor builds the entities of the mapping's class: T)
 	 * @param string             $alias       Main alias ('t')
 	 * @throws \InvalidArgumentException When the alias is not a lower case identifier
 	 */
@@ -127,8 +133,13 @@ final class Query
 	 * "CASE WHEN t.api_key IS NOT NULL AND t.api_key <> '' THEN 1 ELSE 0 END": never request input. Its ':name'
 	 * placeholders are bound to $params, checked as whereRaw() does.
 	 *
+	 * A secret column (MappingReader::SECRET_COLUMNS) may only appear inside a predicate yielding a constant flag
+	 * (CASE WHEN … THEN 1 ELSE 0 END), never as the value selected: an expression that is a bare reference to a
+	 * secret column ('u.pass_crypted', '(api_key)', any alias) is refused.
+	 *
 	 * @param array<string, mixed> $params
-	 * @throws \InvalidArgumentException Invalid alias, a placeholder without value or a value without placeholder
+	 * @throws \InvalidArgumentException Invalid alias, bare secret column, a placeholder without value or a value
+	 *                                   without placeholder
 	 */
 	public function selectRaw(string $expression, string $alias, array $params = []): static
 	{
@@ -136,8 +147,33 @@ final class Query
 		if (preg_match(self::OUTPUT_ALIAS, $alias) !== 1) {
 			throw new \InvalidArgumentException('Invalid column alias "'.$alias.'"');
 		}
+		if (self::isBareSecretColumn($expression)) {
+			throw new \InvalidArgumentException('Secret column "'.trim($expression).'" refused in selectRaw(): only a constant flag computed from it');
+		}
 		Condition::bindRaw($expression, $params, $this->grammar->dialect(), new QueryParameters());
 		$this->columns[] = ['expression' => $expression, 'alias' => $alias, 'params' => $params];
+
+		return $this;
+	}
+
+	/**
+	 * Columns added to the select list of compile() and toLegacySql(), the default one or the one of select(): the
+	 * extra fields of the Orm ('ef.color AS ef__color'), which select() must not drop. Left out of subqueries and
+	 * of compileCount().
+	 *
+	 * @internal
+	 * @throws \InvalidArgumentException
+	 */
+	public function alwaysSelect(string ...$columns): static
+	{
+		$this->refuseInGroup('alwaysSelect');
+		foreach ($columns as $column) {
+			if (preg_match(self::SELECT_AS, $column, $match) === 1) {
+				$this->alwaysSelected[] = $this->resolve($match[1])[0].' AS '.$match[2];
+			} else {
+				$this->alwaysSelected[] = $this->resolve($column)[0];
+			}
+		}
 
 		return $this;
 	}
@@ -165,7 +201,7 @@ final class Query
 	/**
 	 * An empty list is a false condition.
 	 *
-	 * @param array<mixed>|Query $values
+	 * @param array<mixed>|Query<object> $values
 	 * @throws \InvalidArgumentException
 	 */
 	public function whereIn(string $column, array|Query $values): static
@@ -176,7 +212,7 @@ final class Query
 	/**
 	 * An empty list is a true condition.
 	 *
-	 * @param array<mixed>|Query $values
+	 * @param array<mixed>|Query<object> $values
 	 * @throws \InvalidArgumentException
 	 */
 	public function whereNotIn(string $column, array|Query $values): static
@@ -200,6 +236,8 @@ final class Query
 
 	/**
 	 * The subquery may refer to this query's alias in a whereRaw() (correlated subquery).
+	 *
+	 * @param Query<object> $subquery
 	 */
 	public function whereExists(Query $subquery): static
 	{
@@ -208,6 +246,9 @@ final class Query
 		return $this;
 	}
 
+	/**
+	 * @param Query<object> $subquery
+	 */
 	public function whereNotExists(Query $subquery): static
 	{
 		$this->conditions[] = Condition::exists('AND', $subquery, true);
@@ -404,7 +445,7 @@ final class Query
 	{
 		$this->refuseInGroup('compile');
 		$parameters = new QueryParameters();
-		$sql = $this->compileSelect($this->grammar, $parameters);
+		$sql = $this->compileSelect($this->grammar, $parameters, true);
 
 		return new CompiledQuery($sql, $parameters->all());
 	}
@@ -440,27 +481,28 @@ final class Query
 	{
 		$this->refuseInGroup('toLegacySql');
 		$parameters = new QueryParameters();
-		$sql = $this->compileSelect(new MysqlGrammar(), $parameters);
+		$sql = $this->compileSelect(new MysqlGrammar(), $parameters, true);
 		$statement = (new ParameterBinder((string) $db->prefix(), $db->type === 'pgsql' ? 'pgsql' : 'mysql'))->bind($sql, $parameters->all());
 
 		return (new LegacyDriver($db))->interpolate($statement);
 	}
 
 	/**
-	 * The SELECT of this query, its parameters added to $parameters (also used for subqueries).
+	 * The SELECT of this query, its parameters added to $parameters (also used for subqueries, which leave out the
+	 * alwaysSelect() columns: an IN subquery has one column).
 	 *
 	 * @internal
 	 * @throws \LogicException When the entity scope applies and no EntityScope was given
 	 */
-	public function compileSelect(Grammar $grammar, QueryParameters $parameters): string
+	public function compileSelect(Grammar $grammar, QueryParameters $parameters, bool $withAlwaysSelected = false): string
 	{
 		$order = $this->orders === [] ? '' : ' ORDER BY '.implode(', ', $this->orders);
 
-		return $this->selectList($grammar, $parameters).$this->body($grammar, $parameters).$this->groupClause().$order.$grammar->limit($this->limit, $this->offset);
+		return $this->selectList($grammar, $parameters, $withAlwaysSelected).$this->body($grammar, $parameters).$this->groupClause().$order.$grammar->limit($this->limit, $this->offset);
 	}
 
 	/**
-	 * @return list<object>
+	 * @return list<T>
 	 * @throws \LogicException Without executor
 	 */
 	public function get(): array
@@ -469,6 +511,7 @@ final class Query
 	}
 
 	/**
+	 * @return T|null
 	 * @throws \LogicException Without executor
 	 */
 	public function first(): ?object
@@ -493,9 +536,11 @@ final class Query
 	}
 
 	/**
+	 * @return Page<T>
 	 * @throws \LogicException Without executor
+	 * @throws \InvalidArgumentException When $page or $perPage is below 1
 	 */
-	public function paginate(int $page, int $perPage): object
+	public function paginate(int $page, int $perPage): Page
 	{
 		return $this->executor()->paginate($this, $page, $perPage);
 	}
@@ -527,6 +572,7 @@ final class Query
 	private function addWhere(string $boolean, int $argumentCount, string|\Closure $column, mixed $operatorOrValue, mixed $value): static
 	{
 		if ($column instanceof \Closure) {
+			/** @var self<T> $group */
 			$group = new self($this->mapping, $this->grammar, null, null, $this->alias, $this->casts, $this->mappings);
 			$group->joinAliases = $this->joinAliases;
 			$group->isGroup = true;
@@ -561,7 +607,7 @@ final class Query
 	}
 
 	/**
-	 * @param array<mixed>|Query $values
+	 * @param array<mixed>|Query<object> $values
 	 */
 	private function addIn(string $column, array|Query $values, bool $negated): static
 	{
@@ -611,18 +657,23 @@ final class Query
 	 */
 	private function joinDeclaration(string $table, string|array|null $columns): array
 	{
-		if ($table === $this->mapping->table) {
-			return ['table' => $table, 'mapping' => $this->mapping, 'columns' => null];
-		}
 		if (is_string($columns)) {
 			if (!class_exists($columns)) {
 				throw new \InvalidArgumentException('Unknown entity class '.$columns.' for the join on '.$table);
 			}
 			try {
-				return ['table' => $table, 'mapping' => $this->mappings->get($columns), 'columns' => null];
+				$mapping = $this->mappings->get($columns);
 			} catch (\LogicException $e) {
 				throw new \InvalidArgumentException('Join on '.$table.': '.$e->getMessage(), 0, $e);
 			}
+			if ($mapping->table !== $table) {
+				throw new \InvalidArgumentException('Join on '.$table.': '.$columns.' maps the table '.$mapping->table);
+			}
+
+			return ['table' => $table, 'mapping' => $mapping, 'columns' => null];
+		}
+		if ($table === $this->mapping->table) {
+			return ['table' => $table, 'mapping' => $this->mapping, 'columns' => null];
 		}
 		if ($columns === null) {
 			return ['table' => $table, 'mapping' => null, 'columns' => null];
@@ -678,6 +729,19 @@ final class Query
 		return in_array(strtolower($column), MappingReader::SECRET_COLUMNS, true);
 	}
 
+	/**
+	 * 'pass', 't.pass_crypted', '((u.api_key))': an expression whose value is a secret column itself.
+	 */
+	private static function isBareSecretColumn(string $expression): bool
+	{
+		$bare = trim($expression);
+		while (str_starts_with($bare, '(') && str_ends_with($bare, ')')) {
+			$bare = trim(substr($bare, 1, -1));
+		}
+
+		return preg_match('/^(?:[a-z_][a-z0-9_]*\.)?([a-z_][a-z0-9_]*)$/Di', $bare, $match) === 1 && self::isSecret($match[1]);
+	}
+
 	private function operator(mixed $operator): string
 	{
 		$normalized = is_string($operator) ? strtolower(trim((string) preg_replace('/\s+/', ' ', $operator))) : '';
@@ -719,7 +783,7 @@ final class Query
 		}
 	}
 
-	private function selectList(Grammar $grammar, QueryParameters $parameters): string
+	private function selectList(Grammar $grammar, QueryParameters $parameters, bool $withAlwaysSelected = false): string
 	{
 		$columns = [];
 		foreach ($this->columns as $column) {
@@ -731,6 +795,9 @@ final class Query
 			foreach ($this->mapping->columns as $mapped) {
 				$columns[] = $this->alias.'.'.$mapped->name;
 			}
+		}
+		if ($withAlwaysSelected) {
+			$columns = array_merge($columns, $this->alwaysSelected);
 		}
 
 		return 'SELECT '.($this->distinct ? 'DISTINCT ' : '').implode(', ', $columns).$this->fragments($grammar, 'select');

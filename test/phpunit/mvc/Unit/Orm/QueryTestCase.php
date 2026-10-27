@@ -384,6 +384,61 @@ abstract class QueryTestCase extends TestCase
 		}
 	}
 
+	public function testSelectRawRefusesABareSecretColumn(): void
+	{
+		$attempts = ['t.pass_crypted', 'pass', ' u.API_KEY ', '(u.pass_temp)', '((openid))', 'any_alias.ldap_sid', "u.pass\n"];
+		foreach ($attempts as $expression) {
+			try {
+				$this->articles()->join('user', 'u', 'u.rowid', 't.fk_author')->selectRaw($expression, 'leak');
+				self::fail('Secret column selected: '.$expression);
+			} catch (\InvalidArgumentException $e) {
+				self::assertStringContainsString('ecret', $e->getMessage(), $expression);
+			}
+		}
+
+		$compiled = $this->articles()->withoutEntityScope()->join('user', 'u', 'u.rowid', 't.fk_author')
+			->selectRaw("CASE WHEN u.api_key IS NOT NULL AND u.api_key <> '' THEN 1 ELSE 0 END", 'has_api_key')
+			->compile();
+		self::assertStringContainsString("(CASE WHEN u.api_key IS NOT NULL AND u.api_key <> '' THEN 1 ELSE 0 END) AS has_api_key", $compiled->sql);
+	}
+
+	public function testJoinByEntityClassChecksItsTable(): void
+	{
+		$attempts = [
+			'other table' => static fn (Query $query): Query => $query->join('user', 'a', 'a.rowid', 't.fk_author', Author::class),
+			'own table, other class' => static fn (Query $query): Query => $query->join('article', 'a', 'a.rowid', 't.rowid', Author::class),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt($this->articles());
+				self::fail('Accepted: '.$label);
+			} catch (\InvalidArgumentException $e) {
+				self::assertStringContainsString('author', $e->getMessage(), $label);
+			}
+		}
+
+		$compiled = $this->articles()->withoutEntityScope()->join('article', 'a2', 'a2.id', 't.id', Article::class)->select('a2.title')->compile();
+		$this->assertCompiled('SELECT a2.title FROM @article AS t INNER JOIN @article AS a2 ON a2.rowid = t.rowid', [], $compiled);
+	}
+
+	public function testAlwaysSelectedColumnsOnlyOnTheMainSelect(): void
+	{
+		$withExtra = fn (string $alias): Query => $this->authors($alias)->leftJoin('author_extrafields', 'ef', 'ef.fk_object', $alias.'.rowid', ['color'])
+			->alwaysSelect('ef.fk_object AS ef__fk_object', 'ef.color AS ef__color');
+
+		$this->assertCompiled(
+			'SELECT t.name, ef.fk_object AS ef__fk_object, ef.color AS ef__color FROM @author AS t LEFT JOIN @author_extrafields AS ef ON ef.fk_object = t.rowid',
+			[],
+			$withExtra('t')->select('name')->compile()
+		);
+		$this->assertCompiled('SELECT COUNT(*) AS total FROM @author AS t LEFT JOIN @author_extrafields AS ef ON ef.fk_object = t.rowid', [], $withExtra('t')->compileCount());
+		$this->assertCompiled(
+			'SELECT t.rowid, t.name FROM @author AS t WHERE t.rowid IN (SELECT a.rowid FROM @author AS a LEFT JOIN @author_extrafields AS ef ON ef.fk_object = a.rowid)',
+			[],
+			$this->authors()->whereIn('id', $withExtra('a')->select('id'))->compile()
+		);
+	}
+
 	public function testWhereNotExists(): void
 	{
 		$articles = $this->articles('a')->withoutEntityScope()->select('id')->whereRaw('a.fk_author = t.rowid')->where('a.title', 'x');
@@ -414,6 +469,7 @@ abstract class QueryTestCase extends TestCase
 			'selectRaw' => static fn (Query $group): Query => $group->selectRaw('1', 'one'),
 			'with' => static fn (Query $group): Query => $group->with(),
 			'compile' => static fn (Query $group): mixed => $group->compile(),
+			'compileCount' => static fn (Query $group): mixed => $group->compileCount(),
 		];
 		foreach ($calls as $label => $call) {
 			try {

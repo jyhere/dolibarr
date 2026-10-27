@@ -85,6 +85,15 @@ final class LegacySqlTest extends TestCase
 		);
 	}
 
+	public function testRefusedInAGroup(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessage('group');
+		$this->articles()->where(static function (Query $group): void {
+			$group->where('title', 'x')->toLegacySql($GLOBALS['db']);
+		});
+	}
+
 	private function articles(): Query
 	{
 		return new Query((new MappingReader())->read(Article::class), new PgsqlGrammar(static fn (string $sql): string => $sql), new FakeEntityScope());

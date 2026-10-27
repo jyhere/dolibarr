@@ -60,6 +60,19 @@ final class Snapshots
 		return $changes;
 	}
 
+	/**
+	 * Gives $copy the snapshot of $original (none when $original has none): a modified copy of a readonly entity
+	 * is compared with what was read, not taken for a new entity.
+	 */
+	public function copy(object $original, object $copy): void
+	{
+		if ($this->snapshots->offsetExists($original)) {
+			$this->snapshots->offsetSet($copy, $this->snapshots->offsetGet($original));
+		} elseif ($this->snapshots->offsetExists($copy)) {
+			$this->snapshots->offsetUnset($copy);
+		}
+	}
+
 	public function forget(object $entity): void
 	{
 		$this->snapshots->offsetUnset($entity);
