@@ -34,6 +34,8 @@ final class Query
 	private const ALIAS = '/^[a-z_][a-z0-9_]*$/D';
 	private const TABLE = '/^[a-z0-9_]+$/D';
 	private const COLUMN = '/^(?:([a-z_][a-z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)$/D';
+	/** A column name declared for a join (an extra field keeps the case of its definition). */
+	private const COLUMN_NAME = '/^[a-zA-Z_][a-zA-Z0-9_]*$/D';
 	private const SELECT_AS = '/^(\S+)\s+AS\s+([a-zA-Z_][a-zA-Z0-9_]*)$/Di';
 	private const OUTPUT_ALIAS = '/^[a-zA-Z_][a-zA-Z0-9_]*$/D';
 
@@ -762,7 +764,7 @@ final class Query
 		}
 		$names = [];
 		foreach ($columns as $name) {
-			if (!is_string($name) || preg_match(self::ALIAS, $name) !== 1 || self::isSecret($name)) {
+			if (!is_string($name) || preg_match(self::COLUMN_NAME, $name) !== 1 || self::isSecret($name)) {
 				throw new \InvalidArgumentException('Invalid or secret declared column for the join on '.$table);
 			}
 			$names[] = $name;

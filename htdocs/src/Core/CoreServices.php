@@ -16,6 +16,7 @@ use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Legacy\LegacyLayout;
@@ -25,6 +26,7 @@ use Dolibarr\Core\Legacy\LegacyTranslator;
 use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Module\ModuleInterface;
 use Dolibarr\Core\Orm\EntityScope;
+use Dolibarr\Core\Orm\ExtraFieldCatalog;
 use Dolibarr\Core\Orm\Hydrator;
 use Dolibarr\Core\Orm\MappingCache;
 use Dolibarr\Core\Orm\MappingReader;
@@ -69,6 +71,12 @@ final class CoreServices
 			(string) \constant('DOL_VERSION')
 		));
 		$container->set(EntityScope::class, static fn (): EntityScope => new LegacyEntityScope());
+		// One catalog per request: llx_extrafields read once per element type
+		$container->set(ExtraFieldCatalog::class, static fn (Container $container): ExtraFieldCatalog => new LegacyExtraFieldCatalog(
+			self::get($container, Connection::class),
+			self::get($container, Config::class),
+			self::get($container, Logger::class)
+		));
 		// One Orm, so one Snapshots, per request: shared by every repository
 		$container->set(Orm::class, static function (Container $container): Orm {
 			$hydrator = new Hydrator();
@@ -78,7 +86,8 @@ final class CoreServices
 				self::get($container, MappingRegistry::class),
 				self::get($container, EntityScope::class),
 				$hydrator,
-				new Snapshots($hydrator)
+				new Snapshots($hydrator),
+				self::get($container, ExtraFieldCatalog::class)
 			);
 		});
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));

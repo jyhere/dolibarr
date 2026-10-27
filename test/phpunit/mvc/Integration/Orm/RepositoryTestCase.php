@@ -6,13 +6,18 @@ namespace Dolibarr\Tests\Integration\Orm;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Database\DatabaseException;
+use Dolibarr\Core\Legacy\LegacyConfig;
+use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
+use Dolibarr\Core\Logger;
 use Dolibarr\Core\Orm\EntityNotFoundException;
 use Dolibarr\Core\Orm\Hydrator;
 use Dolibarr\Core\Orm\MappingRegistry;
 use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Core\Orm\Page;
 use Dolibarr\Core\Orm\Snapshots;
+use Dolibarr\Tests\Integration\Fixture\OverridesLegacyConf;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticleRepository;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmAuthor;
@@ -22,13 +27,17 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * The generic Repository on real tables (created by the test in the dialect of the connection): reads, writes,
- * change tracking, multicompany scope (LegacyEntityScope, entity 1 of the test install) and extra fields. A
- * subclass gives the connection: MariaDB (Integration) and PostgreSQL (Pgsql).
+ * change tracking, multicompany scope (LegacyEntityScope, entity 1 of the test install) and extra fields (names
+ * from llx_extrafields: LegacyExtraFieldCatalog, see OrmTestTables). A subclass gives the connection: MariaDB
+ * (Integration) and PostgreSQL (Pgsql).
  *
- * The repository runs on a Connection whose driver records the statements, to count the queries a save() emits.
+ * The repository runs on a Connection whose driver records the statements, to count the queries a save() emits;
+ * the catalog reads llx_extrafields on the unrecorded connection (one statement per request in production).
  */
 abstract class RepositoryTestCase extends TestCase
 {
+	use OverridesLegacyConf;
+
 	private Connection $connection;
 
 	private RecordingDriver $recorder;
@@ -45,14 +54,30 @@ abstract class RepositoryTestCase extends TestCase
 		$this->connection = $this->connection();
 		OrmTestTables::create($this->connection);
 		$this->recorder = new RecordingDriver($this->connection->driver());
+		$this->articles = $this->repository();
+	}
+
+	/**
+	 * A repository on a new Orm, so a new catalog (the extra field names are read once per request).
+	 */
+	private function repository(): OrmArticleRepository
+	{
 		$hydrator = new Hydrator();
-		$orm = new Orm(new Connection($this->connection->legacy(), $this->recorder), new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator));
-		$this->articles = new OrmArticleRepository($orm);
+
+		return new OrmArticleRepository(new Orm(
+			new Connection($this->connection->legacy(), $this->recorder),
+			new MappingRegistry(),
+			new LegacyEntityScope(),
+			$hydrator,
+			new Snapshots($hydrator),
+			new LegacyExtraFieldCatalog($this->connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())
+		));
 	}
 
 	protected function tearDown(): void
 	{
 		date_default_timezone_set($this->timezone);
+		$this->restoreConf();
 		OrmTestTables::drop($this->connection);
 	}
 
@@ -424,7 +449,7 @@ abstract class RepositoryTestCase extends TestCase
 		$withoutExtra = $this->insertArticle('Without');
 
 		$article = $this->articles->findOrFail($withExtra);
-		self::assertSame(['color' => 'red', 'weight' => '5'], $article->extraFields, 'Raw values, as strings; rowid, fk_object, tms and import_key left out');
+		self::assertSame(['color' => 'red', 'weight' => '5'], $article->extraFields, 'Raw values, as strings, of the names of the catalog: no technical column, no attribute of entity 2, no orphan column');
 		self::assertSame([], $this->articles->findOrFail($withoutExtra)->extraFields);
 		self::assertSame(['With'], $this->titles($this->articles->query()->where('ef.color', 'red')->get()));
 		self::assertTrue($this->articles->query()->isSortable('ef.color'));
@@ -449,7 +474,7 @@ abstract class RepositoryTestCase extends TestCase
 		self::assertNotNull($plain->id);
 		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $plain->id]), 'No extra fields, no row');
 
-		foreach ([['rowid' => 1], ['fk_object' => 1], ['bad name' => 1], ['color' => ['array']]] as $invalid) {
+		foreach ([['rowid' => 1], ['fk_object' => 1], ['bad name' => 1], ['other_company' => 'x'], ['orphan' => 'x'], ['color' => ['array']]] as $invalid) {
 			try {
 				$this->articles->save(new OrmArticle(null, 'Invalid', extraFields: $invalid));
 				self::fail('Accepted extra fields '.json_encode($invalid));
@@ -487,21 +512,106 @@ abstract class RepositoryTestCase extends TestCase
 
 	public function testSaveIsAtomic(): void
 	{
+		// A definition whose column is missing: the extra fields write fails in the database
+		OrmTestTables::defineExtraField($this->connection, 'no_such_column', position: 9);
+		$broken = $this->repository();
 		try {
-			$this->articles->save(new OrmArticle(null, 'Half', extraFields: ['no_such_column' => 'x']));
+			$broken->save(new OrmArticle(null, 'Half', extraFields: ['no_such_column' => 'x']));
 			self::fail('The extra fields write did not fail');
 		} catch (DatabaseException) {
 			self::assertSame(0, $this->countArticles(), 'The INSERT of the main row is rolled back');
 		}
 
 		$id = $this->insertArticle('Kept');
-		$article = $this->articles->findOrFail($id);
 		try {
-			$this->articles->save($this->articles->modify($article, ['title' => 'Lost', 'extraFields' => ['no_such_column' => 'x']]));
+			$broken->save(new OrmArticle($id, 'Lost', extraFields: ['no_such_column' => 'x']));
 			self::fail('The extra fields write did not fail');
 		} catch (DatabaseException) {
 			self::assertSame('Kept', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]), 'The UPDATE is rolled back');
 		}
+	}
+
+	public function testUnknownExtraFieldRefusedBeforeAnyStatement(): void
+	{
+		$id = $this->insertArticle('Known', extraFields: ['color' => 'red']);
+		$article = $this->articles->findOrFail($id);
+		$this->recorder->statements = [];
+		$attempts = [
+			'insert' => fn (): mixed => $this->articles->save(new OrmArticle(null, 'New', extraFields: ['color' => 'blue', 'shape' => 'round'])),
+			'update' => fn (): mixed => $this->articles->save($this->articles->modify($article, ['title' => 'Renamed', 'extraFields' => ['shape' => 'round']])),
+			'detached update' => fn (): mixed => $this->articles->save(new OrmArticle($id, 'Rebuilt', extraFields: ['Color' => 'blue'])),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt();
+				self::fail('Unknown extra field saved: '.$label);
+			} catch (\InvalidArgumentException $e) {
+				self::assertStringContainsString('extra field', $e->getMessage(), $label);
+			}
+		}
+
+		self::assertSame([], $this->recorder->statements, 'Refused before any statement');
+		self::assertSame('Known', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
+	}
+
+	public function testNameKeptAsDefined(): void
+	{
+		OrmTestTables::defineExtraField($this->connection, 'ShapeName', position: 9);
+		$articles = $this->repository();
+
+		$saved = $articles->save(new OrmArticle(null, 'Shaped', extraFields: ['ShapeName' => 'round']));
+		self::assertNotNull($saved->id);
+		$article = $articles->findOrFail($saved->id);
+
+		self::assertSame(['color' => null, 'weight' => null, 'ShapeName' => 'round'], $article->extraFields, 'The name of llx_extrafields, whatever case the engine gives the column');
+		self::assertSame(['Shaped'], $this->titles($articles->query()->where('ef.ShapeName', 'round')->get()));
+		$articles->save($articles->modify($article, ['extraFields' => ['ShapeName' => 'square']]));
+		self::assertSame('square', $articles->findOrFail($saved->id)->extraFields['ShapeName']);
+	}
+
+	public function testDisabledExtraFieldsAreNeitherReadNorDeleted(): void
+	{
+		$id = $this->insertArticle('Disabled', extraFields: ['color' => 'red']);
+		$this->setConf('MAIN_EXTRAFIELDS_DISABLED', '1');
+		$articles = $this->repository();
+		$this->recorder->statements = [];
+
+		$article = $articles->findOrFail($id);
+		self::assertSame([], $article->extraFields);
+		self::assertStringNotContainsString('_extrafields', $this->recorder->statements[0], 'No join');
+
+		$this->recorder->statements = [];
+		$articles->delete($article);
+		self::assertCount(1, $this->recorder->statements, 'Only the DELETE of the row, like the legacy deleteExtraFields()');
+		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[0]);
+		self::assertSame(0, $this->countArticles());
+		self::assertSame('red', $this->connection->fetchValue('SELECT color FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $id]), 'The extra fields row is left');
+	}
+
+	public function testEmptyCatalogRunsNoProbeAndNoJoin(): void
+	{
+		$id = $this->insertArticle('Undefined', extraFields: ['color' => 'red']);
+		OrmTestTables::forgetExtraFields($this->connection);
+		$articles = $this->repository();
+		$this->recorder->statements = [];
+
+		$article = $articles->findOrFail($id);
+
+		self::assertSame([], $article->extraFields, 'No definition: no extra field, even with a row');
+		self::assertCount(1, $this->recorder->statements, 'No probe of the extra fields table');
+		self::assertStringNotContainsString('_extrafields', $this->recorder->statements[0], 'No join');
+		self::assertSame(['Undefined'], $this->titles($articles->query()->get()));
+		self::assertFalse($articles->query()->isSortable('ef.color'));
+
+		$this->recorder->statements = [];
+		self::assertSame($article, $articles->save($article), 'Unchanged: nothing written');
+		try {
+			$articles->save($articles->modify($article, ['extraFields' => ['color' => 'blue']]));
+			self::fail('An extra field without definition was saved');
+		} catch (\InvalidArgumentException $e) {
+			self::assertStringContainsString('color', $e->getMessage());
+		}
+		self::assertSame([], $this->recorder->statements);
 	}
 
 	public function testPartialRowIsNotSaved(): void
@@ -559,8 +669,8 @@ abstract class RepositoryTestCase extends TestCase
 		$id = $this->connection->lastInsertId('mvc_orm_article');
 		if ($extraFields !== null) {
 			$this->connection->execute(
-				'INSERT INTO @mvc_orm_article_extrafields (fk_object, import_key, color, weight) VALUES (:id, :import, :color, :weight)',
-				['id' => $id, 'import' => 'imported', 'color' => $extraFields['color'] ?? null, 'weight' => $extraFields['weight'] ?? null]
+				'INSERT INTO @mvc_orm_article_extrafields (fk_object, import_key, color, weight, other_company, orphan) VALUES (:id, :import, :color, :weight, :other, :orphan)',
+				['id' => $id, 'import' => 'imported', 'color' => $extraFields['color'] ?? null, 'weight' => $extraFields['weight'] ?? null, 'other' => 'entity 2', 'orphan' => 'orphan']
 			);
 		}
 

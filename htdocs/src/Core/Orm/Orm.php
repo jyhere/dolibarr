@@ -11,12 +11,15 @@ use Dolibarr\Core\Database\DatabaseException;
  * The ORM of a request, shared by the repositories (one Snapshots per request): builds their queries, runs them
  * (QueryExecutor) and writes their entities.
  *
- * Reads: an entity with #[ExtraFields] gets 'LEFT JOIN <table>_extrafields AS ef ON ef.fk_object = t.rowid' on
- * every query, so 'ef.<name>' columns can be filtered and sorted on (and the legacy extrafields search SQL finds
- * its 'ef' alias), and its extra fields selected as 'ef.<name> AS ef__<name>' on any select list. Their names are
- * those of a row of the table, read once per request (rowid, fk_object, tms, import_key, secret and non lower case
- * identifier columns left out); an empty table has no names yet, and is read again by the next query. The
- * property receives the raw values as strings ([] when the object has no extra fields row).
+ * Reads: the extra field names of an entity with #[ExtraFields] come from the ExtraFieldCatalog (Dolibarr's
+ * llx_extrafields for the mapping's table as elementtype, in the current entity), read once per request. When
+ * there is at least one, every query gets 'LEFT JOIN <table>_extrafields AS ef ON ef.fk_object = t.rowid', so
+ * 'ef.<name>' columns can be filtered and sorted on (and the legacy extrafields search SQL finds its 'ef' alias),
+ * and the extra fields are selected as 'ef.<name> AS ef__<name>' on any select list; with none, no join and
+ * nothing is read. The property receives the raw values as strings, keyed by the names exactly as defined
+ * (PostgreSQL folds the column to lower case, mapped back to the defined name), [] when the object has no extra
+ * fields row or the element no extra field. Columns of the table that the catalog does not name (attributes of
+ * another entity, orphan columns) are never read.
  *
  * Writes (save(), delete()) run in Connection::transactional(), so inside the transaction of the legacy code or
  * of the service when there is one. No tms, datec or fk_user_* handling (spec §5.5), no event: the service
@@ -24,6 +27,8 @@ use Dolibarr\Core\Database\DatabaseException;
  * ('AND entity IN (:entities)', unless $entityScoped is false: Repository::withoutEntityScope()); a row
  * missing or outside the scope throws EntityNotFoundException and nothing is written (no extra fields row
  * either). INSERT leaves the entity column to the service.
+ *
+ * A key of the extra fields property that the catalog does not name is refused by save() before any statement.
  *
  * Entities are readonly: modify() builds a modified copy that keeps the snapshot of the original, so save()
  * updates only what changed. An entity read with a select() lacking mapped columns is partial: save() refuses it
@@ -45,13 +50,20 @@ final class Orm implements QueryExecutor
 	/** Columns of a <table>_extrafields that are not extra fields. */
 	private const EXTRA_FIELDS_TECHNICAL = ['rowid', 'fk_object', 'tms', 'import_key'];
 
-	private const EXTRA_FIELD_NAME = '/^[a-z_][a-z0-9_]*$/D';
+	/** An unquoted SQL identifier: the only names interpolated as extra field columns. */
+	private const EXTRA_FIELD_NAME = '/^[A-Za-z_][A-Za-z0-9_]*$/D';
+
+	/**
+	 * Longest extra field name: its select alias 'ef__<name>' must fit the 63 bytes of a PostgreSQL identifier
+	 * (a longer alias is truncated, so the value would read as null), on both dialects.
+	 */
+	public const EXTRA_FIELD_NAME_MAX_LENGTH = 63 - 4;
 
 	private ?Grammar $grammar = null;
 
 	private ?RelationLoader $relationLoader = null;
 
-	/** @var array<string, list<string>> Extra fields table => its extra field columns (cached once found) */
+	/** @var array<string, list<string>> Table => its extra field names (from the catalog, checked) */
 	private array $extraFieldColumns = [];
 
 	/**
@@ -72,7 +84,8 @@ final class Orm implements QueryExecutor
 		private readonly MappingRegistry $mappings,
 		private readonly EntityScope $scope,
 		private readonly Hydrator $hydrator,
-		private readonly Snapshots $snapshots
+		private readonly Snapshots $snapshots,
+		private readonly ExtraFieldCatalog $extraFieldCatalog
 	) {
 		// PHPStan 2.1 refuses new WeakMap() for these TValue (see Snapshots).
 		$this->extraFields = new \WeakMap(); // @phpstan-ignore assign.propertyType
@@ -105,9 +118,10 @@ final class Orm implements QueryExecutor
 	 * @template T of object
 	 * @param class-string<T> $class
 	 * @return Query<T>
-	 * @throws \InvalidArgumentException Invalid alias, or 'ef' for an entity with extra fields
-	 * @throws \LogicException           When the class is not a valid entity mapping
-	 * @throws DatabaseException         When the extra fields table cannot be read
+	 * @throws \InvalidArgumentException Invalid alias, or 'ef' for an entity with #[ExtraFields]
+	 * @throws \LogicException           When the class is not a valid entity mapping, or the catalog gives an
+	 *                                   invalid name
+	 * @throws DatabaseException         When the extra fields catalog cannot be read
 	 */
 	public function query(string $class, string $alias = 't'): Query
 	{
@@ -121,6 +135,9 @@ final class Orm implements QueryExecutor
 			throw new \InvalidArgumentException('The alias "'.self::EXTRA_FIELDS_ALIAS.'" is the extra fields one for '.$class);
 		}
 		$columns = $this->extraFieldColumns($mapping);
+		if ($columns === []) {
+			return $query;
+		}
 		$query->leftJoin($mapping->table.'_extrafields', self::EXTRA_FIELDS_ALIAS, self::EXTRA_FIELDS_ALIAS.'.fk_object', $alias.'.'.$mapping->id()->name, $columns);
 		$selected = [self::EXTRA_FIELDS_ALIAS.'.fk_object AS '.self::EXTRA_FIELDS_MARKER];
 		foreach ($columns as $column) {
@@ -198,7 +215,8 @@ final class Orm implements QueryExecutor
 	}
 
 	/**
-	 * Raw rows (driver values), for lists with computed columns; extra fields come as 'ef__<name>'.
+	 * Raw rows (driver values), for lists with computed columns; extra fields come as 'ef__<name>' (lower case on
+	 * PostgreSQL).
 	 *
 	 * @param Query<object> $query
 	 * @return list<array<string, mixed>>
@@ -233,7 +251,7 @@ final class Orm implements QueryExecutor
 	 * @param bool $entityScoped False: UPDATE without the entity scope (Repository::withoutEntityScope())
 	 * @return T The new entity with its id after an INSERT, $entity after an UPDATE
 	 * @throws \LogicException           A partial entity, or a class that is not an entity
-	 * @throws \InvalidArgumentException Invalid extra field name or value, entity column outside the scope
+	 * @throws \InvalidArgumentException Extra field not in the catalog or invalid value, entity column outside the scope
 	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope (nothing written)
 	 * @throws DatabaseException         The transaction is rolled back
 	 */
@@ -305,7 +323,8 @@ final class Orm implements QueryExecutor
 	 * Deletes the extra fields row, then the row, in one transaction, once the row is known to exist within the
 	 * entity scope (unless $entityScoped is false): a SELECT with the scoped WHERE comes first for an entity with
 	 * extra fields, so a refused delete has deleted nothing even inside an enclosing transaction (whose nested
-	 * rollback undoes nothing). Without extra fields the scoped DELETE is the first statement.
+	 * rollback undoes nothing). Without extra fields, or with the extra fields disabled (MAIN_EXTRAFIELDS_DISABLED:
+	 * the extra fields row is left, like the legacy deleteExtraFields()), the scoped DELETE is the first statement.
 	 *
 	 * @throws \InvalidArgumentException An entity without id
 	 * @throws \LogicException           A class that is not an entity
@@ -322,7 +341,7 @@ final class Orm implements QueryExecutor
 		}
 		[$where, $params] = $this->rowCondition($mapping, $id, $entityScoped);
 		$this->connection->transactional(function () use ($mapping, $id, $where, $params): void {
-			if ($mapping->extraFieldsProperty !== null) {
+			if ($mapping->extraFieldsProperty !== null && $this->extraFieldCatalog->enabled()) {
 				$this->requireRow($mapping, $id, $where, $params);
 				$this->connection->execute('DELETE FROM @'.$mapping->table.'_extrafields WHERE fk_object = :id', ['id' => $id]);
 			}
@@ -522,10 +541,9 @@ final class Orm implements QueryExecutor
 			$exists = ($row[self::EXTRA_FIELDS_MARKER] ?? null) !== null;
 			$extraFields = [];
 			if ($exists) {
-				foreach ($row as $key => $value) {
-					if ($key !== self::EXTRA_FIELDS_MARKER && str_starts_with($key, self::EXTRA_FIELD_PREFIX)) {
-						$extraFields[substr($key, strlen(self::EXTRA_FIELD_PREFIX))] = self::rawExtraField($value);
-					}
+				foreach ($this->extraFieldColumns($mapping) as $name) {
+					$key = self::EXTRA_FIELD_PREFIX.$name;
+					$extraFields[$name] = self::rawExtraField($row[$key] ?? $row[strtolower($key)] ?? null);
 				}
 			}
 			$propertyValues[$mapping->extraFieldsProperty] = $extraFields;
@@ -554,36 +572,34 @@ final class Orm implements QueryExecutor
 	}
 
 	/**
-	 * Extra field columns of the entity's <table>_extrafields, from one of its rows; none while it is empty.
+	 * Extra field names of the entity, from the catalog (element type: the mapping's table), checked once per
+	 * request: they are interpolated as columns.
 	 *
 	 * @return list<string>
+	 * @throws \LogicException   A name the catalog should not give
 	 * @throws DatabaseException
 	 */
 	private function extraFieldColumns(EntityMapping $mapping): array
 	{
-		$table = $mapping->table.'_extrafields';
-		if (isset($this->extraFieldColumns[$table])) {
-			return $this->extraFieldColumns[$table];
+		if (isset($this->extraFieldColumns[$mapping->table])) {
+			return $this->extraFieldColumns[$mapping->table];
 		}
-		$row = $this->connection->fetchOne('SELECT * FROM @'.$table.$this->grammar()->limit(1, null));
-		if ($row === null) {
-			return [];
-		}
-		$columns = [];
-		foreach (array_keys($row) as $column) {
-			if (self::isExtraFieldName($column)) {
-				$columns[] = $column;
+		$names = $this->extraFieldCatalog->namesFor($mapping->table);
+		foreach ($names as $name) {
+			if (!self::isExtraFieldName($name)) {
+				throw new \LogicException($this->extraFieldCatalog::class.' gave the invalid extra field name "'.$name.'" for '.$mapping->table);
 			}
 		}
 
-		return $this->extraFieldColumns[$table] = $columns;
+		return $this->extraFieldColumns[$mapping->table] = $names;
 	}
 
 	/**
-	 * The extra fields property, checked: names that can be columns, scalar values.
+	 * The extra fields property, checked: names of the catalog (exactly), scalar values.
 	 *
 	 * @return array<string, int|float|string|bool|null>|null Null when the entity has no #[ExtraFields]
 	 * @throws \InvalidArgumentException
+	 * @throws DatabaseException         When the extra fields catalog cannot be read
 	 */
 	private function extraFieldValues(EntityMapping $mapping, object $entity): ?array
 	{
@@ -596,9 +612,10 @@ final class Orm implements QueryExecutor
 			throw new \InvalidArgumentException($mapping->class.'::$'.$mapping->extraFieldsProperty.' is not an array');
 		}
 		$checked = [];
+		$defined = $values === [] ? [] : $this->extraFieldColumns($mapping);
 		foreach ($values as $name => $value) {
-			if (!is_string($name) || !self::isExtraFieldName($name)) {
-				throw new \InvalidArgumentException($mapping->class.': invalid extra field name "'.$name.'"');
+			if (!is_string($name) || !in_array($name, $defined, true)) {
+				throw new \InvalidArgumentException($mapping->class.': unknown extra field "'.$name.'" (not defined in llx_extrafields for '.$mapping->table.' in this entity)');
 			}
 			if ($value !== null && !is_scalar($value)) {
 				throw new \InvalidArgumentException($mapping->class.': the extra field '.$name.' is not a scalar ('.get_debug_type($value).')');
@@ -609,11 +626,19 @@ final class Orm implements QueryExecutor
 		return $checked;
 	}
 
-	private static function isExtraFieldName(string $name): bool
+	/**
+	 * Whether a name can be an extra field column: an unquoted SQL identifier of at most
+	 * EXTRA_FIELD_NAME_MAX_LENGTH characters that is neither a technical column of <table>_extrafields nor a secret
+	 * column (compared without case: MySQL and PostgreSQL ignore it).
+	 */
+	public static function isExtraFieldName(string $name): bool
 	{
+		$lowerCase = strtolower($name);
+
 		return preg_match(self::EXTRA_FIELD_NAME, $name) === 1
-			&& !in_array($name, self::EXTRA_FIELDS_TECHNICAL, true)
-			&& !in_array($name, MappingReader::SECRET_COLUMNS, true);
+			&& strlen($name) <= self::EXTRA_FIELD_NAME_MAX_LENGTH
+			&& !in_array($lowerCase, self::EXTRA_FIELDS_TECHNICAL, true)
+			&& !in_array($lowerCase, MappingReader::SECRET_COLUMNS, true);
 	}
 
 	/**

@@ -6,9 +6,12 @@ namespace Dolibarr\Module\User\Repository;
 
 use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRepository;
+use Dolibarr\Core\Legacy\LegacyConfig;
 use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
+use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
 use Dolibarr\Core\Legacy\LegacyTranslator;
+use Dolibarr\Core\Logger;
 use Dolibarr\Core\Orm\Cast\DateCast;
 use Dolibarr\Core\Orm\Cast\IntCast;
 use Dolibarr\Core\Orm\Cast\StringCast;
@@ -89,7 +92,7 @@ final class UserRepository extends Repository implements EntityRepository
 
 	/**
 	 * @param Orm|null        $orm        The ORM of the request (UserModule); null builds one on $connection with the
-	 *                                    legacy entity scope (tests, scripts)
+	 *                                    legacy entity scope and extra fields catalog (tests, scripts)
 	 * @param Translator|null $translator The decimal and thousand separators of the natural search; null reads the
 	 *                                    legacy $langs (tests, scripts)
 	 * @throws \InvalidArgumentException When $orm runs on another connection
@@ -104,7 +107,7 @@ final class UserRepository extends Repository implements EntityRepository
 			throw new \InvalidArgumentException('UserRepository: the Orm runs on another connection');
 		}
 		$this->hydrator = new Hydrator();
-		parent::__construct($orm ?? new Orm($connection, new MappingRegistry(), new LegacyEntityScope(), $this->hydrator, new Snapshots($this->hydrator)));
+		parent::__construct($orm ?? new Orm($connection, new MappingRegistry(), new LegacyEntityScope(), $this->hydrator, new Snapshots($this->hydrator), new LegacyExtraFieldCatalog($connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())));
 	}
 
 	/**
