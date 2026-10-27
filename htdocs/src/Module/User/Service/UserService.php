@@ -6,7 +6,6 @@ namespace Dolibarr\Module\User\Service;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
-use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Event\EventDispatcher;
 use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\User\Entity\User;
@@ -21,9 +20,10 @@ use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Module\User\Repository\UserWriter;
 
 /**
- * Use cases on users. Each one runs in a transaction: the writes, then the event (the legacy
- * triggers have already run in the writer, hence legacyTriggerFired), then the commit. Any
- * exception, from a write or a listener, rolls everything back and is rethrown.
+ * Use cases on users. Each one runs in a transaction (Connection::transactional()): the writes, then
+ * the event (the legacy triggers have already run in the writer, hence legacyTriggerFired), then the
+ * commit. Any exception, from a write or a listener, rolls everything back and is rethrown; a failed
+ * ROLLBACK throws DatabaseException with that exception as its previous one.
  * Permissions are checked by the callers (UserPermissionChecker).
  */
 final class UserService
@@ -45,7 +45,7 @@ final class UserService
 	 */
 	public function create(User $user, ?string $password, ?array $categoryIds): User
 	{
-		return $this->transactional(function () use ($user, $password, $categoryIds): User {
+		return $this->db->transactional(function () use ($user, $password, $categoryIds): User {
 			$id = $this->writer->insert($user, $this->me->id());
 			if ($password !== null && $password !== '') {
 				$this->writer->setPassword($id, $password, false, $this->me->id());
@@ -76,7 +76,7 @@ final class UserService
 	 */
 	public function update(User $user, ?array $categoryIds, ?int $contactId, ?int $companyId, ?string $password = null): UserUpdateResult
 	{
-		return $this->transactional(function () use ($user, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
+		return $this->db->transactional(function () use ($user, $categoryIds, $contactId, $companyId, $password): UserUpdateResult {
 			$before = $this->load($user->id);
 			// card.php l.666-671 ($passwordismodified), tested before update() as there
 			$passwordChanged = $password !== null && $password !== '' && !$this->writer->isCurrentPassword($user->id, $password);
@@ -102,7 +102,7 @@ final class UserService
 	 */
 	public function setStatus(int $id, bool $enabled): User
 	{
-		return $this->transactional(function () use ($id, $enabled): User {
+		return $this->db->transactional(function () use ($id, $enabled): User {
 			$this->load($id);
 			$this->writer->setStatus($id, $enabled);
 			$user = $this->load($id);
@@ -127,7 +127,7 @@ final class UserService
 	 */
 	public function setStatuses(array $ids, bool $enabled, int $limitUsers): int
 	{
-		return $this->transactional(function () use ($ids, $enabled, $limitUsers): int {
+		return $this->db->transactional(function () use ($ids, $enabled, $limitUsers): int {
 			$status = $enabled ? 1 : 0;
 			$toChange = [];
 			foreach ($ids as $id) {
@@ -165,7 +165,7 @@ final class UserService
 	 */
 	public function delete(int $id): void
 	{
-		$this->transactional(function () use ($id): null {
+		$this->db->transactional(function () use ($id): null {
 			$user = $this->load($id);
 			$this->writer->delete($id, $this->me->id());
 			$this->events->dispatch(new UserDeleted($id, $user->login));
@@ -184,7 +184,7 @@ final class UserService
 	 */
 	public function resetPassword(int $id, bool $send): string
 	{
-		$clear = $this->transactional(function () use ($id, $send): string {
+		$clear = $this->db->transactional(function () use ($id, $send): string {
 			$clear = $this->writer->setPassword($id, '', false, $this->me->id());
 			$this->events->dispatch(new UserPasswordChanged($id, $send));
 
@@ -204,7 +204,7 @@ final class UserService
 	 */
 	public function setPasswordFromForm(int $id, string $clear): void
 	{
-		$this->transactional(function () use ($id, $clear): null {
+		$this->db->transactional(function () use ($id, $clear): null {
 			$this->writer->setPassword($id, $clear, false, $this->me->id());
 			$this->events->dispatch(new UserPasswordChanged($id, false));
 
@@ -219,7 +219,7 @@ final class UserService
 	 */
 	public function addRights(int $id, ?int $rightId, ?string $module): void
 	{
-		$this->transactional(function () use ($id, $rightId, $module): null {
+		$this->db->transactional(function () use ($id, $rightId, $module): null {
 			$this->writer->addRights($id, $rightId, $module, 0);
 			$this->events->dispatch(new UserRightsChanged($id));
 
@@ -235,7 +235,7 @@ final class UserService
 	 */
 	public function delRights(int $id, ?int $rightId, ?string $module): void
 	{
-		$this->transactional(function () use ($id, $rightId, $module): null {
+		$this->db->transactional(function () use ($id, $rightId, $module): null {
 			$this->writer->delRights($id, $rightId, $module, 0);
 			$this->events->dispatch(new UserRightsChanged($id));
 
@@ -252,7 +252,7 @@ final class UserService
 	 */
 	public function addToGroup(int $id, int $groupId): void
 	{
-		$this->transactional(function () use ($id, $groupId): null {
+		$this->db->transactional(function () use ($id, $groupId): null {
 			$this->writer->setInGroup($id, $groupId, $this->groupEntity($groupId));
 			$this->events->dispatch(new UserGroupsChanged($id));
 
@@ -266,38 +266,12 @@ final class UserService
 	 */
 	public function removeFromGroup(int $id, int $groupId): void
 	{
-		$this->transactional(function () use ($id, $groupId): null {
+		$this->db->transactional(function () use ($id, $groupId): null {
 			$this->writer->removeFromGroup($id, $groupId, $this->groupEntity($groupId));
 			$this->events->dispatch(new UserGroupsChanged($id));
 
 			return null;
 		});
-	}
-
-	/**
-	 * A failed BEGIN, COMMIT or ROLLBACK throws DatabaseException (Connection); a COMMIT failure still rolls
-	 * back, and a ROLLBACK failure keeps the exception of the work as its previous one.
-	 *
-	 * @template T
-	 * @param callable(): T $work
-	 * @return T
-	 */
-	private function transactional(callable $work): mixed
-	{
-		$this->db->begin();
-		try {
-			$result = $work();
-			$this->db->commit();
-		} catch (\Throwable $e) {
-			try {
-				$this->db->rollback();
-			} catch (DatabaseException $rollback) {
-				throw new DatabaseException('ROLLBACK failed: '.$rollback->getMessage(), $rollback->getCode(), $e);
-			}
-			throw $e;
-		}
-
-		return $result;
 	}
 
 	/**
@@ -320,8 +294,7 @@ final class UserService
 	 */
 	private function groupEntity(int $groupId): int
 	{
-		$row = $this->db->fetchOne('SELECT entity FROM '.$this->db->prefix().'usergroup WHERE rowid = '.$groupId);
-		$entity = $row === null ? null : (get_object_vars($row)['entity'] ?? null);
+		$entity = $this->db->fetchValue('SELECT entity FROM @usergroup WHERE rowid = :id', ['id' => $groupId]);
 		if (!is_numeric($entity)) {
 			throw new NotFoundException('Group '.$groupId.' not found');
 		}

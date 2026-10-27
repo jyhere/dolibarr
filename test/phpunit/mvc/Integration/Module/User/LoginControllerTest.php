@@ -49,10 +49,10 @@ final class LoginControllerTest extends TestCase
 	{
 		$ctx = LegacyContext::fromGlobals();
 		$connection = new Connection($ctx->db);
-		$row = $connection->fetchOne('SELECT force_pass_change FROM '.MAIN_DB_PREFIX.'user WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
-		self::assertNotNull($row);
-		$previous = (int) $row->force_pass_change;
-		$ctx->db->query('UPDATE '.MAIN_DB_PREFIX.'user SET force_pass_change = 1 WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
+		$login = ['login' => self::env('DOLIBARR_ADMIN_LOGIN')];
+		$previous = $connection->fetchValue('SELECT force_pass_change FROM @user WHERE login = :login', $login);
+		self::assertNotNull($previous);
+		$connection->execute('UPDATE @user SET force_pass_change = 1 WHERE login = :login', $login);
 		try {
 			$response = $this->controller($ctx)->authenticate(GlobalsRequest::create('POST', '/login', [], [
 				'actionlogin' => 'login',
@@ -61,7 +61,7 @@ final class LoginControllerTest extends TestCase
 				'backtopage' => '/user/1',
 			]));
 		} finally {
-			$ctx->db->query('UPDATE '.MAIN_DB_PREFIX.'user SET force_pass_change = '.$previous.' WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
+			$connection->execute('UPDATE @user SET force_pass_change = :previous WHERE login = :login', ['previous' => (int) $previous, ...$login]);
 		}
 
 		self::assertSame(302, $response->status());

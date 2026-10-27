@@ -399,17 +399,15 @@ final class NotesControllerTest extends TestCase
 
 	private function countEvents(string $type): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX."events WHERE type = '".$type."'");
-
-		return (int) ($row?->nb ?? 0);
+		return (int) $this->connection->fetchValue('SELECT COUNT(*) AS nb FROM @events WHERE type = :type', ['type' => $type]);
 	}
 
 	private function row(int $id): object
 	{
-		$row = $this->connection->fetchOne('SELECT note_public, note_private, fk_user_modif FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		$row = $this->connection->fetchOne('SELECT note_public, note_private, fk_user_modif FROM @user WHERE rowid = :id', ['id' => $id]);
 		self::assertNotNull($row);
 
-		return $row;
+		return (object) $row;
 	}
 
 	private function disposable(string $lastname): User

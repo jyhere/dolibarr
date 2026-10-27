@@ -143,8 +143,8 @@ final class UserCreateTest extends TestCase
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame(302, $response->status());
 		self::assertSame('/user/'.$created->id, $response->headers()['Location']);
-		$row = $this->connection->fetchOne('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$created->id);
-		self::assertTrue(dol_verifyHash('Secret-Pass-123!', (string) $row?->pass_crypted));
+		$hash = $this->connection->fetchValue('SELECT pass_crypted FROM @user WHERE rowid = :id', ['id' => $created->id]);
+		self::assertTrue(dol_verifyHash('Secret-Pass-123!', (string) $hash));
 		self::assertArrayNotHasKey('errors', $_SESSION['dol_events'] ?? []);
 	}
 
@@ -337,8 +337,6 @@ final class UserCreateTest extends TestCase
 
 	private function countUsers(): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(rowid) as nb FROM '.MAIN_DB_PREFIX.'user');
-
-		return (int) ($row?->nb ?? 0);
+		return (int) $this->connection->fetchValue('SELECT COUNT(rowid) as nb FROM @user');
 	}
 }

@@ -76,7 +76,7 @@ final class LegacyUserWriterTest extends TestCase
 		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
 		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET openid = 'mvc-openid' WHERE rowid = ".$id);
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."entrepot (ref, entity, datec, statut) VALUES ('MVC-WH-".uniqid()."', 1, NOW(), 1)");
-		$warehouseId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'entrepot');
+		$warehouseId = $this->connection->lastInsertId('entrepot');
 		$before = $this->repo()->find($id);
 		self::assertNotNull($before);
 
@@ -106,9 +106,8 @@ final class LegacyUserWriterTest extends TestCase
 		self::assertSame('0102', $after->officeFax);
 		self::assertSame('421MVC', $after->accountancyCode);
 		self::assertSame($warehouseId, $after->warehouseId);
-		$row = $this->connection->fetchOne('SELECT openid FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
-		self::assertNotNull($row);
-		self::assertSame('mvc-openid', $row->openid, 'A field the entity does not carry keeps its value');
+		$openid = $this->connection->fetchValue('SELECT openid FROM @user WHERE rowid = :id', ['id' => $id]);
+		self::assertSame('mvc-openid', $openid, 'A field the entity does not carry keeps its value');
 	}
 
 	public function testUpdateDuplicateUniqueValueThrowsTheUpdateCanceledMessage(): void
@@ -145,13 +144,12 @@ final class LegacyUserWriterTest extends TestCase
 	{
 		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC contact', 1, NOW(), 1)");
-		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		$contactId = $this->connection->lastInsertId('socpeople');
 
 		// card.php l.497-652: update() syncs $object->contact_id, the fetched one; the new link is the raw UPDATE after
 		$this->writer()->update(new User(id: $id, entity: 1, login: 'mvc_test_'.uniqid(), lastname: 'Overwrites', contactId: $contactId), 1);
 
-		$row = $this->connection->fetchOne('SELECT lastname FROM '.MAIN_DB_PREFIX.'socpeople WHERE rowid = '.$contactId);
-		self::assertSame('MVC contact', $row?->lastname);
+		self::assertSame('MVC contact', $this->connection->fetchValue('SELECT lastname FROM @socpeople WHERE rowid = :id', ['id' => $contactId]));
 		self::assertNull($this->repo()->find($id)?->contactId);
 	}
 
@@ -160,7 +158,7 @@ final class LegacyUserWriterTest extends TestCase
 		$first = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
 		$second = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC contact', 1, NOW(), 1)");
-		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		$contactId = $this->connection->lastInsertId('socpeople');
 		$this->writer()->linkToContact($first, $contactId, 0);
 
 		// uk_user_fk_socpeople: card.php l.680-683 shows $db->lasterror()
@@ -209,10 +207,10 @@ final class LegacyUserWriterTest extends TestCase
 		$pwd = $this->writer()->setPassword($id, '', false, 1);
 
 		self::assertNotSame('', $pwd);
-		$row = $this->connection->fetchOne('SELECT pass_crypted, flagdelsessionsbefore FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		$row = $this->connection->fetchOne('SELECT pass_crypted, flagdelsessionsbefore FROM @user WHERE rowid = :id', ['id' => $id]);
 		self::assertNotNull($row);
-		self::assertNotNull($row->flagdelsessionsbefore);
-		self::assertTrue(dol_verifyHash($pwd, (string) $row->pass_crypted));
+		self::assertNotNull($row['flagdelsessionsbefore']);
+		self::assertTrue(dol_verifyHash($pwd, (string) $row['pass_crypted']));
 
 		self::assertSame('Given-Pass-123!', $this->writer()->setPassword($id, 'Given-Pass-123!', false, 1));
 	}
@@ -235,7 +233,7 @@ final class LegacyUserWriterTest extends TestCase
 	public function testRightsGroupsAndCategories(): void
 	{
 		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
-		$countRights = fn (): int => (int) ($this->connection->fetchOne('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$id)->nb ?? 0);
+		$countRights = fn (): int => (int) $this->connection->fetchValue('SELECT COUNT(*) AS nb FROM @user_rights WHERE fk_user = :id', ['id' => $id]);
 		$initial = $countRights();
 
 		$this->writer()->addRights($id, null, 'user', 0);
@@ -250,7 +248,7 @@ final class LegacyUserWriterTest extends TestCase
 		$group->entity = 1;
 		$groupId = $group->create();
 		self::assertGreaterThan(0, $groupId);
-		$inGroup = fn (): int => (int) ($this->connection->fetchOne('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX.'usergroup_user WHERE fk_user = '.$id.' AND fk_usergroup = '.$groupId)->nb ?? 0);
+		$inGroup = fn (): int => (int) $this->connection->fetchValue('SELECT COUNT(*) AS nb FROM @usergroup_user WHERE fk_user = :id AND fk_usergroup = :group', ['id' => $id, 'group' => $groupId]);
 		$this->writer()->setInGroup($id, $groupId, 1);
 		self::assertSame(1, $inGroup());
 		$this->writer()->removeFromGroup($id, $groupId, 1);
@@ -266,9 +264,9 @@ final class LegacyUserWriterTest extends TestCase
 		$id = $this->writer()->insert($this->newUser('mvc_test_'.uniqid()), 1);
 		// Raw fixtures: the legacy Societe/Contact create() raise PHP deprecations of their own
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."societe (nom, entity, datec) VALUES ('MVC test company', 1, NOW())");
-		$companyId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'societe');
+		$companyId = $this->connection->lastInsertId('societe');
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES ('MVC contact', ".$companyId.', 1, NOW(), 1)');
-		$contactId = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		$contactId = $this->connection->lastInsertId('socpeople');
 		self::assertGreaterThan(0, $contactId);
 
 		self::assertFalse($this->writer()->linkToContact($id, $contactId, 0));
@@ -287,7 +285,7 @@ final class LegacyUserWriterTest extends TestCase
 		self::assertNull($linked?->companyId);
 		// A contact without company and a posted company: the company is cleared, the caller warns (card.php l.665-668)
 		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, entity, datec, fk_user_creat) VALUES ('MVC lonely', 1, NOW(), 1)");
-		$lonely = $this->connection->lastInsertId(MAIN_DB_PREFIX.'socpeople');
+		$lonely = $this->connection->lastInsertId('socpeople');
 		self::assertTrue($this->writer()->linkToContact($id, $lonely, $companyId));
 		self::assertNull($this->repo()->find($id)?->companyId);
 	}
@@ -317,9 +315,6 @@ final class LegacyUserWriterTest extends TestCase
 
 	private function countEvents(string $type): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX."events WHERE type = '".$type."'");
-		self::assertNotNull($row);
-
-		return (int) $row->nb;
+		return (int) $this->connection->fetchValue('SELECT COUNT(*) AS nb FROM @events WHERE type = :type', ['type' => $type]);
 	}
 }

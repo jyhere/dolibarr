@@ -294,17 +294,18 @@ final class UserRightsControllerTest extends TestCase
 
 	private function rows(string $from): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.$from);
-
-		return (int) ($row?->nb ?? 0);
+		return (int) $this->connection->fetchValue('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.$from);
 	}
 
 	private function rightId(string $module, string $perms, string $subperms): int
 	{
-		$row = $this->connection->fetchOne('SELECT id FROM '.MAIN_DB_PREFIX."rights_def WHERE module = '".$module."' AND perms = '".$perms."' AND subperms = '".$subperms."' AND entity = ".((int) $this->ctx->conf->entity));
-		self::assertNotNull($row);
+		$id = $this->connection->fetchValue(
+			'SELECT id FROM @rights_def WHERE module = :module AND perms = :perms AND subperms = :subperms AND entity = :entity',
+			['module' => $module, 'perms' => $perms, 'subperms' => $subperms, 'entity' => (int) $this->ctx->conf->entity]
+		);
+		self::assertNotNull($id);
 
-		return (int) $row->id;
+		return (int) $id;
 	}
 
 	private function disposable(string $lastname): User

@@ -10,13 +10,13 @@ use PHPUnit\Framework\TestCase;
 
 final class ConnectionTest extends TestCase
 {
-	public function testFetchOneAndEscape(): void
+	public function testFetchOneBindsTheValues(): void
 	{
 		$connection = new Connection($GLOBALS['db']);
-		$row = $connection->fetchOne("SELECT login FROM ".$connection->prefix()."user WHERE rowid = 1");
+		$row = $connection->fetchOne('SELECT login FROM @user WHERE rowid = :id', ['id' => 1]);
 		self::assertNotNull($row);
-		self::assertSame($GLOBALS['user']->login, $row->login);
-		self::assertSame("O\\'Neil", $connection->escape("O'Neil"));
+		self::assertSame($GLOBALS['user']->login, $row['login']);
+		self::assertNull($connection->fetchOne('SELECT login FROM @user WHERE login = :login', ['login' => "O'Neil' OR '1'='1"]));
 	}
 
 	public function testRealTransactionRunsWithoutException(): void
@@ -74,6 +74,39 @@ final class ConnectionTest extends TestCase
 				return false;
 			}
 		};
+	}
+
+	public function testTransactionalChainsTheWorkExceptionWhenRollbackFails(): void
+	{
+		$db = new class extends \DoliDBMysqli {
+			public function __construct()
+			{
+				$this->type = 'mysqli';
+			}
+
+			public function begin($textinlog = '')
+			{
+				return 1;
+			}
+
+			public function rollback($log = '')
+			{
+				$this->lasterror = 'forced rollback failure';
+
+				return false;
+			}
+		};
+		$failure = new \RuntimeException('work failed');
+
+		try {
+			(new Connection($db))->transactional(static function () use ($failure): never {
+				throw $failure;
+			});
+			self::fail('transactional() should throw');
+		} catch (DatabaseException $e) {
+			self::assertSame('ROLLBACK failed: forced rollback failure', $e->getMessage());
+			self::assertSame($failure, $e->getPrevious());
+		}
 	}
 
 	public function testInvalidSqlThrowsDatabaseException(): void

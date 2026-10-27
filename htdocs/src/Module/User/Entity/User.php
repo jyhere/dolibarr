@@ -5,79 +5,87 @@ declare(strict_types=1);
 namespace Dolibarr\Module\User\Entity;
 
 use Dolibarr\Core\Entity\HasNotes;
+use Dolibarr\Core\Orm\Attribute\Column;
+use Dolibarr\Core\Orm\Attribute\Id;
+use Dolibarr\Core\Orm\Attribute\Table;
 use Dolibarr\Core\View\Exposable;
 
 /**
  * Read model of a Dolibarr user (llx_user). Secrets (password hashes, API key,
  * OpenID, LDAP SID) are never part of this entity.
  *
+ * Mapped on llx_user for the ORM (UserRepository). Not mapped: $hasApiKey and $isLdapManaged, flags computed in
+ * SQL from secret columns the mapping never reads, and $extraFields (no #[ExtraFields]: the user list reads the
+ * extra fields with the legacy helpers, as SQL fragments, and nothing reads them from the entity).
+ *
  * forcePasswordChange is force_pass_change. Legacy quirk kept as is: \User::setPassword() resets it to 0,
  * so a flag written with a new password does not survive (the same on user/card.php).
  */
+#[Table('user')]
 final class User implements Exposable, HasNotes
 {
 	/**
 	 * @param array<string, mixed> $extraFields
 	 */
 	public function __construct(
-		public readonly int $id,
-		public readonly int $entity,
-		public readonly string $login,
-		public readonly bool $admin = false,
-		public readonly bool $employee = true,
-		public readonly int $status = 1,
-		public readonly ?string $lastname = null,
-		public readonly ?string $firstname = null,
-		public readonly ?string $gender = null,
-		public readonly ?string $civility = null,
-		public readonly ?string $job = null,
-		public readonly ?string $email = null,
-		public readonly ?string $officePhone = null,
-		public readonly ?string $userMobile = null,
-		public readonly ?string $photo = null,
-		public readonly ?string $lang = null,
-		public readonly ?string $color = null,
-		public readonly ?\DateTimeImmutable $dateStartValidity = null,
-		public readonly ?\DateTimeImmutable $dateEndValidity = null,
+		#[Id] public readonly int $id,
+		#[Column] public readonly int $entity,
+		#[Column] public readonly string $login,
+		#[Column] public readonly bool $admin = false,
+		#[Column] public readonly bool $employee = true,
+		#[Column('statut')] public readonly int $status = 1,
+		#[Column] public readonly ?string $lastname = null,
+		#[Column] public readonly ?string $firstname = null,
+		#[Column] public readonly ?string $gender = null,
+		#[Column] public readonly ?string $civility = null,
+		#[Column] public readonly ?string $job = null,
+		#[Column] public readonly ?string $email = null,
+		#[Column] public readonly ?string $officePhone = null,
+		#[Column] public readonly ?string $userMobile = null,
+		#[Column] public readonly ?string $photo = null,
+		#[Column] public readonly ?string $lang = null,
+		#[Column] public readonly ?string $color = null,
+		#[Column('datestartvalidity')] public readonly ?\DateTimeImmutable $dateStartValidity = null,
+		#[Column('dateendvalidity')] public readonly ?\DateTimeImmutable $dateEndValidity = null,
 		public readonly bool $hasApiKey = false,
-		public readonly ?string $personalEmail = null,
-		public readonly ?string $personalMobile = null,
-		public readonly ?string $address = null,
-		public readonly ?string $zip = null,
-		public readonly ?string $town = null,
-		public readonly ?int $stateId = null,
-		public readonly ?int $countryId = null,
-		public readonly ?\DateTimeImmutable $birth = null,
-		public readonly ?string $birthPlace = null,
-		public readonly ?string $signature = null,
-		public readonly ?\DateTimeImmutable $dateLastLogin = null,
-		public readonly ?\DateTimeImmutable $datePreviousLogin = null,
-		public readonly ?string $notePublic = null,
-		public readonly ?string $notePrivate = null,
-		public readonly ?int $companyId = null,
-		public readonly ?int $contactId = null,
-		public readonly ?int $memberId = null,
-		public readonly ?int $supervisorId = null,
-		public readonly ?int $expenseValidatorId = null,
-		public readonly ?int $holidayValidatorId = null,
-		public readonly ?string $refEmployee = null,
-		public readonly ?string $refExt = null,
-		public readonly ?\DateTimeImmutable $dateCreated = null,
-		public readonly ?\DateTimeImmutable $dateModified = null,
-		public readonly ?float $salary = null,
-		public readonly ?float $salaryExtra = null,
-		public readonly ?float $thm = null,
-		public readonly ?float $tjm = null,
-		public readonly ?float $weeklyHours = null,
-		public readonly ?\DateTimeImmutable $dateEmployment = null,
-		public readonly ?\DateTimeImmutable $dateEmploymentEnd = null,
+		#[Column] public readonly ?string $personalEmail = null,
+		#[Column] public readonly ?string $personalMobile = null,
+		#[Column] public readonly ?string $address = null,
+		#[Column] public readonly ?string $zip = null,
+		#[Column] public readonly ?string $town = null,
+		#[Column('fk_state')] public readonly ?int $stateId = null,
+		#[Column('fk_country')] public readonly ?int $countryId = null,
+		#[Column(cast: 'date')] public readonly ?\DateTimeImmutable $birth = null,
+		#[Column] public readonly ?string $birthPlace = null,
+		#[Column] public readonly ?string $signature = null,
+		#[Column('datelastlogin')] public readonly ?\DateTimeImmutable $dateLastLogin = null,
+		#[Column('datepreviouslogin')] public readonly ?\DateTimeImmutable $datePreviousLogin = null,
+		#[Column] public readonly ?string $notePublic = null,
+		#[Column] public readonly ?string $notePrivate = null,
+		#[Column('fk_soc')] public readonly ?int $companyId = null,
+		#[Column('fk_socpeople')] public readonly ?int $contactId = null,
+		#[Column('fk_member')] public readonly ?int $memberId = null,
+		#[Column('fk_user')] public readonly ?int $supervisorId = null,
+		#[Column('fk_user_expense_validator')] public readonly ?int $expenseValidatorId = null,
+		#[Column('fk_user_holiday_validator')] public readonly ?int $holidayValidatorId = null,
+		#[Column] public readonly ?string $refEmployee = null,
+		#[Column] public readonly ?string $refExt = null,
+		#[Column('datec')] public readonly ?\DateTimeImmutable $dateCreated = null,
+		#[Column('tms')] public readonly ?\DateTimeImmutable $dateModified = null,
+		#[Column] public readonly ?float $salary = null,
+		#[Column('salaryextra')] public readonly ?float $salaryExtra = null,
+		#[Column] public readonly ?float $thm = null,
+		#[Column] public readonly ?float $tjm = null,
+		#[Column('weeklyhours')] public readonly ?float $weeklyHours = null,
+		#[Column('dateemployment', 'date')] public readonly ?\DateTimeImmutable $dateEmployment = null,
+		#[Column('dateemploymentend', 'date')] public readonly ?\DateTimeImmutable $dateEmploymentEnd = null,
 		public readonly array $extraFields = [],
-		public readonly ?string $officeFax = null,
-		public readonly ?string $accountancyCode = null,
-		public readonly ?int $warehouseId = null,
-		public readonly ?string $nationalRegistrationNumber = null,
+		#[Column] public readonly ?string $officeFax = null,
+		#[Column] public readonly ?string $accountancyCode = null,
+		#[Column('fk_warehouse')] public readonly ?int $warehouseId = null,
+		#[Column] public readonly ?string $nationalRegistrationNumber = null,
 		public readonly bool $isLdapManaged = false,
-		public readonly bool $forcePasswordChange = false
+		#[Column('force_pass_change')] public readonly bool $forcePasswordChange = false
 	) {
 	}
 

@@ -6,7 +6,6 @@ namespace Dolibarr\Module\Notes\Controller;
 
 use Dolibarr\Core\CurrentUser;
 use Dolibarr\Core\Database\Connection;
-use Dolibarr\Core\Database\DatabaseException;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Core\Entity\EntityRegistry;
@@ -134,37 +133,23 @@ final class NotesController
 		$posted = $request->getPost($field, 'restricthtml', '');
 		$value = dol_html_entity_decode(is_string($posted) ? $posted : '', ENT_QUOTES | ENT_HTML5, 'UTF-8', 1);
 
-		$this->connection->begin();
+		// A trigger failure (NoteTriggerException) is rolled back and shown; any other failure is rolled back and rethrown
 		try {
-			$this->notes->update($definition->tableElement, $id, $field, $value, $this->me->id());
-			// update_note() l.4212-4219: the object in memory carries the new note (the trigger reads it)
-			$legacyObject->{$field} = $value;
-			$this->events->dispatch(new NoteUpdated($definition->element, $definition->tableElement, $id, $field));
-			$this->connection->commit();
+			$this->connection->transactional(function () use ($definition, $id, $field, $value, $legacyObject): null {
+				$this->notes->update($definition->tableElement, $id, $field, $value, $this->me->id());
+				// update_note() l.4212-4219: the object in memory carries the new note (the trigger reads it)
+				$legacyObject->{$field} = $value;
+				$this->events->dispatch(new NoteUpdated($definition->element, $definition->tableElement, $id, $field));
+
+				return null;
+			});
 		} catch (NoteTriggerException $e) {
-			$this->rollbackAfter($e);
 			foreach ($e->errors as $error) {
 				$this->flash->error($error);
 			}
-		} catch (\Throwable $e) {
-			$this->rollbackAfter($e);
-
-			throw $e;
 		}
 
 		return $back;
-	}
-
-	/**
-	 * ROLLBACK after $original failed the transaction: a failing ROLLBACK must not hide it (as UserService::transactional()).
-	 */
-	private function rollbackAfter(\Throwable $original): void
-	{
-		try {
-			$this->connection->rollback();
-		} catch (DatabaseException $rollback) {
-			throw new DatabaseException('ROLLBACK failed: '.$rollback->getMessage(), $rollback->getCode(), $original);
-		}
 	}
 
 	/**

@@ -14,10 +14,11 @@ final class UserPage
 	 * @param int               $total   All the matching rows, -1 when not counted (MAIN_DISABLE_FULL_SCANLIST)
 	 * @param int               $page    The page shown (0 when the asked one is beyond the total, list.php l.548-551)
 	 * @param bool              $hasMore A next page exists (the query reads $limit + 1 rows, list.php l.558)
-	 * @param string            $sql       The list query without its LIMIT ($sql of list.php), for the legacy
-	 *                                     consumers only (the grand total of list_print_total.tpl.php, the
-	 *                                     printFieldListFooter hooks); never exposed
-	 * @param string            $sqlFields Its SELECT part ($sqlfields of list.php l.419)
+	 * @param string            $sql       The list query without its LIMIT ($sql of list.php), Query::toLegacySql():
+	 *                                     its values interpolated as DoliDB escapes them, for the legacy consumers
+	 *                                     only (the grand total of list_print_total.tpl.php, the printFieldListFooter
+	 *                                     hooks), never run by the MVC core; never exposed
+	 * @param string            $sqlFields Its SELECT part ($sqlfields of list.php l.419), a prefix of $sql
 	 */
 	public function __construct(
 		public readonly array $items,

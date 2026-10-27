@@ -50,17 +50,15 @@ final class RightsChrome
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 		require_once DOL_DOCUMENT_ROOT.'/core/modules/DolibarrModules.class.php';
 		$db = $this->ctx->db;
-		$prefix = $this->connection->prefix();
 
-		$modules = [];
-		$this->connection->begin();
-		try {
+		$modules = $this->connection->transactional(function () use ($db, $entity): array {
+			$modules = [];
 			$excluded = getDolGlobalInt('MAIN_USE_NEW_SUPPLIERMOD') ? ['modFournisseur'] : ['modSupplierOrder', 'modSupplierInvoice'];
 			$enabled = $this->enabledModuleConstants($entity);
 			// l.201-211: the ids already in llx_rights_def, so insert_permissions() checks them in memory
 			$existing = [];
-			foreach ($this->connection->fetchAll('SELECT id FROM '.$prefix.'rights_def WHERE entity = '.$entity) as $row) {
-				$existing[(int) $row->id] = 1;
+			foreach ($this->connection->fetchAll('SELECT id FROM @rights_def WHERE entity = :entity', ['entity' => $entity]) as $row) {
+				$existing[(int) $row['id']] = 1;
 			}
 
 			foreach (dolGetModulesDirs() as $dir) {
@@ -100,12 +98,9 @@ final class RightsChrome
 				}
 				closedir($handle);
 			}
-			$this->connection->commit();
-		} catch (\Throwable $e) {
-			$this->connection->rollback();
 
-			throw $e;
-		}
+			return $modules;
+		});
 
 		$this->fixPositions($modules, $entity);
 
@@ -268,9 +263,10 @@ final class RightsChrome
 		}
 		$db = $this->ctx->db;
 		$constants = [];
-		$rows = $this->connection->fetchAll('SELECT '.$db->decrypt('name').' as name, '.$db->decrypt('value').' as value FROM '.$this->connection->prefix().'const WHERE entity IN (0, '.$entity.') ORDER BY entity');
+		// decrypt(): the SQL expression of DoliDB for an encrypted column (the column name, or AES_DECRYPT() with the key of conf.php)
+		$rows = $this->connection->fetchAll('SELECT '.$db->decrypt('name').' as name, '.$db->decrypt('value').' as value FROM @const WHERE entity IN (0, :entity) ORDER BY entity', ['entity' => $entity]);
 		foreach ($rows as $row) {
-			$constants[(string) $row->name] = $row->value;
+			$constants[(string) $row['name']] = $row['value'];
 		}
 
 		return $constants;
@@ -285,38 +281,41 @@ final class RightsChrome
 	 */
 	private function fixPositions(array $modules, int $entity): void
 	{
-		$prefix = $this->connection->prefix();
+		// DoliDBPgsql turns the LIKE of perms.php into ILIKE: the same case insensitive match on both engines
+		$like = $this->connection->dialect() === 'pgsql' ? 'ILIKE' : 'LIKE';
 		$sql = 'SELECT r.id, r.libelle as label, r.module, r.perms, r.subperms, r.module_position, r.family, r.family_position, r.bydefault';
-		$sql .= ' FROM '.$prefix.'rights_def as r';
-		$sql .= " WHERE r.libelle NOT LIKE 'tou%'";
-		$sql .= ' AND r.entity = '.$entity;
+		$sql .= ' FROM @rights_def as r';
+		$sql .= " WHERE r.libelle NOT ".$like." 'tou%'";
+		$sql .= ' AND r.entity = :entity';
 		$sql .= ' ORDER BY r.family, r.family_position, r.module_position, r.right_position, r.module, r.id';
 
 		$reception = isModEnabled('reception');
-		foreach ($this->connection->fetchAll($sql) as $obj) {
-			$module = (string) ($obj->module ?? '');
+		foreach ($this->connection->fetchAll($sql, ['entity' => $entity]) as $row) {
+			$module = (string) ($row['module'] ?? '');
 			if ($module === '' || !isset($modules[$module])) {
 				continue;
 			}
-			if ($reception && self::replacedByReception($module, (string) $obj->perms, (string) ($obj->subperms ?? ''))) {
+			if ($reception && self::replacedByReception($module, (string) $row['perms'], (string) ($row['subperms'] ?? ''))) {
 				continue;
 			}
 			$objMod = $modules[$module];
 			$external = $objMod->isCoreOrExternalModule() == 'external';
 
-			if (empty($obj->module_position) || ($external && (int) $obj->module_position < 100000)) {
+			if (empty($row['module_position']) || ($external && (int) $row['module_position'] < 100000)) {
 				if ((int) $objMod->module_position > 0) {
 					$newPosition = (int) $objMod->module_position;
 					if ($external && $newPosition < 100000) {
 						$newPosition += 100000;
 					}
-					$this->connection->execute('UPDATE '.$prefix.'rights_def SET module_position = '.$newPosition.', family_position = 0'
-						.' WHERE module_position = '.((int) $obj->module_position)." AND module = '".$this->connection->escape($module)."'");
+					$this->connection->execute(
+						'UPDATE @rights_def SET module_position = :position, family_position = 0 WHERE module_position = :current AND module = :module',
+						['position' => $newPosition, 'current' => (int) $row['module_position'], 'module' => $module]
+					);
 				}
 			}
 
-			if (empty($obj->family) && !empty($objMod->family)) {
-				$this->connection->execute('UPDATE '.$prefix."rights_def SET family = '".$this->connection->escape((string) $objMod->family)."' WHERE id = ".((int) $obj->id));
+			if (empty($row['family']) && !empty($objMod->family)) {
+				$this->connection->execute('UPDATE @rights_def SET family = :family WHERE id = :id', ['family' => (string) $objMod->family, 'id' => (int) $row['id']]);
 			}
 		}
 	}

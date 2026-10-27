@@ -63,9 +63,6 @@ final class LegacyTriggerBridgeTest extends TestCase
 
 	private function countLoginEvents(Connection $connection): int
 	{
-		$row = $connection->fetchOne("SELECT COUNT(*) AS nb FROM ".MAIN_DB_PREFIX."events WHERE type = 'USER_LOGIN' AND fk_user = 1");
-		self::assertNotNull($row);
-
-		return (int) $row->nb;
+		return (int) $connection->fetchValue("SELECT COUNT(*) AS nb FROM @events WHERE type = 'USER_LOGIN' AND fk_user = 1");
 	}
 }

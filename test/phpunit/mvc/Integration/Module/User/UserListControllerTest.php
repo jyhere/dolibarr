@@ -254,8 +254,8 @@ final class UserListControllerTest extends TestCase
 		self::assertSame('/user?contextpage=userlist&search_login=adm&search_status=1', $response->headers()['Location']);
 		$me = $this->ctx->user;
 		self::assertNotNull($me);
-		$row = $this->connection->fetchOne('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist'");
-		self::assertSame('u.login,u.email,', $row?->value ?? null);
+		$selected = $this->connection->fetchValue("SELECT value FROM @user_param WHERE fk_user = :user AND param = 'MAIN_SELECTEDFIELDS_userlist'", ['user' => (int) $me->id]);
+		self::assertSame('u.login,u.email,', $selected);
 
 		// The next display shows only these columns (Form::multiSelectArrayWithCheckbox())
 		$vm = $this->list('GET', ['search_login' => 'admin']);
@@ -313,7 +313,7 @@ final class UserListControllerTest extends TestCase
 
 		$vm = $this->list('GET', ['formfilteraction' => 'listafterchangingselectedfields', 'selectedfields' => 'u.login,', 'token' => 'checked-by-main-inc']);
 		self::assertInstanceOf(ViewModel::class, $vm);
-		self::assertNull($this->connection->fetchOne('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist' AND value = 'u.login,'"));
+		self::assertNull($this->connection->fetchOne("SELECT value FROM @user_param WHERE fk_user = :user AND param = 'MAIN_SELECTEDFIELDS_userlist' AND value = 'u.login,'", ['user' => (int) $me->id]));
 	}
 
 	public function testApiKeyTitleOnlyForReaders(): void

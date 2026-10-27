@@ -532,9 +532,7 @@ final class UserActionsTest extends TestCase
 
 	private function membership(int $userId, int $groupId): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.'usergroup_user WHERE fk_user = '.$userId.' AND fk_usergroup = '.$groupId);
-
-		return (int) ($row?->nb ?? 0);
+		return (int) $this->connection->fetchValue('SELECT COUNT(*) as nb FROM @usergroup_user WHERE fk_user = :user AND fk_usergroup = :group', ['user' => $userId, 'group' => $groupId]);
 	}
 
 	/**
@@ -547,9 +545,7 @@ final class UserActionsTest extends TestCase
 
 	private function passCrypted(int $id): string
 	{
-		$row = $this->connection->fetchOne('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
-
-		return (string) ($row?->pass_crypted ?? '');
+		return (string) $this->connection->fetchValue('SELECT pass_crypted FROM @user WHERE rowid = :id', ['id' => $id]);
 	}
 
 	/**
