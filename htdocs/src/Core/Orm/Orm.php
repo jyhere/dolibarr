@@ -145,7 +145,7 @@ final class Orm implements QueryExecutor
 		}
 		if ($query->relations() !== [] && $entities !== []) {
 			/** @var list<T> $entities */
-			$entities = $this->relations()->load($query->mapping(), $entities, $query->relations());
+			$entities = $this->relations()->load($query->mapping(), $entities, $query->relations(), $query->isEntityScoped());
 		}
 
 		return $entities;

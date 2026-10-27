@@ -12,6 +12,7 @@ use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Core\Orm\Snapshots;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmArticleRepository;
+use Dolibarr\Tests\Integration\Orm\Fixture\OrmBadPivotArticle;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmAuthorRepository;
 use Dolibarr\Tests\Integration\Orm\Fixture\OrmTestTables;
 use Dolibarr\Tests\Integration\Orm\Fixture\RecordingDriver;
@@ -224,11 +225,108 @@ abstract class RelationTestCase extends TestCase
 		self::assertSame('After', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
 	}
 
+	public function testBelongsToManyListsFollowTheTargetIdOrder(): void
+	{
+		$article = $this->insertArticle('Only');
+		$first = $this->insertTag('first');
+		$second = $this->insertTag('second');
+		$third = $this->insertTag('third');
+		$this->link($article, $third);
+		$this->link($article, $first);
+		$this->link($article, $second);
+
+		$loaded = $this->articles->query()->with('tags')->first();
+
+		self::assertSame([$first, $second, $third], array_map(static fn ($tag): ?int => $tag->id, $loaded->tags ?? []));
+	}
+
+	public function testBelongsToManyWithoutPivotRowRunsNoTargetQuery(): void
+	{
+		$this->insertArticle('One');
+		$this->insertArticle('Two');
+		$this->insertTag('lonely');
+		$this->recorder->statements = [];
+
+		$articles = $this->articles->query()->with('tags')->get();
+
+		self::assertCount(2, $articles);
+		self::assertSame([[], []], array_map(static fn (OrmArticle $article): array => $article->tags, $articles));
+		self::assertCount(2, $this->recorder->statements, 'Articles and pivot, no tags query');
+	}
+
+	public function testDuplicateKeysGiveOneDeduplicatedQuery(): void
+	{
+		$alice = $this->insertAuthor('Alice');
+		for ($i = 1; $i <= 5; $i++) {
+			$this->insertArticle('A'.$i, $alice);
+		}
+		$this->recorder->statements = [];
+
+		$articles = $this->articles->query()->with('author')->get();
+
+		self::assertCount(2, $this->recorder->statements);
+		self::assertSame(1, preg_match_all('/\?|\$\d+/', $this->recorder->statements[1]), 'One author id in the IN list: '.$this->recorder->statements[1]);
+		self::assertSame('Alice', $articles[4]->author?->name);
+	}
+
+	public function testPaginateWithRelationRunsOneRelationQueryPerPage(): void
+	{
+		$alice = $this->insertAuthor('Alice');
+		for ($i = 1; $i <= 5; $i++) {
+			$this->insertArticle('A'.$i, $alice);
+		}
+		$this->recorder->statements = [];
+
+		$page = $this->articles->query()->orderBy('title')->with('author')->paginate(2, 2);
+
+		self::assertCount(2, $page->items);
+		self::assertCount(3, $this->recorder->statements, 'Count, page, authors of the page');
+	}
+
+	public function testWithoutEntityScopeLoadsTargetsUnscoped(): void
+	{
+		$alice = $this->insertAuthor('Alice');
+		$this->insertArticle('Visible', $alice);
+		$this->insertArticle('Other company', $alice, entity: 2);
+
+		$scoped = $this->authors->query()->with('articles')->first();
+		$unscoped = $this->authors->withoutEntityScope()->query()->with('articles')->first();
+
+		self::assertSame(['Visible'], array_map(static fn (OrmArticle $article): string => $article->title, $scoped?->articles ?? []));
+		self::assertSame(['Other company', 'Visible'], $this->sortedTitles($unscoped?->articles ?? []));
+	}
+
+	public function testPivotIdentifiersAreValidated(): void
+	{
+		$mapping = $this->orm()->mappings()->get(OrmBadPivotArticle::class);
+		$this->recorder->statements = [];
+
+		try {
+			(new \Dolibarr\Core\Orm\RelationLoader($this->orm()))->load($mapping, [new OrmBadPivotArticle(1, 'x')], ['tags']);
+			self::fail('A pivot table that is not an identifier was accepted');
+		} catch (\InvalidArgumentException $e) {
+			self::assertStringContainsString('pivot', $e->getMessage());
+		}
+		self::assertSame([], $this->recorder->statements);
+	}
+
 	private function orm(): Orm
 	{
 		$hydrator = new Hydrator();
 
 		return new Orm(new Connection($this->connection->legacy(), $this->recorder), new MappingRegistry(), new LegacyEntityScope(), $hydrator, new Snapshots($hydrator));
+	}
+
+	/**
+	 * @param list<OrmArticle> $articles
+	 * @return list<string>
+	 */
+	private function sortedTitles(array $articles): array
+	{
+		$titles = array_map(static fn (OrmArticle $article): string => $article->title, $articles);
+		sort($titles);
+
+		return $titles;
 	}
 
 	private function insertAuthor(string $name): int

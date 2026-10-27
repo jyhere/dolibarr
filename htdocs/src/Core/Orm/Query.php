@@ -411,7 +411,8 @@ final class Query
 	}
 
 	/**
-	 * Relations to load with the entities (run by the executor).
+	 * Relations to load with the entities (run by the executor). Their targets follow this query's entity scope:
+	 * scoped by their own element, or unscoped too after withoutEntityScope().
 	 *
 	 * @throws \InvalidArgumentException When the entity has no such relation, or the relation is nested ('author.tags')
 	 */
@@ -431,6 +432,14 @@ final class Query
 		}
 
 		return $this;
+	}
+
+	/**
+	 * Whether the entity scope applies (false after withoutEntityScope()); the relations loaded by with() follow it.
+	 */
+	public function isEntityScoped(): bool
+	{
+		return $this->entityScoped;
 	}
 
 	/**

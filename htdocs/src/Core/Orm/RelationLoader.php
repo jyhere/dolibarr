@@ -10,7 +10,7 @@ use Dolibarr\Core\Database\DatabaseException;
  * Loads the relations asked by Query::with(): one query per relation ('WHERE ... IN (:ids)' on the distinct ids,
  * plus one on the pivot table for a #[BelongsToMany]), whatever the number of entities. No query when there is no
  * entity, nor any key to look for. The target of a relation is read through its own query, so it respects its own
- * entity scope.
+ * entity scope, unless the loading query is unscoped (Query::withoutEntityScope()): then its targets are too.
  *
  * Entities are readonly: each is rebuilt with its relation property filled (Orm::modify(), which keeps its
  * change tracking, so save() of a loaded entity still updates only the changed columns). A BelongsTo gives the
@@ -19,6 +19,8 @@ use Dolibarr\Core\Database\DatabaseException;
  */
 final class RelationLoader
 {
+	private const IDENTIFIER = '/^[A-Za-z_][A-Za-z0-9_]*$/D';
+
 	/** @var array<class-string, \ReflectionClass<object>> */
 	private array $reflections = [];
 
@@ -29,11 +31,12 @@ final class RelationLoader
 	/**
 	 * @param list<object>  $entities  Entities of $mapping
 	 * @param list<string>  $relations Relation properties
+	 * @param bool          $entityScoped False when the loading query is unscoped: targets are loaded unscoped too
 	 * @return list<object> New instances, in the same order, with the relations filled
 	 * @throws \InvalidArgumentException Unknown or nested relation
 	 * @throws DatabaseException
 	 */
-	public function load(EntityMapping $mapping, array $entities, array $relations): array
+	public function load(EntityMapping $mapping, array $entities, array $relations, bool $entityScoped = true): array
 	{
 		foreach ($relations as $name) {
 			if (str_contains($name, '.')) {
@@ -50,9 +53,9 @@ final class RelationLoader
 		foreach ($relations as $name) {
 			$relation = $mapping->relations[$name];
 			$values = match ($relation->kind) {
-				RelationMapping::BELONGS_TO => $this->belongsTo($mapping, $relation, $entities),
-				RelationMapping::HAS_MANY => $this->hasMany($mapping, $relation, $entities),
-				default => $this->belongsToMany($mapping, $relation, $entities),
+				RelationMapping::BELONGS_TO => $this->belongsTo($mapping, $relation, $entities, $entityScoped),
+				RelationMapping::HAS_MANY => $this->hasMany($mapping, $relation, $entities, $entityScoped),
+				default => $this->belongsToMany($mapping, $relation, $entities, $entityScoped),
 			};
 			foreach ($values as $position => $value) {
 				$changes[$position][$name] = $value;
@@ -70,7 +73,7 @@ final class RelationLoader
 	 * @param list<object> $entities
 	 * @return list<?object> The target of each entity
 	 */
-	private function belongsTo(EntityMapping $mapping, RelationMapping $relation, array $entities): array
+	private function belongsTo(EntityMapping $mapping, RelationMapping $relation, array $entities, bool $entityScoped): array
 	{
 		$targetMapping = $this->orm->mappings()->get($relation->target);
 		$keyProperty = $this->column($mapping, $relation->foreignKey)->property;
@@ -78,7 +81,7 @@ final class RelationLoader
 		foreach ($entities as $entity) {
 			$keys[] = $this->value($entity, $keyProperty);
 		}
-		$targets = $this->targetsById($targetMapping, $keys);
+		$targets = $this->targetsById($targetMapping, $keys, $entityScoped);
 		$values = [];
 		foreach ($keys as $key) {
 			$values[] = $key === null ? null : ($targets[(string) $key] ?? null);
@@ -91,14 +94,14 @@ final class RelationLoader
 	 * @param list<object> $entities
 	 * @return list<list<object>>
 	 */
-	private function hasMany(EntityMapping $mapping, RelationMapping $relation, array $entities): array
+	private function hasMany(EntityMapping $mapping, RelationMapping $relation, array $entities, bool $entityScoped): array
 	{
 		$targetMapping = $this->orm->mappings()->get($relation->target);
 		$foreignProperty = $this->column($targetMapping, $relation->foreignKey)->property;
 		$ids = $this->ids($mapping, $entities);
 		$byOwner = [];
 		if ($ids !== []) {
-			foreach ($this->targets($targetMapping, $relation->foreignKey, $ids) as $target) {
+			foreach ($this->targets($targetMapping, $relation->foreignKey, $ids, $entityScoped) as $target) {
 				$owner = $this->value($target, $foreignProperty);
 				if ($owner !== null) {
 					$byOwner[(string) $owner][] = $target;
@@ -118,11 +121,16 @@ final class RelationLoader
 	 * @param list<object> $entities
 	 * @return list<list<object>>
 	 */
-	private function belongsToMany(EntityMapping $mapping, RelationMapping $relation, array $entities): array
+	private function belongsToMany(EntityMapping $mapping, RelationMapping $relation, array $entities, bool $entityScoped): array
 	{
 		$targetMapping = $this->orm->mappings()->get($relation->target);
 		if ($relation->pivotTable === null || $relation->localKey === null) {
 			throw new \LogicException($mapping->class.'::$'.$relation->property.': a BelongsToMany needs a pivot table and a local key');
+		}
+		foreach ([$relation->pivotTable, $relation->localKey, $relation->foreignKey] as $identifier) {
+			if (preg_match(self::IDENTIFIER, $identifier) !== 1) {
+				throw new \InvalidArgumentException($mapping->class.'::$'.$relation->property.': invalid pivot identifier "'.$identifier.'"');
+			}
 		}
 		$ids = $this->ids($mapping, $entities);
 		$targetIdsByOwner = [];
@@ -141,16 +149,11 @@ final class RelationLoader
 				}
 			}
 		}
-		$targets = $this->targetsById($targetMapping, array_values($targetIds));
+		$targets = $this->targetsById($targetMapping, array_values($targetIds), $entityScoped);
 		$values = [];
 		foreach ($entities as $entity) {
 			$id = $this->value($entity, $mapping->idProperty);
-			$list = [];
-			foreach (array_keys($targetIdsByOwner[(string) $id] ?? []) as $targetId) {
-				if (isset($targets[(string) $targetId])) {
-					$list[] = $targets[(string) $targetId];
-				}
-			}
+			$list = array_values(array_intersect_key($targets, $targetIdsByOwner[(string) $id] ?? []));
 			$values[] = $list;
 		}
 
@@ -161,7 +164,7 @@ final class RelationLoader
 	 * @param list<int|float|string|null> $keys
 	 * @return array<string, object> Target by id
 	 */
-	private function targetsById(EntityMapping $targetMapping, array $keys): array
+	private function targetsById(EntityMapping $targetMapping, array $keys, bool $entityScoped): array
 	{
 		$distinct = [];
 		foreach ($keys as $key) {
@@ -173,7 +176,7 @@ final class RelationLoader
 			return [];
 		}
 		$byId = [];
-		foreach ($this->targets($targetMapping, $targetMapping->idProperty, array_values($distinct)) as $target) {
+		foreach ($this->targets($targetMapping, $targetMapping->idProperty, array_values($distinct), $entityScoped) as $target) {
 			$id = $this->value($target, $targetMapping->idProperty);
 			if ($id !== null) {
 				$byId[(string) $id] = $target;
@@ -187,9 +190,14 @@ final class RelationLoader
 	 * @param list<int|float|string> $values
 	 * @return list<object>
 	 */
-	private function targets(EntityMapping $targetMapping, string $column, array $values): array
+	private function targets(EntityMapping $targetMapping, string $column, array $values, bool $entityScoped): array
 	{
-		return $this->orm->query($targetMapping->class)
+		$query = $this->orm->query($targetMapping->class);
+		if (!$entityScoped) {
+			$query->withoutEntityScope();
+		}
+
+		return $query
 			->whereIn($column, $values)
 			->orderBy($targetMapping->idProperty)
 			->get();
