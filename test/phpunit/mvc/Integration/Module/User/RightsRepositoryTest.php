@@ -92,12 +92,12 @@ final class RightsRepositoryTest extends TestCase
 		$target = $this->disposable();
 		$read = $this->rightId('user', 'user', 'lire');
 		$export = $this->rightId('user', 'user', 'export');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
-		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'user_rights (entity, fk_user, fk_id) VALUES ('.$entity.', '.$target->id.', '.$read.')');
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'user_rights (entity, fk_user, fk_id) VALUES ('.$entity.', '.$target->id.', '.$read.')');
 		// A group of the user with the export right (l.375-406)
 		$group = $this->group();
-		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_user (entity, fk_user, fk_usergroup) VALUES ('.$entity.', '.$target->id.', '.$group.')');
-		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_rights (entity, fk_usergroup, fk_id) VALUES ('.$entity.', '.$group.', '.$export.')');
+		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_user (entity, fk_user, fk_usergroup) VALUES ('.$entity.', '.$target->id.', '.$group.')');
+		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_rights (entity, fk_usergroup, fk_id) VALUES ('.$entity.', '.$group.', '.$export.')');
 
 		$repo = $this->repository();
 		$catalog = $repo->catalogFor($target->id, $entity, false);
@@ -140,7 +140,7 @@ final class RightsRepositoryTest extends TestCase
 	{
 		$modules = (new RightsChrome($this->ctx, $this->connection))->moduleDescriptors($entity);
 		$familyinfo = RightsChrome::FAMILY_POSITIONS;
-		$rows = $this->connection->fetchAll('SELECT r.id, r.libelle as label, r.module, r.module_origin, r.perms, r.subperms, r.module_position, r.bydefault, r.family, r.family_position FROM '.MAIN_DB_PREFIX."rights_def as r WHERE r.libelle NOT LIKE 'tou%' AND r.entity = ".$entity." AND r.perms NOT LIKE '%_advance' ORDER BY r.family_position, r.module_position, r.right_position, r.module, r.id");
+		$rows = $this->connection->legacyFetchAllObjects('SELECT r.id, r.libelle as label, r.module, r.module_origin, r.perms, r.subperms, r.module_position, r.bydefault, r.family, r.family_position FROM '.MAIN_DB_PREFIX."rights_def as r WHERE r.libelle NOT LIKE 'tou%' AND r.entity = ".$entity." AND r.perms NOT LIKE '%_advance' ORDER BY r.family_position, r.module_position, r.right_position, r.module, r.id");
 		foreach ($rows as $obj) {
 			if (empty($obj->family)) {
 				$obj->family = 'other';
@@ -174,7 +174,7 @@ final class RightsRepositoryTest extends TestCase
 
 	private function rightId(string $module, string $perms, string $subperms): int
 	{
-		$row = $this->connection->fetchOne('SELECT id FROM '.MAIN_DB_PREFIX."rights_def WHERE module = '".$module."' AND perms = '".$perms."' AND subperms = '".$subperms."' AND entity = ".((int) $this->ctx->conf->entity));
+		$row = $this->connection->legacyFetchOneObject('SELECT id FROM '.MAIN_DB_PREFIX."rights_def WHERE module = '".$module."' AND perms = '".$perms."' AND subperms = '".$subperms."' AND entity = ".((int) $this->ctx->conf->entity));
 		self::assertNotNull($row);
 
 		return (int) $row->id;

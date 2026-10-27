@@ -211,7 +211,7 @@ final class SessionAuthenticatorTest extends TestCase
 	 */
 	private function lastLoginDates(LegacyContext $ctx): array
 	{
-		$row = (new Connection($ctx->db))->fetchOne('SELECT datelastlogin, datepreviouslogin FROM '.MAIN_DB_PREFIX.'user WHERE rowid = 1');
+		$row = (new Connection($ctx->db))->legacyFetchOneObject('SELECT datelastlogin, datepreviouslogin FROM '.MAIN_DB_PREFIX.'user WHERE rowid = 1');
 		self::assertNotNull($row);
 
 		return [$row->datelastlogin, $row->datepreviouslogin];
@@ -219,7 +219,7 @@ final class SessionAuthenticatorTest extends TestCase
 
 	private function countLoginEvents(LegacyContext $ctx): int
 	{
-		$row = (new Connection($ctx->db))->fetchOne("SELECT COUNT(*) AS nb FROM ".MAIN_DB_PREFIX."events WHERE type = 'USER_LOGIN' AND fk_user = 1");
+		$row = (new Connection($ctx->db))->legacyFetchOneObject("SELECT COUNT(*) AS nb FROM ".MAIN_DB_PREFIX."events WHERE type = 'USER_LOGIN' AND fk_user = 1");
 		self::assertNotNull($row);
 
 		return (int) $row->nb;

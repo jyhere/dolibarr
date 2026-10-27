@@ -148,7 +148,7 @@ final class UserActionsTest extends TestCase
 	public function testEnableRefusedWhenQuotaReached(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET statut = 0 WHERE rowid = '.$target->id);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET statut = 0 WHERE rowid = '.$target->id);
 
 		// card.php l.235-241: getNbOfUsers('active') >= $dolibarr_main_limit_users
 		$config = new LimitUsersConfig(new LegacyConfig($this->ctx), $this->repo()->countForQuota());
@@ -217,7 +217,7 @@ final class UserActionsTest extends TestCase
 	{
 		$actor = $this->disposable('Actor', true);
 		$target = $this->disposable('Superadmin', true);
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
 
 		// An admin of entity 1 (not a superadmin): card.php l.2382-2383 shows him no DeleteUser button on a user of
 		// entity 0 (the refusal of l.264-267 is behind it), the POST is refused
@@ -301,7 +301,7 @@ final class UserActionsTest extends TestCase
 	{
 		$actor = $this->disposable('Actor', true);
 		$target = $this->disposable('Superadmin', true, 'mvc_test_'.uniqid().'@example.com');
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET entity = 0 WHERE rowid = '.$target->id);
 		$before = $this->passCrypted($target->id);
 		$me = new RightsCurrentUser($actor->id, true, ['user.user.read', 'user.user.password'], 0, 1);
 
@@ -335,7 +335,7 @@ final class UserActionsTest extends TestCase
 		$this->assertForbidden(fn () => $this->controller()->setStatus($this->post($target->id, ['action' => 'confirm_enable', 'confirm' => 'yes']), $target->id));
 		$this->assertForbidden(fn () => $this->controller($reader)->setStatus($this->post($target->id, ['action' => 'confirm_disable', 'confirm' => 'yes']), $target->id));
 		// No ReinitPassword button on a disabled user (l.2340)
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET statut = 0 WHERE rowid = '.$target->id);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET statut = 0 WHERE rowid = '.$target->id);
 		$this->assertForbidden(fn () => $this->controller()->setPassword($this->post($target->id, ['action' => 'confirm_password', 'confirm' => 'yes']), $target->id));
 
 		self::assertNotNull($this->repo()->find($target->id));
@@ -447,7 +447,7 @@ final class UserActionsTest extends TestCase
 	{
 		$target = $this->disposable('Member');
 		$groupId = $this->group();
-		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_user (entity, fk_user, fk_usergroup) VALUES (1, '.$target->id.', '.$groupId.')');
+		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'usergroup_user (entity, fk_user, fk_usergroup) VALUES (1, '.$target->id.', '.$groupId.')');
 
 		$vm = $this->controller()->show($this->request('GET', [], [], $target->id), $target->id);
 
@@ -532,7 +532,7 @@ final class UserActionsTest extends TestCase
 
 	private function membership(int $userId, int $groupId): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.'usergroup_user WHERE fk_user = '.$userId.' AND fk_usergroup = '.$groupId);
+		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.'usergroup_user WHERE fk_user = '.$userId.' AND fk_usergroup = '.$groupId);
 
 		return (int) ($row?->nb ?? 0);
 	}
@@ -547,7 +547,7 @@ final class UserActionsTest extends TestCase
 
 	private function passCrypted(int $id): string
 	{
-		$row = $this->connection->fetchOne('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		$row = $this->connection->legacyFetchOneObject('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
 
 		return (string) ($row?->pass_crypted ?? '');
 	}

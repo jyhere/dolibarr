@@ -59,7 +59,7 @@ final class RightsChrome
 			$enabled = $this->enabledModuleConstants($entity);
 			// l.201-211: the ids already in llx_rights_def, so insert_permissions() checks them in memory
 			$existing = [];
-			foreach ($this->connection->fetchAll('SELECT id FROM '.$prefix.'rights_def WHERE entity = '.$entity) as $row) {
+			foreach ($this->connection->legacyFetchAllObjects('SELECT id FROM '.$prefix.'rights_def WHERE entity = '.$entity) as $row) {
 				$existing[(int) $row->id] = 1;
 			}
 
@@ -268,7 +268,7 @@ final class RightsChrome
 		}
 		$db = $this->ctx->db;
 		$constants = [];
-		$rows = $this->connection->fetchAll('SELECT '.$db->decrypt('name').' as name, '.$db->decrypt('value').' as value FROM '.$this->connection->prefix().'const WHERE entity IN (0, '.$entity.') ORDER BY entity');
+		$rows = $this->connection->legacyFetchAllObjects('SELECT '.$db->decrypt('name').' as name, '.$db->decrypt('value').' as value FROM '.$this->connection->prefix().'const WHERE entity IN (0, '.$entity.') ORDER BY entity');
 		foreach ($rows as $row) {
 			$constants[(string) $row->name] = $row->value;
 		}
@@ -293,7 +293,7 @@ final class RightsChrome
 		$sql .= ' ORDER BY r.family, r.family_position, r.module_position, r.right_position, r.module, r.id';
 
 		$reception = isModEnabled('reception');
-		foreach ($this->connection->fetchAll($sql) as $obj) {
+		foreach ($this->connection->legacyFetchAllObjects($sql) as $obj) {
 			$module = (string) ($obj->module ?? '');
 			if ($module === '' || !isset($modules[$module])) {
 				continue;
@@ -310,13 +310,13 @@ final class RightsChrome
 					if ($external && $newPosition < 100000) {
 						$newPosition += 100000;
 					}
-					$this->connection->execute('UPDATE '.$prefix.'rights_def SET module_position = '.$newPosition.', family_position = 0'
+					$this->connection->legacyExecute('UPDATE '.$prefix.'rights_def SET module_position = '.$newPosition.', family_position = 0'
 						.' WHERE module_position = '.((int) $obj->module_position)." AND module = '".$this->connection->escape($module)."'");
 				}
 			}
 
 			if (empty($obj->family) && !empty($objMod->family)) {
-				$this->connection->execute('UPDATE '.$prefix."rights_def SET family = '".$this->connection->escape((string) $objMod->family)."' WHERE id = ".((int) $obj->id));
+				$this->connection->legacyExecute('UPDATE '.$prefix."rights_def SET family = '".$this->connection->escape((string) $objMod->family)."' WHERE id = ".((int) $obj->id));
 			}
 		}
 	}

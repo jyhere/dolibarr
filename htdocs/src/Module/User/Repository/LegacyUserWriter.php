@@ -212,7 +212,7 @@ final class LegacyUserWriter implements UserWriter
 		$mismatch = false;
 		$table = $this->db->prefix().'user';
 		if ($contactId > 0) {
-			$row = $this->db->fetchOne('SELECT fk_soc FROM '.$this->db->prefix().'socpeople WHERE rowid = '.$contactId);
+			$row = $this->db->legacyFetchOneObject('SELECT fk_soc FROM '.$this->db->prefix().'socpeople WHERE rowid = '.$contactId);
 			$contactCompany = $row === null ? 0 : (int) (is_numeric($fk = get_object_vars($row)['fk_soc'] ?? null) ? $fk : 0);
 			$sql = 'UPDATE '.$table.' SET fk_socpeople = '.$contactId;
 			if ($contactCompany > 0) {
@@ -227,7 +227,7 @@ final class LegacyUserWriter implements UserWriter
 			$sql = 'UPDATE '.$table.' SET fk_socpeople = NULL, fk_soc = NULL';
 		}
 		try {
-			$this->db->execute($sql.' WHERE rowid = '.$id);
+			$this->db->legacyExecute($sql.' WHERE rowid = '.$id);
 		} catch (DatabaseException) {
 			// card.php l.680-683: the database message (e.g. uk_user_fk_socpeople, a contact already linked to a user)
 			throw new ValidationException([$this->ctx->db->lasterror()]);

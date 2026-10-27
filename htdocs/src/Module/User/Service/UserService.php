@@ -320,7 +320,7 @@ final class UserService
 	 */
 	private function groupEntity(int $groupId): int
 	{
-		$row = $this->db->fetchOne('SELECT entity FROM '.$this->db->prefix().'usergroup WHERE rowid = '.$groupId);
+		$row = $this->db->legacyFetchOneObject('SELECT entity FROM '.$this->db->prefix().'usergroup WHERE rowid = '.$groupId);
 		$entity = $row === null ? null : (get_object_vars($row)['entity'] ?? null);
 		if (!is_numeric($entity)) {
 			throw new NotFoundException('Group '.$groupId.' not found');

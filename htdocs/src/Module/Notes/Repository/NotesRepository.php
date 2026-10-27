@@ -49,6 +49,6 @@ final class NotesRepository
 		$sql .= ', '.$modifierColumn.' = '.$modifierId;
 		$sql .= ' WHERE rowid = '.$id;
 
-		$this->connection->execute($sql);
+		$this->connection->legacyExecute($sql);
 	}
 }

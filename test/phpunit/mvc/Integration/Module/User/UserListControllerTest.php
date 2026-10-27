@@ -254,7 +254,7 @@ final class UserListControllerTest extends TestCase
 		self::assertSame('/user?contextpage=userlist&search_login=adm&search_status=1', $response->headers()['Location']);
 		$me = $this->ctx->user;
 		self::assertNotNull($me);
-		$row = $this->connection->fetchOne('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist'");
+		$row = $this->connection->legacyFetchOneObject('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist'");
 		self::assertSame('u.login,u.email,', $row?->value ?? null);
 
 		// The next display shows only these columns (Form::multiSelectArrayWithCheckbox())
@@ -268,7 +268,7 @@ final class UserListControllerTest extends TestCase
 	{
 		$firstUser = $this->disposable('Paid');
 		$secondUser = $this->disposable('Paid2');
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1000 WHERE rowid IN ('.$firstUser->id.', '.$secondUser->id.')');
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1000 WHERE rowid IN ('.$firstUser->id.', '.$secondUser->id.')');
 		$this->setConf('MAIN_GRANDTOTAL_LIST_SHOW', 1);
 		$modules = $this->ctx->conf->modules;
 		$this->ctx->conf->modules['salaries'] = 'salaries';
@@ -313,13 +313,13 @@ final class UserListControllerTest extends TestCase
 
 		$vm = $this->list('GET', ['formfilteraction' => 'listafterchangingselectedfields', 'selectedfields' => 'u.login,', 'token' => 'checked-by-main-inc']);
 		self::assertInstanceOf(ViewModel::class, $vm);
-		self::assertNull($this->connection->fetchOne('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist' AND value = 'u.login,'"));
+		self::assertNull($this->connection->legacyFetchOneObject('SELECT value FROM '.MAIN_DB_PREFIX."user_param WHERE fk_user = ".(int) $me->id." AND param = 'MAIN_SELECTEDFIELDS_userlist' AND value = 'u.login,'"));
 	}
 
 	public function testApiKeyTitleOnlyForReaders(): void
 	{
 		$target = $this->disposable('Keyed');
-		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET api_key = 'secret-api-key-123' WHERE rowid = ".$target->id);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET api_key = 'secret-api-key-123' WHERE rowid = ".$target->id);
 		$row = (new UserRepository($this->connection, (int) $this->ctx->conf->entity))->search(
 			UserSearch::fromRequest(\Dolibarr\Tests\Integration\Fixture\GlobalsRequest::create('GET', '/user', ['search_lastname' => 'mvc_list_Keyed']), new LegacyConfig($this->ctx), false, 20),
 			null,

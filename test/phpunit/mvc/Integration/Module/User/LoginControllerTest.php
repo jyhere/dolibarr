@@ -49,7 +49,7 @@ final class LoginControllerTest extends TestCase
 	{
 		$ctx = LegacyContext::fromGlobals();
 		$connection = new Connection($ctx->db);
-		$row = $connection->fetchOne('SELECT force_pass_change FROM '.MAIN_DB_PREFIX.'user WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
+		$row = $connection->legacyFetchOneObject('SELECT force_pass_change FROM '.MAIN_DB_PREFIX.'user WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');
 		self::assertNotNull($row);
 		$previous = (int) $row->force_pass_change;
 		$ctx->db->query('UPDATE '.MAIN_DB_PREFIX.'user SET force_pass_change = 1 WHERE login = \''.$ctx->db->escape(self::env('DOLIBARR_ADMIN_LOGIN')).'\'');

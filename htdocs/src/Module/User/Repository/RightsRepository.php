@@ -44,7 +44,7 @@ final class RightsRepository
 
 		// l.562-589: the family and the positions completed, then the sort key
 		$rows = [];
-		foreach ($this->connection->fetchAll($sql) as $obj) {
+		foreach ($this->connection->legacyFetchAllObjects($sql) as $obj) {
 			$family = (string) ($obj->family ?? '');
 			$family = $family === '' ? 'other' : (isset(RightsChrome::FAMILY_POSITIONS[$family]) ? $family : 'external');
 			$familyPosition = (string) ($obj->family_position ?? '');
@@ -99,7 +99,7 @@ final class RightsRepository
 	public function userRights(int $userId, int $entity): array
 	{
 		$ids = [];
-		foreach ($this->connection->fetchAll('SELECT ur.fk_id FROM '.$this->connection->prefix().'user_rights as ur WHERE ur.entity = '.$entity.' AND ur.fk_user = '.$userId) as $row) {
+		foreach ($this->connection->legacyFetchAllObjects('SELECT ur.fk_id FROM '.$this->connection->prefix().'user_rights as ur WHERE ur.entity = '.$entity.' AND ur.fk_user = '.$userId) as $row) {
 			$ids[] = (int) $row->fk_id;
 		}
 
@@ -125,7 +125,7 @@ final class RightsRepository
 		$sql .= ' AND gu.fk_user = '.$userId;
 
 		$byEntity = [];
-		foreach ($this->connection->fetchAll($sql) as $row) {
+		foreach ($this->connection->legacyFetchAllObjects($sql) as $row) {
 			$byEntity[(int) $row->entity][] = (int) $row->fk_id;
 		}
 

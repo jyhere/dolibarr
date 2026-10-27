@@ -54,7 +54,7 @@ final class CoreServices
 		$container->set(InputFilter::class, static fn (): InputFilter => new LegacyInputFilter());
 		$container->set(Session::class, static fn (): Session => new LegacySession());
 		$container->set(Config::class, static fn (): Config => new LegacyConfig($ctx));
-		$container->set(Connection::class, static fn (): Connection => new Connection($ctx->db));
+		$container->set(Connection::class, static fn (): Connection => Connection::forLegacy($ctx->db));
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {

@@ -37,6 +37,15 @@ final class LegacyContext
 	}
 
 	/**
+	 * $dolibarr_main_db_readonly of conf.php, read at each call as DoliDB::query() does: the native database
+	 * drivers refuse writes while it is set.
+	 */
+	public static function databaseReadOnly(): bool
+	{
+		return !empty($GLOBALS['dolibarr_main_db_readonly']);
+	}
+
+	/**
 	 * The global $form that legacy helpers such as dol_banner_tab() expect.
 	 * It is created as top_menu() does when the page has not printed its header yet.
 	 */

@@ -79,7 +79,7 @@ final class UserServiceTest extends TestCase
 		self::assertTrue($this->spied[0]->legacyTriggerFired);
 		self::assertSame($created->id, $this->spied[0]->user->id);
 		self::assertSame($before + 1, $this->countEvents('USER_CREATE'), 'Only the legacy trigger logs USER_CREATE, not the bridge');
-		$row = $this->connection->fetchOne('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$created->id);
+		$row = $this->connection->legacyFetchOneObject('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$created->id);
 		self::assertTrue(dol_verifyHash('Secret-Pass-123!', (string) $row?->pass_crypted));
 	}
 
@@ -140,7 +140,7 @@ final class UserServiceTest extends TestCase
 		self::assertInstanceOf(UserPasswordChanged::class, $this->spied[2]);
 		self::assertFalse($this->spied[2]->sent);
 		$service->setPasswordFromForm($created->id, 'Form-Pass-123!');
-		$row = $this->connection->fetchOne('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$created->id);
+		$row = $this->connection->legacyFetchOneObject('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$created->id);
 		self::assertTrue(dol_verifyHash('Form-Pass-123!', (string) $row?->pass_crypted));
 
 		$service->addRights($created->id, null, 'user');
@@ -199,7 +199,7 @@ final class UserServiceTest extends TestCase
 
 	private function countEvents(string $type): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX."events WHERE type = '".$type."'");
+		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX."events WHERE type = '".$type."'");
 		self::assertNotNull($row);
 
 		return (int) $row->nb;

@@ -98,7 +98,7 @@ final class UserRightsControllerTest extends TestCase
 	public function testAddAndDelRightForDisposableUser(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
 		$read = $this->rightId('user', 'user', 'lire');
 
 		// perms.php l.114-139: all the rights of a module, then the tab without action, token nor confirm
@@ -137,7 +137,7 @@ final class UserRightsControllerTest extends TestCase
 	public function testConfirmIsRequired(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
 
 		$response = $this->controller()->update($this->post($target->id, ['action' => 'addrights', 'module' => 'user']), $target->id);
 
@@ -149,7 +149,7 @@ final class UserRightsControllerTest extends TestCase
 	{
 		$actor = $this->disposable('Actor');
 		$target = $this->disposable('Target');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
 		$me = new RightsCurrentUser($actor->id, false, ['user.user.read']);
 
 		// He reads the rights (l.67), without the toggles (l.69)
@@ -181,7 +181,7 @@ final class UserRightsControllerTest extends TestCase
 	public function testInvalidTokenOnRightsWritesNothing(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
 		$hooks = new ScriptedHooks([]);
 
 		// main.inc.php on an invalid token: $_POST emptied, action and confirm removed from $_GET, errorcode set
@@ -195,7 +195,7 @@ final class UserRightsControllerTest extends TestCase
 	public function testDoActionsCanVetoTheAction(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->execute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
+		$this->connection->legacyExecute('DELETE FROM '.MAIN_DB_PREFIX.'user_rights WHERE fk_user = '.$target->id);
 		$hooks = new ScriptedHooks(['doActions' => ['code' => -1, 'errors' => ['Hook says no']]]);
 
 		$this->controller(null, $hooks)->update($this->post($target->id, ['action' => 'addrights', 'module' => 'user', 'confirm' => 'yes']), $target->id);
@@ -294,14 +294,14 @@ final class UserRightsControllerTest extends TestCase
 
 	private function rows(string $from): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.$from);
+		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(*) as nb FROM '.MAIN_DB_PREFIX.$from);
 
 		return (int) ($row?->nb ?? 0);
 	}
 
 	private function rightId(string $module, string $perms, string $subperms): int
 	{
-		$row = $this->connection->fetchOne('SELECT id FROM '.MAIN_DB_PREFIX."rights_def WHERE module = '".$module."' AND perms = '".$perms."' AND subperms = '".$subperms."' AND entity = ".((int) $this->ctx->conf->entity));
+		$row = $this->connection->legacyFetchOneObject('SELECT id FROM '.MAIN_DB_PREFIX."rights_def WHERE module = '".$module."' AND perms = '".$perms."' AND subperms = '".$subperms."' AND entity = ".((int) $this->ctx->conf->entity));
 		self::assertNotNull($row);
 
 		return (int) $row->id;

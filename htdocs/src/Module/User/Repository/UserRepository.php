@@ -55,7 +55,7 @@ final class UserRepository implements EntityRepository
 	 */
 	public function countInEntity(): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(u.rowid) as nb FROM '.$this->connection->prefix().'user as u WHERE u.entity IN (0, '.$this->entity.')');
+		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(u.rowid) as nb FROM '.$this->connection->prefix().'user as u WHERE u.entity IN (0, '.$this->entity.')');
 
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
@@ -67,7 +67,7 @@ final class UserRepository implements EntityRepository
 	 */
 	public function countForQuota(): int
 	{
-		$row = $this->connection->fetchOne('SELECT COUNT(rowid) as nb FROM '.$this->connection->prefix().'user WHERE entity IN (0, '.$this->entity.') AND statut = 1');
+		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(rowid) as nb FROM '.$this->connection->prefix().'user WHERE entity IN (0, '.$this->entity.') AND statut = 1');
 
 		return $row === null ? 0 : self::int(get_object_vars($row)['nb'] ?? 0);
 	}
@@ -188,7 +188,7 @@ final class UserRepository implements EntityRepository
 		$total = -1;
 		if ($search->countTotal) {
 			// l.538-539: the same query counted (DISTINCT dropped, as list.php's rewrite of the select)
-			$row = $this->connection->fetchOne('SELECT COUNT(*) as nbtotalofrecords'.(string) preg_replace('/GROUP BY .*$/', '', $sql));
+			$row = $this->connection->legacyFetchOneObject('SELECT COUNT(*) as nbtotalofrecords'.(string) preg_replace('/GROUP BY .*$/', '', $sql));
 			$total = $row === null ? 0 : self::int(get_object_vars($row)['nbtotalofrecords'] ?? 0);
 			if ($search->offset() > $total) {
 				$search = $search->firstPage();
@@ -197,7 +197,7 @@ final class UserRepository implements EntityRepository
 
 		$db = $this->connection->legacy();
 		$listSql = $select.$sql.$db->order($search->sortField, $search->sortOrder);
-		$rows = $this->connection->fetchAll($listSql.$db->plimit($search->limit + 1, $search->offset()));
+		$rows = $this->connection->legacyFetchAllObjects($listSql.$db->plimit($search->limit + 1, $search->offset()));
 		$hasMore = count($rows) > $search->limit;
 		$items = [];
 		foreach (array_slice($rows, 0, $search->limit) as $row) {
@@ -213,7 +213,7 @@ final class UserRepository implements EntityRepository
 			.' FROM '.$this->connection->prefix().'user as u'
 			.' WHERE '.$where.' AND u.entity IN (0, '.$this->entity.')'
 			.$order.' LIMIT 1';
-		$row = $this->connection->fetchOne($sql);
+		$row = $this->connection->legacyFetchOneObject($sql);
 
 		return $row === null ? null : $this->hydrate($row);
 	}
