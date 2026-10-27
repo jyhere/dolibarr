@@ -316,7 +316,71 @@ abstract class RepositoryTestCase extends TestCase
 		$this->articles->save(new OrmArticle($id, 'Same', status: 1, price: 2.5, publishedOn: new \DateTimeImmutable('2026-03-29', new \DateTimeZone('UTC'))));
 
 		self::assertStringStartsWith('UPDATE ', $this->recorder->statements[0]);
+		if ($this->connection->dialect() === 'mysql') {
+			self::assertCount(2, $this->recorder->statements, 'MySQL counts 0 changed rows: the row is looked up');
+			self::assertStringStartsWith('SELECT 1 AS found FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[1]);
+		} else {
+			self::assertCount(1, $this->recorder->statements, 'PostgreSQL counts matched rows');
+		}
 		self::assertSame('Same', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
+	}
+
+	public function testRefusedWritesInsideAnEnclosingTransactionTouchNothing(): void
+	{
+		$other = $this->insertArticle('Other company', entity: 2, extraFields: ['color' => 'red']);
+		$foreign = $this->articles->withoutEntityScope()->findOrFail($other);
+		$db = $this->connection->legacy();
+		$db->begin();
+		try {
+			$attempts = [
+				'delete' => fn () => $this->articles->delete($foreign),
+				'delete of a missing id' => fn () => $this->articles->delete(new OrmArticle($other + 1000, 'Ghost')),
+				'update of the extra fields alone' => fn (): mixed => $this->articles->save($this->articles->modify($foreign, ['extraFields' => ['color' => 'stolen', 'weight' => null]])),
+				'update' => fn (): mixed => $this->articles->save($this->articles->modify($foreign, ['title' => 'Hijacked'])),
+			];
+			foreach ($attempts as $label => $attempt) {
+				try {
+					$attempt();
+					self::fail('Written outside the entity scope: '.$label);
+				} catch (EntityNotFoundException) {
+					self::addToAssertionCount(1);
+				}
+			}
+		} finally {
+			$db->commit();
+		}
+
+		self::assertSame('Other company', $this->connection->fetchValue('SELECT title FROM @mvc_orm_article WHERE rowid = :id', ['id' => $other]));
+		self::assertSame('red', $this->connection->fetchValue('SELECT color FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $other]), 'The extra fields row survives the outer commit');
+	}
+
+	public function testEntityColumnOutsideTheScopeRefused(): void
+	{
+		$id = $this->insertArticle('Mine');
+		$article = $this->articles->findOrFail($id);
+		$this->recorder->statements = [];
+		$attempts = [
+			'move to entity 2' => fn (): mixed => $this->articles->save($this->articles->modify($article, ['entity' => 2])),
+			'insert in entity 2' => fn (): mixed => $this->articles->save(new OrmArticle(null, 'Two', entity: 2, extraFields: ['color' => 'red'])),
+			'detached update in entity 2' => fn (): mixed => $this->articles->save(new OrmArticle($id, 'Mine', entity: 2)),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt();
+				self::fail('Entity outside the scope written: '.$label);
+			} catch (\InvalidArgumentException $e) {
+				self::assertStringContainsString('entity scope', $e->getMessage(), $label);
+			}
+		}
+		self::assertSame([], $this->recorder->statements, 'Nothing written');
+		self::assertSame(1, $this->countArticles());
+		self::assertSame(1, (int) $this->connection->fetchValue('SELECT entity FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
+
+		$everyEntity = $this->articles->withoutEntityScope();
+		$everyEntity->save($everyEntity->modify($article, ['entity' => 2]));
+		self::assertSame(2, (int) $this->connection->fetchValue('SELECT entity FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
+		$created = $everyEntity->save(new OrmArticle(null, 'Two', entity: 2));
+		self::assertSame(2, $everyEntity->findOrFail((int) $created->id)->entity);
 	}
 
 	public function testDelete(): void
@@ -328,9 +392,10 @@ abstract class RepositoryTestCase extends TestCase
 		$this->recorder->statements = [];
 		$this->articles->delete($article);
 
-		self::assertCount(2, $this->recorder->statements);
-		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article_extrafields WHERE fk_object = ', $this->recorder->statements[0], 'Extra fields deleted first');
-		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[1]);
+		self::assertCount(3, $this->recorder->statements);
+		self::assertStringStartsWith('SELECT 1 AS found FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[0], 'The row checked in scope before anything is deleted');
+		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article_extrafields WHERE fk_object = ', $this->recorder->statements[1], 'Extra fields deleted first');
+		self::assertStringStartsWith('DELETE FROM '.MAIN_DB_PREFIX.'mvc_orm_article WHERE rowid = ', $this->recorder->statements[2]);
 		self::assertNull($this->articles->find($id));
 		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @mvc_orm_article_extrafields WHERE fk_object = :id', ['id' => $id]));
 		self::assertSame(['color' => 'blue', 'weight' => null], $this->articles->findOrFail($keep)->extraFields);

@@ -222,8 +222,14 @@ final class Orm implements QueryExecutor
 	 * @param bool $entityScoped False: UPDATE without the entity scope (Repository::withoutEntityScope())
 	 * @return T The new entity with its id after an INSERT, $entity after an UPDATE
 	 * @throws \LogicException           A partial entity, or a class that is not an entity
-	 * @throws \InvalidArgumentException Invalid extra field name or value
-	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope (rolled back)
+	 * The entity column written (INSERT, or UPDATE when it changed) must be one of the scope's entities, unless
+	 * $entityScoped is false: a row is never moved to, or created in, an entity the scope cannot read.
+	 *
+	 * No statement that writes data runs before the row is known to be in scope: inside an enclosing (service or
+	 * legacy) transaction, DoliDB::rollback() only lowers the nesting level and undoes nothing.
+	 *
+	 * @throws \InvalidArgumentException Invalid extra field name or value, entity column outside the scope
+	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope (nothing written)
 	 * @throws DatabaseException         The transaction is rolled back
 	 */
 	public function save(object $entity, bool $entityScoped = true): object
@@ -236,7 +242,7 @@ final class Orm implements QueryExecutor
 		$values = $this->hydrator->extract($mapping, $entity);
 		$idColumn = $mapping->id()->name;
 		if ($values[$idColumn] === null) {
-			return $this->insert($mapping, $entity, $values, $extraFields);
+			return $this->insert($mapping, $entity, $values, $extraFields, $entityScoped);
 		}
 		$this->update($mapping, $entity, $values, $extraFields, $entityScoped);
 
@@ -291,9 +297,10 @@ final class Orm implements QueryExecutor
 	}
 
 	/**
-	 * Deletes the extra fields row, then the row (within the entity scope unless $entityScoped is false), in one
-	 * transaction; when the row is missing or outside the scope, the transaction is rolled back (the extra fields
-	 * row stays) and EntityNotFoundException is thrown.
+	 * Deletes the extra fields row, then the row, in one transaction, once the row is known to exist within the
+	 * entity scope (unless $entityScoped is false): a SELECT with the scoped WHERE comes first for an entity with
+	 * extra fields, so a refused delete has deleted nothing even inside an enclosing transaction (whose nested
+	 * rollback undoes nothing). Without extra fields the scoped DELETE is the first statement.
 	 *
 	 * @throws \InvalidArgumentException An entity without id
 	 * @throws \LogicException           A class that is not an entity
@@ -311,6 +318,7 @@ final class Orm implements QueryExecutor
 		[$where, $params] = $this->rowCondition($mapping, $id, $entityScoped);
 		$this->connection->transactional(function () use ($mapping, $id, $where, $params): void {
 			if ($mapping->extraFieldsProperty !== null) {
+				$this->requireRow($mapping, $id, $where, $params);
 				$this->connection->execute('DELETE FROM @'.$mapping->table.'_extrafields WHERE fk_object = :id', ['id' => $id]);
 			}
 			if ($this->connection->execute('DELETE FROM @'.$mapping->table.' WHERE '.$where, $params) === 0) {
@@ -326,8 +334,9 @@ final class Orm implements QueryExecutor
 	 * @param array<string, int|float|string|null>       $values      Column values (extract())
 	 * @param array<string, int|float|string|bool|null>|null $extraFields
 	 */
-	private function insert(EntityMapping $mapping, object $entity, array $values, ?array $extraFields): object
+	private function insert(EntityMapping $mapping, object $entity, array $values, ?array $extraFields, bool $entityScoped): object
 	{
+		$this->refuseEntityOutsideScope($mapping, $values, $entityScoped);
 		$idColumn = $mapping->id()->name;
 		$columns = array_filter($values, static fn (mixed $value): bool => $value !== null);
 		unset($columns[$idColumn]);
@@ -364,6 +373,7 @@ final class Orm implements QueryExecutor
 		$id = $values[$idColumn] ?? throw new \LogicException('update() of an entity without id');
 		$changes = $this->snapshots->changes($mapping, $entity);
 		unset($changes[$idColumn]);
+		$this->refuseEntityOutsideScope($mapping, $changes, $entityScoped);
 
 		$extraChanges = [];
 		$extraExists = null;
@@ -388,8 +398,8 @@ final class Orm implements QueryExecutor
 				[$assignments, $params] = self::assignments($changes);
 				$updated = $this->connection->execute('UPDATE @'.$mapping->table.' SET '.$assignments.' WHERE '.$where, $params + $whereParams);
 			}
-			if ($updated === 0 && $this->connection->fetchOne('SELECT 1 AS found FROM @'.$mapping->table.' WHERE '.$where, $whereParams) === null) {
-				throw new EntityNotFoundException($mapping->class, (int) $id);
+			if ($updated === 0) {
+				$this->requireRow($mapping, $id, $where, $whereParams);
 			}
 			if ($extraChanges === []) {
 				return $extraExists;
@@ -410,6 +420,32 @@ final class Orm implements QueryExecutor
 		$this->snapshots->remember($entity, $values);
 		if ($extraFields !== null) {
 			$this->extraFields->offsetSet($entity, ['exists' => $extraExists === true, 'values' => self::normalizeExtraFields($extraFields)]);
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $params
+	 * @throws EntityNotFoundException
+	 */
+	private function requireRow(EntityMapping $mapping, int|float|string $id, string $where, array $params): void
+	{
+		if ($this->connection->fetchOne('SELECT 1 AS found FROM @'.$mapping->table.' WHERE '.$where, $params) === null) {
+			throw new EntityNotFoundException($mapping->class, (int) $id);
+		}
+	}
+
+	/**
+	 * @param array<string, int|float|string|null> $columns Columns about to be written
+	 * @throws \InvalidArgumentException When the entity column is outside the scope
+	 */
+	private function refuseEntityOutsideScope(EntityMapping $mapping, array $columns, bool $entityScoped): void
+	{
+		if (!$entityScoped || !$mapping->hasEntityColumn || !isset($columns['entity'])) {
+			return;
+		}
+		$entities = $this->scope->entitiesFor($mapping->element);
+		if (!in_array((int) $columns['entity'], $entities, true)) {
+			throw new \InvalidArgumentException($mapping->class.': entity '.$columns['entity'].' is outside the entity scope ('.implode(', ', $entities).'): use withoutEntityScope()');
 		}
 	}
 
