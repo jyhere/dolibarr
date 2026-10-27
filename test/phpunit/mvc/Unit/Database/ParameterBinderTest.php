@@ -47,6 +47,19 @@ final class ParameterBinderTest extends TestCase
 		self::assertSame(['admin'], $statement->values);
 	}
 
+	public function testBackslashEscapesAQuoteInTheMysqlDialectOnly(): void
+	{
+		$sql = "SELECT 'it\\' :skip', :value";
+
+		$mysql = (new ParameterBinder('llx_', 'mysql'))->bind($sql, ['value' => 1]);
+		self::assertSame("SELECT 'it\\' :skip', ?", $mysql->sql);
+
+		// pgsql: the backslash is ordinary, the literal 'it\' ends there and :skip is a parameter
+		$pgsql = (new ParameterBinder('llx_', 'pgsql'))->bind($sql, ['skip' => 2, 'value' => 1]);
+		self::assertSame("SELECT 'it\\' ?', ?", $pgsql->sql);
+		self::assertSame([2, 1], $pgsql->values);
+	}
+
 	public function testArrayExpands(): void
 	{
 		$statement = $this->binder->bind('SELECT rowid FROM @user WHERE rowid IN (:ids) AND entity = :entity', ['ids' => [3, 7], 'entity' => 1]);

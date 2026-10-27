@@ -113,8 +113,8 @@ abstract class DriverContractTestCase extends TestCase
 
 	public function testNegativeNumberAfterMinusIsNotAComment(): void
 	{
-		self::assertSame(15, (int) $this->connection->fetchValue('SELECT 10.0-:number', ['number' => -5]));
-		self::assertSame(12.5, (float) $this->connection->fetchValue('SELECT 10.0-:number', ['number' => -2.5]));
+		self::assertSame(15, (int) $this->connection->fetchValue('SELECT 10-:number', ['number' => -5]));
+		self::assertSame(12.5, (float) $this->connection->fetchValue('SELECT 10-:number', ['number' => -2.5]));
 
 		$target = $this->insert('target', 10.0, null, null);
 		$other = $this->insert('other', 10.0, null, null);

@@ -24,7 +24,7 @@ final class Connection
 	public function __construct(private readonly \DoliDB $db, ?Driver $driver = null)
 	{
 		$this->driver = $driver ?? self::driverFor($db);
-		$this->binder = new ParameterBinder($this->prefix());
+		$this->binder = new ParameterBinder($this->prefix(), $this->dialect());
 	}
 
 	public static function forLegacy(\DoliDB $db): self

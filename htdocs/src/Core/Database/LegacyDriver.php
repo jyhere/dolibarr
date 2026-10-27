@@ -11,10 +11,11 @@ namespace Dolibarr\Core\Database;
  */
 final class LegacyDriver implements Driver
 {
-	private const TOKENS = '/\'(?:[^\'\\\\]|\\\\.|\'\')*\'|"(?:[^"\\\\]|\\\\.|"")*"|\?/s';
+	private readonly string $tokens;
 
 	public function __construct(private readonly \DoliDB $db)
 	{
+		$this->tokens = '/'.SqlLiterals::pattern($db->type === 'pgsql' ? 'pgsql' : 'mysql').'|\\?/s';
 	}
 
 	public function fetchAll(BoundStatement $statement): array
@@ -70,7 +71,7 @@ final class LegacyDriver implements Driver
 		$values = $statement->values;
 		$position = 0;
 		$sql = preg_replace_callback(
-			self::TOKENS,
+			$this->tokens,
 			function (array $match) use ($values, &$position): string {
 				if ($match[0] !== '?') {
 					return $match[0];

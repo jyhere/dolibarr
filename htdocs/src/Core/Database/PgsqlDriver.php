@@ -10,9 +10,6 @@ namespace Dolibarr\Core\Database;
  */
 final class PgsqlDriver implements Driver
 {
-	/** String literals ('…', "…") are skipped, a '?' outside them is a placeholder (same grammar as ParameterBinder). */
-	private const TOKENS = '/\'(?:[^\'\\\\]|\\\\.|\'\')*\'|"(?:[^"\\\\]|\\\\.|"")*"|\?/s';
-
 	private readonly QueryBookkeeping $bookkeeping;
 
 	public function __construct(private readonly \DoliDB $db)
@@ -41,37 +38,50 @@ final class PgsqlDriver implements Driver
 
 	/**
 	 * As DoliDBPgsql::last_insert_id(): currval() of the sequence '<table>_<column>_seq'.
+	 *
+	 * @throws DatabaseException When the sequence has no value in this session (legacy returned -1)
 	 */
 	public function lastInsertId(string $table, string $column): int
 	{
-		$result = @pg_query_params($this->link(), 'SELECT currval($1)', [$table.'_'.$column.'_seq']);
-		if ($result === false) {
-			return -1;
-		}
+		$result = $this->run(new BoundStatement('SELECT currval($1)', [$table.'_'.$column.'_seq']));
 		$value = pg_fetch_result($result, 0, 0);
 		pg_free_result($result);
 
 		return (int) $value;
 	}
 
+	/**
+	 * '?' outside literals becomes '$1', '$2'..., followed by '::integer'/'::bigint' for an int and '::numeric' for a
+	 * float value (see Driver).
+	 */
 	public function placeholders(BoundStatement $statement): BoundStatement
 	{
+		$values = $statement->values;
 		$position = 0;
 		$sql = preg_replace_callback(
-			self::TOKENS,
-			static function (array $match) use (&$position): string {
-				return $match[0] === '?' ? '$'.(++$position) : $match[0];
+			'/'.SqlLiterals::pattern('pgsql').'|\\?/s',
+			static function (array $match) use ($values, &$position): string {
+				if ($match[0] !== '?') {
+					return $match[0];
+				}
+				$placeholder = '$'.($position + 1);
+				$value = $values[$position++] ?? null;
+				if (is_int($value)) {
+					return $placeholder.($value >= -2147483648 && $value <= 2147483647 ? '::integer' : '::bigint');
+				}
+
+				return is_float($value) ? $placeholder.'::numeric' : $placeholder;
 			},
 			$statement->sql
 		);
 		if ($sql === null) {
 			throw new \InvalidArgumentException('SQL could not be parsed for placeholders: '.preg_last_error_msg());
 		}
-		if ($position !== count($statement->values)) {
-			throw new \InvalidArgumentException(count($statement->values).' bound value(s) for '.$position.' placeholder(s)');
+		if ($position !== count($values)) {
+			throw new \InvalidArgumentException(count($values).' bound value(s) for '.$position.' placeholder(s)');
 		}
 
-		return new BoundStatement($sql, $statement->values);
+		return new BoundStatement($sql, $values);
 	}
 
 	/**

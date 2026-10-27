@@ -17,10 +17,14 @@ namespace Dolibarr\Core\Database;
  */
 final class ParameterBinder
 {
-	private const TOKENS = '/\'(?:[^\'\\\\]|\\\\.|\'\')*\'|"(?:[^"\\\\]|\\\\.|"")*"|::|:([a-zA-Z_][a-zA-Z0-9_]*)|@([a-z0-9_]+)|\\?/s';
+	private readonly string $tokens;
 
-	public function __construct(private readonly string $prefix)
+	/**
+	 * @param string $dialect 'mysql' or 'pgsql' (Connection::dialect()): the literal grammar of SqlLiterals
+	 */
+	public function __construct(private readonly string $prefix, string $dialect = 'mysql')
 	{
+		$this->tokens = '/'.SqlLiterals::pattern($dialect).'|::|:([a-zA-Z_][a-zA-Z0-9_]*)|@([a-z0-9_]+)|\?/s';
 	}
 
 	/**
@@ -32,8 +36,11 @@ final class ParameterBinder
 		$values = [];
 		$used = [];
 		$bound = preg_replace_callback(
-			self::TOKENS,
-			function (array $match) use ($params, &$values, &$used): string {
+			$this->tokens,
+			function (array $found) use ($params, &$values, &$used): string {
+				// Unmatched groups are null (PREG_UNMATCHED_AS_NULL); PHPStan cannot see it for a non-constant pattern
+				/** @var array<int, string|null> $match */
+				$match = $found; // @phpstan-ignore varTag.nativeType
 				if ($match[2] !== null) {
 					return $this->prefix.$match[2];
 				}
