@@ -16,6 +16,54 @@ Variables, parameters and properties use descriptive names, in PHP code and in L
 
 Latte templates are indented with tabs, one level per open HTML element or Latte block (`{if}`, `{foreach}`, `{block}`, `{define}`); `{else}`/`{elseif}` sit at the level of their `{if}`. Template tests strip the leading indentation before asserting on the markup.
 
+## Database and ORM
+
+The MVC core runs bound SQL only, on the link opened by `DoliDB` (no second connection): `Dolibarr\Core\Database\Connection` picks a native driver from `$db->type` (`MysqliDriver`: mysqli prepared statements; `PgsqlDriver`: `pg_query_params`; `LegacyDriver`: escaped interpolation through `DoliDB`, for any other engine). The drivers keep what `DoliDB::query()` does: read-only mode (`$dolibarr_main_db_readonly`, code `APPREADONLY`), `sql=` debug log, `lastquery`/`lasterror` (the SQL with its placeholders, never the values). The old concatenation API (`legacyFetchAllObjects()`, `legacyFetchOneObject()`, `legacyExecute()`, `escape()`) is gone; `NoConcatenatedSqlTest` keeps it, `natural_search()`, `dol_natural_search_phone()`, `->escape()` and any `new mysqli`/`new PDO`/`pg_connect()` out of `htdocs/src` (only `LegacyDriver` calls `DoliDB::escape()`).
+
+`Connection` API:
+
+- `fetchAll($sql, $params)` (list of rows as arrays), `fetchOne()` (first row or null), `fetchValue()` (first column of the first row or null), `execute()` (affected rows), `lastInsertId('user')` (table **without** prefix).
+- SQL: `@user` is the prefixed table, `:name` a parameter (several uses allowed); an array gives `IN (:ids)` (an empty array is a false condition, not invalid SQL); bool → 0/1, backed enum → its value, `DateTimeInterface` → `Y-m-d H:i:s` without time zone conversion. A positional `?` is refused.
+- `transactional(fn () => ...)`: BEGIN/COMMIT through the `DoliDB` nesting counter, so inside the transaction the legacy code opened (an inner failure only lowers the counter: nothing is undone until the outermost level rolls back). Any exception rolls back and is rethrown; a failed ROLLBACK throws `DatabaseException` with the work's exception as previous. `begin()`/`commit()`/`rollback()` stay for the flows `transactional()` cannot express (`SessionAuthenticator::login()`).
+- Errors throw `DatabaseException` (SQL with placeholders, engine code and message, never the bound values).
+- Values come back as the engine gives them: native int/float with mysqli, strings with pgsql and the legacy driver. Cast at the boundary (`(int) $row['nb']`).
+- `DatabaseClock::now()` is the database "now" (`$db->idate(dol_now())`) as a `DateTimeImmutable` in UTC.
+
+Hand-written SQL must run on MySQL/MariaDB and PostgreSQL as is (native drivers do not convert it): no `IFNULL` (use `COALESCE`), no backquotes, no `LIMIT a, b` (`LIMIT :limit OFFSET :offset`); `LIKE` is case sensitive on PostgreSQL, so use `ILIKE` there when the legacy SQL relied on `DoliDBPgsql` turning `LIKE` into `ILIKE` (`$connection->dialect() === 'pgsql'`). PostgreSQL types the parameters: ints are sent as `$1::integer` (`::bigint` beyond int4), floats as `::numeric`; a string or null in a position without context (`:x IS NULL`, `COALESCE(:x, :y)`) needs an explicit `CAST(:x AS ...)`. String literals written in the SQL follow `SqlLiterals` (on PostgreSQL no backslash escape, no `E'...'` nor `$$...$$`). Table or column names are never bound: one that does not come from the code must be checked against a whitelist (`NotesRepository` checks the table element, `Query` the mapping).
+
+ORM (`Dolibarr\Core\Orm`): entities are final readonly classes mapped by attributes (`#[Table('user', element: 'user')]`, `#[Id]`, `#[Column('statut')]`, `#[Column(cast: 'date')]`, `#[BelongsTo]`, `#[HasMany]`, `#[BelongsToMany]`, `#[ExtraFields]`); one `Orm` per request (container service), the mapping cached in `DOL_DATA_ROOT/cache/orm_mappings.php`. A repository names its entity and adds its scopes as methods returning a `Query`:
+
+```php
+/** @extends Repository<Article> */
+final class ArticleRepository extends Repository
+{
+	protected string $entityClass = Article::class;
+
+	/** @return Query<Article> */
+	public function published(): Query
+	{
+		return $this->query('a')->where('status', ArticleStatus::Published);
+	}
+}
+
+$query = $articles->published()->where('title', 'like', 'Dup%')->whereIn('fk_author', [3, 7])->with('author', 'tags');
+$query->orderBy($query->isSortable($sortField) ? $sortField : 'title'); // $sortField from the URL
+$page = $query->paginate(page: 2, perPage: 25);
+$article = $articles->findOrFail(12);
+$articles->save($articles->modify($article, ['title' => 'New title'])); // UPDATE of the changed columns only
+```
+
+Rules (spec §5.4):
+
+- `where`/`orderBy`/`select` accept the mapped properties or columns, and the columns of a join declared with an entity class or a column list: an unknown column throws, so a sort from the URL goes through `isSortable()` first (else the default sort). The secret columns (`pass`, `pass_crypted`, `pass_temp`, `api_key`, `openid`, `ldap_sid`) are refused on any alias.
+- `whereRaw()`/`orWhereRaw()`/`selectRaw()` take code-authored SQL with bound parameters, never request input.
+- `legacyFragment()` is the only place for unbound SQL: the fragments of the legacy hooks (`printFieldListSelect/From/Where`) and of `extrafields_list_search_sql.tpl.php`, converted by `DoliDB::convertSQLFromMysql()` on PostgreSQL.
+- `toLegacySql($db)` gives an interpolated MySQL copy of the query for the legacy consumers of the list SQL (`list_print_total.tpl.php`, `printFieldListFooter` hooks); the MVC core never runs it.
+- `NaturalSearch::apply()`/`applyPhone()` are the bound equivalents of `natural_search()` and `dol_natural_search_phone()` (same rows, modes 0 to 3); an input with nothing searchable (`|`, `""`) leaves the query unfiltered instead of the legacy SQL error.
+- Multicompany: every query, UPDATE and DELETE of an entity with an `entity` column is limited to `entity IN (getEntity(element))`; a write outside the scope, or on a missing row, throws `EntityNotFoundException`, and `entity` cannot be moved out of the scope. `withoutEntityScope()` (on a query or a repository) is the explicit opt-out (login, multicompany administration); relations then load unscoped too.
+
+The PostgreSQL suite (see the commands at the top) runs the drivers, the ORM, `UserRepository`, the rights tab and the notes on a second, test-only PostgreSQL install; the website stays on MariaDB.
+
 ## Apache
 
 An Apache 2.4 service (`httpd:2.4` + `mod_proxy_fcgi` to the same `php-fpm`) is available as an alternative to nginx, on port 8481:

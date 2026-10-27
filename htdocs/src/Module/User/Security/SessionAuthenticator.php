@@ -103,6 +103,8 @@ final class SessionAuthenticator
 			dolSessionsLimitForUser($user->id, $limit, $this->session->id());
 		}
 
+		// Not Connection::transactional(): a failed BEGIN is thrown as is (nothing written, the session kept), while
+		// any failure after it destroys the session, even when the ROLLBACK fails
 		$this->connection->begin();
 		try {
 			$user->update_last_login_date();

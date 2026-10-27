@@ -33,29 +33,31 @@ final class RightsRepository
 		$byEntity = $this->groupRightsByEntity($userId, $entity);
 		$inherited = array_fill_keys([...($byEntity[0] ?? []), ...($entity !== 0 ? ($byEntity[$entity] ?? []) : [])], true);
 
+		// DoliDBPgsql turns the LIKE of perms.php into ILIKE: the same case insensitive match on both engines
+		$like = $this->connection->dialect() === 'pgsql' ? 'ILIKE' : 'LIKE';
 		$sql = 'SELECT r.id, r.libelle as label, r.module, r.module_origin, r.perms, r.subperms, r.module_position, r.right_position, r.bydefault, r.family, r.family_position';
-		$sql .= ' FROM '.$this->connection->prefix().'rights_def as r';
-		$sql .= " WHERE r.libelle NOT LIKE 'tou%'";
-		$sql .= ' AND r.entity = '.$entity;
+		$sql .= ' FROM @rights_def as r';
+		$sql .= " WHERE r.libelle NOT ".$like." 'tou%'";
+		$sql .= ' AND r.entity = :entity';
 		if (!$advancedPerms) {
-			$sql .= " AND r.perms NOT LIKE '%_advance'";
+			$sql .= " AND r.perms NOT ".$like." '%_advance'";
 		}
 		$sql .= ' ORDER BY r.family_position, r.module_position, r.right_position, r.module, r.id';
 
 		// l.562-589: the family and the positions completed, then the sort key
 		$rows = [];
-		foreach ($this->connection->legacyFetchAllObjects($sql) as $obj) {
-			$family = (string) ($obj->family ?? '');
+		foreach ($this->connection->fetchAll($sql, ['entity' => $entity]) as $row) {
+			$family = (string) ($row['family'] ?? '');
 			$family = $family === '' ? 'other' : (isset(RightsChrome::FAMILY_POSITIONS[$family]) ? $family : 'external');
-			$familyPosition = (string) ($obj->family_position ?? '');
-			$modulePosition = (int) $obj->module_position;
-			if (empty($obj->family_position)) {
+			$familyPosition = (string) ($row['family_position'] ?? '');
+			$modulePosition = (int) $row['module_position'];
+			if (empty($row['family_position'])) {
 				$familyPosition = RightsChrome::FAMILY_POSITIONS[$family];
 				if ($modulePosition < 100000) {
 					$modulePosition += 100000;
 				}
 			}
-			$rows[] = ['position' => $familyPosition.'_'.$modulePosition.'_'.$obj->id, 'familyPosition' => (int) $familyPosition, 'modulePosition' => $modulePosition, 'obj' => $obj];
+			$rows[] = ['position' => $familyPosition.'_'.$modulePosition.'_'.$row['id'], 'familyPosition' => (int) $familyPosition, 'modulePosition' => $modulePosition, 'row' => $row];
 		}
 		// l.595: dol_sort_array($arrayofpermission, 'position'), an asort() of the keys: stable, string order
 		usort($rows, static fn (array $left, array $right): int => $left['position'] <=> $right['position']);
@@ -64,24 +66,24 @@ final class RightsRepository
 		// Grouped by module: perms.php prints a break line at each change of module (l.640), so it would repeat a
 		// module whose rights interleave with another's in position order; here they stay under one break line.
 		$catalog = [];
-		foreach ($rows as $row) {
-			$obj = $row['obj'];
-			$module = (string) $obj->module;
-			$subperms = $obj->subperms !== null && $obj->subperms !== '' ? (string) $obj->subperms : null;
-			if (!isset($modules[$module]) || ($reception && RightsChrome::replacedByReception($module, (string) $obj->perms, (string) $subperms))) {
+		foreach ($rows as $sorted) {
+			$row = $sorted['row'];
+			$module = (string) $row['module'];
+			$subperms = $row['subperms'] !== null && $row['subperms'] !== '' ? (string) $row['subperms'] : null;
+			if (!isset($modules[$module]) || ($reception && RightsChrome::replacedByReception($module, (string) $row['perms'], (string) $subperms))) {
 				continue;
 			}
-			$id = (int) $obj->id;
-			$origin = $obj->module_origin !== null && $obj->module_origin !== '' ? (string) $obj->module_origin : null;
+			$id = (int) $row['id'];
+			$origin = $row['module_origin'] !== null && $row['module_origin'] !== '' ? (string) $row['module_origin'] : null;
 			$catalog[$module][] = new RightDefinition(
 				$id,
 				$module,
-				(string) $obj->perms,
+				(string) $row['perms'],
 				$subperms,
-				(string) $obj->label,
-				$row['familyPosition'],
-				$row['modulePosition'],
-				(int) $obj->right_position,
+				(string) $row['label'],
+				$sorted['familyPosition'],
+				$sorted['modulePosition'],
+				(int) $row['right_position'],
 				isset($granted[$id]),
 				isset($inherited[$id]),
 				$origin
@@ -99,8 +101,9 @@ final class RightsRepository
 	public function userRights(int $userId, int $entity): array
 	{
 		$ids = [];
-		foreach ($this->connection->legacyFetchAllObjects('SELECT ur.fk_id FROM '.$this->connection->prefix().'user_rights as ur WHERE ur.entity = '.$entity.' AND ur.fk_user = '.$userId) as $row) {
-			$ids[] = (int) $row->fk_id;
+		$rows = $this->connection->fetchAll('SELECT ur.fk_id FROM @user_rights as ur WHERE ur.entity = :entity AND ur.fk_user = :user', ['entity' => $entity, 'user' => $userId]);
+		foreach ($rows as $row) {
+			$ids[] = (int) $row['fk_id'];
 		}
 
 		return $ids;
@@ -114,19 +117,18 @@ final class RightsRepository
 	 */
 	public function groupRightsByEntity(int $userId, int $entity): array
 	{
-		$prefix = $this->connection->prefix();
 		$sql = 'SELECT DISTINCT gr.fk_id, gu.entity';
-		$sql .= ' FROM '.$prefix.'usergroup_rights as gr, '.$prefix.'usergroup_user as gu';
-		$sql .= ' WHERE gr.entity = '.$entity;
+		$sql .= ' FROM @usergroup_rights as gr, @usergroup_user as gu';
+		$sql .= ' WHERE gr.entity = :entity';
 		// if (getDolGlobalString(...)): '' and '0' are false
 		$fix = $this->config->string('MULTICOMPANY_TRANSVERSE_MODE_FIX_WHEN_GU_CONTAINS_0');
-		$sql .= $fix !== '' && $fix !== '0' ? ' AND gu.entity IN (0,'.$entity.')' : ' AND gu.entity = '.$entity;
+		$sql .= $fix !== '' && $fix !== '0' ? ' AND gu.entity IN (0, :entity)' : ' AND gu.entity = :entity';
 		$sql .= ' AND gr.fk_usergroup = gu.fk_usergroup';
-		$sql .= ' AND gu.fk_user = '.$userId;
+		$sql .= ' AND gu.fk_user = :user';
 
 		$byEntity = [];
-		foreach ($this->connection->legacyFetchAllObjects($sql) as $row) {
-			$byEntity[(int) $row->entity][] = (int) $row->fk_id;
+		foreach ($this->connection->fetchAll($sql, ['entity' => $entity, 'user' => $userId]) as $row) {
+			$byEntity[(int) $row['entity']][] = (int) $row['fk_id'];
 		}
 
 		return $byEntity;

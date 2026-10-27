@@ -130,7 +130,7 @@ final class NotesControllerTest extends TestCase
 	public function testPrivateNoteForbiddenForExternalUser(): void
 	{
 		$actor = $this->disposable('External');
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET note_private = 'secret' WHERE rowid = ".$actor->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET note_private = 'secret' WHERE rowid = ".$actor->id);
 		// External (company 7) with the right to edit his own notes
 		$me = new RightsCurrentUser($actor->id, false, ['user.self.write'], 7);
 
@@ -227,7 +227,7 @@ final class NotesControllerTest extends TestCase
 	public function testShowRendersTheNotesAndEditMode(): void
 	{
 		$target = $this->disposable('Target');
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET note_public = '<b>pub</b>', note_private = 'priv' WHERE rowid = ".$target->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET note_public = '<b>pub</b>', note_private = 'priv' WHERE rowid = ".$target->id);
 		$_SERVER['PHP_SELF'] = '/user/'.$target->id.'/note';
 
 		$view = $this->controller()->show($this->request('GET', [], [], $target->id), 'user', $target->id);
@@ -399,17 +399,15 @@ final class NotesControllerTest extends TestCase
 
 	private function countEvents(string $type): int
 	{
-		$row = $this->connection->legacyFetchOneObject('SELECT COUNT(*) AS nb FROM '.MAIN_DB_PREFIX."events WHERE type = '".$type."'");
-
-		return (int) ($row?->nb ?? 0);
+		return (int) $this->connection->fetchValue('SELECT COUNT(*) AS nb FROM @events WHERE type = :type', ['type' => $type]);
 	}
 
 	private function row(int $id): object
 	{
-		$row = $this->connection->legacyFetchOneObject('SELECT note_public, note_private, fk_user_modif FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		$row = $this->connection->fetchOne('SELECT note_public, note_private, fk_user_modif FROM @user WHERE rowid = :id', ['id' => $id]);
 		self::assertNotNull($row);
 
-		return $row;
+		return (object) $row;
 	}
 
 	private function disposable(string $lastname): User

@@ -68,9 +68,9 @@ final class NotesRepositoryTest extends TestCase
 
 	private function row(int $id): object
 	{
-		$row = $this->connection->legacyFetchOneObject('SELECT note_public, note_private, fk_user_modif FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
+		$row = $this->connection->fetchOne('SELECT note_public, note_private, fk_user_modif FROM @user WHERE rowid = :id', ['id' => $id]);
 		self::assertNotNull($row);
 
-		return $row;
+		return (object) $row;
 	}
 }

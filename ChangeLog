@@ -27,6 +27,10 @@ NEW: Experimental MVC core (htdocs/src, app.php front controller) with /login, /
 NEW: Experimental MVC core - User module complete (list, create, edit, status, delete, password, notes, rights) and Apache configuration.
 NEW: Experimental MVC core - legacy user pages redirect to their rewritten routes (switch: MAIN_MVC_LEGACY_REDIRECTS). Redirects start after the first page served by app.php; requires the nginx try_files rule or the Apache rules.
 
+For developers:
+---------------
+NEW: Experimental MVC core - prepared statements on the DoliDB link (mysqli, pgsql) and a light ORM (attribute mapping, query builder, repositories with entity scope, relations, bound natural search); the whole MVC core runs bound SQL, the legacy query API of Connection is removed.
+
 
 ***** ChangeLog for 24.0.2 compared to 24.0.1 *****
 

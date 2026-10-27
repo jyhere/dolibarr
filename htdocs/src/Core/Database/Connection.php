@@ -96,10 +96,12 @@ final class Connection
 	 * service if any. On failure, rolls back and rethrows; a failed ROLLBACK keeps the exception of the work
 	 * as its previous one.
 	 *
+	 * Throws DatabaseException when BEGIN, COMMIT or ROLLBACK fails, and whatever $work throws: no @throws tag,
+	 * so that static analysis keeps the exceptions of the work for the callers.
+	 *
 	 * @template T
 	 * @param callable(): T $work
 	 * @return T
-	 * @throws DatabaseException When BEGIN, COMMIT or ROLLBACK fails
 	 */
 	public function transactional(callable $work): mixed
 	{
@@ -180,56 +182,6 @@ final class Connection
 	}
 
 	/**
-	 * Legacy API, removed with the legacy* methods: bind parameters instead.
-	 */
-	public function escape(string $value): string
-	{
-		return $this->db->escape($value);
-	}
-
-	/**
-	 * Legacy API (SQL built by concatenation, rows as objects), to be removed: use fetchAll().
-	 * @return list<object>
-	 * @throws DatabaseException
-	 */
-	public function legacyFetchAllObjects(string $sql): array
-	{
-		$res = $this->legacyQuery($sql);
-		$rows = [];
-		while (($obj = $this->db->fetch_object($res)) !== null && $obj !== false) {
-			$rows[] = $obj;
-		}
-		$this->db->free($res);
-
-		return $rows;
-	}
-
-	/**
-	 * Legacy API (SQL built by concatenation, row as object), to be removed: use fetchOne().
-	 * @throws DatabaseException
-	 */
-	public function legacyFetchOneObject(string $sql): ?object
-	{
-		$res = $this->legacyQuery($sql);
-		$obj = $this->db->fetch_object($res);
-		$this->db->free($res);
-
-		return is_object($obj) ? $obj : null;
-	}
-
-	/**
-	 * Legacy API (SQL built by concatenation), to be removed: use execute().
-	 * @return int Affected rows
-	 * @throws DatabaseException
-	 */
-	public function legacyExecute(string $sql): int
-	{
-		$res = $this->legacyQuery($sql);
-
-		return (int) $this->db->affected_rows($res);
-	}
-
-	/**
 	 * Native drivers for MySQL/MariaDB and PostgreSQL, the interpolating fallback for any other DoliDB.
 	 */
 	private static function driverFor(\DoliDB $db): Driver
@@ -247,18 +199,5 @@ final class Connection
 	private function statement(string $sql, array $params): BoundStatement
 	{
 		return $this->driver->placeholders($this->binder->bind($sql, $params));
-	}
-
-	/**
-	 * @throws DatabaseException
-	 */
-	private function legacyQuery(string $sql): mixed
-	{
-		$res = $this->db->query($sql);
-		if ($res === false) {
-			throw new DatabaseException($this->db->lasterror().' (SQL: '.$sql.')', (int) $this->db->lasterrno());
-		}
-
-		return $res;
 	}
 }

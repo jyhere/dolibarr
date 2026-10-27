@@ -131,7 +131,7 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 	public function testHostileNumericAndListFiltersGiveTheLegacyResult(string $name, string $value, int $expected): void
 	{
 		$id = $this->insertUser('mvc_hostile_n', 1);
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_country = 1, fk_warehouse = 1 WHERE rowid = '.$id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_country = 1, fk_warehouse = 1 WHERE rowid = '.$id);
 
 		$page = $this->search(['search_login' => 'mvc_hostile_', $name => $value]);
 
@@ -143,7 +143,7 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 	{
 		$this->insertUser('mvc_hostile_key', 1);
 		$this->insertUser('mvc_hostile_nokey', 1);
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET api_key = 'dolcrypt:mvc-hostile-key' WHERE login = 'mvc_hostile_key'");
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET api_key = 'dolcrypt:mvc-hostile-key' WHERE login = 'mvc_hostile_key'");
 
 		$page = $this->search(['search_login' => 'mvc_hostile_', 'search_api_key' => 'mvc-hostile']);
 
@@ -195,7 +195,7 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 	public function testGrandTotalSqlOfTheListRuns(string $sortField, bool $runs): void
 	{
 		$id = $this->insertUser('mvc_hostile_paid', 1);
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1500, import_key = \'imp\' WHERE rowid = '.$id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1500, import_key = \'imp\' WHERE rowid = '.$id);
 
 		$page = $this->search(['search_login' => 'mvc_hostile_', 'sortfield' => $sortField]);
 		self::assertStringStartsWith($page->sqlFields, $page->sql);
@@ -241,8 +241,8 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 	{
 		$old = $this->insertUser('mvc_hostile_old', 1);
 		$this->insertUser('mvc_hostile_new', 1);
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET tms = '2001-01-01 00:00:00' WHERE login LIKE 'mvc\\_hostile\\_%'");
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."user_extrafields (fk_object, tms) VALUES (".$old.", '2030-01-01 00:00:00')");
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET tms = '2001-01-01 00:00:00' WHERE login LIKE 'mvc\\_hostile\\_%'");
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."user_extrafields (fk_object, tms) VALUES (".$old.", '2030-01-01 00:00:00')");
 
 		$page = $this->search(['search_login' => 'mvc_hostile_', 'sortfield' => 'date_modification', 'sortorder' => 'DESC']);
 
@@ -271,7 +271,7 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 
 	private function insertUser(string $login, int $status, string $lastname = 'Hostile', ?int $supervisor = null): int
 	{
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."user (login, lastname, entity, statut, datec, fk_user) VALUES ('".$login."', '".$lastname."', 1, ".$status.', NOW(), '.($supervisor ?? 'NULL').')');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."user (login, lastname, entity, statut, datec, fk_user) VALUES ('".$login."', '".$lastname."', 1, ".$status.', NOW(), '.($supervisor ?? 'NULL').')');
 
 		return $this->connection->lastInsertId('user');
 	}

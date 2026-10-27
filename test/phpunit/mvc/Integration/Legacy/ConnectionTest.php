@@ -10,13 +10,13 @@ use PHPUnit\Framework\TestCase;
 
 final class ConnectionTest extends TestCase
 {
-	public function testFetchOneAndEscape(): void
+	public function testFetchOneBindsTheValues(): void
 	{
 		$connection = new Connection($GLOBALS['db']);
-		$row = $connection->legacyFetchOneObject("SELECT login FROM ".$connection->prefix()."user WHERE rowid = 1");
+		$row = $connection->fetchOne('SELECT login FROM @user WHERE rowid = :id', ['id' => 1]);
 		self::assertNotNull($row);
-		self::assertSame($GLOBALS['user']->login, $row->login);
-		self::assertSame("O\\'Neil", $connection->escape("O'Neil"));
+		self::assertSame($GLOBALS['user']->login, $row['login']);
+		self::assertNull($connection->fetchOne('SELECT login FROM @user WHERE login = :login', ['login' => "O'Neil' OR '1'='1"]));
 	}
 
 	public function testRealTransactionRunsWithoutException(): void

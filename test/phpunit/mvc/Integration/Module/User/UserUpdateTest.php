@@ -187,9 +187,9 @@ final class UserUpdateTest extends TestCase
 	public function testUpdateLinksContactAndCompany(): void
 	{
 		$target = $this->disposable('Linked');
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."societe (nom, entity, datec) VALUES ('MVC test company', 1, NOW())");
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."societe (nom, entity, datec) VALUES ('MVC test company', 1, NOW())");
 		$companyId = $this->connection->lastInsertId('societe');
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES ('MVC contact', ".$companyId.', 1, NOW(), 1)');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES ('MVC contact', ".$companyId.', 1, NOW(), 1)');
 		$contactId = $this->connection->lastInsertId('socpeople');
 
 		$response = $this->controller()->update(
@@ -201,8 +201,8 @@ final class UserUpdateTest extends TestCase
 		$after = $this->repo()->find($target->id);
 		self::assertSame($contactId, $after?->contactId);
 		self::assertSame($companyId, $after?->companyId, 'The contact gives its company (card.php l.660-664)');
-		$contact = $this->connection->legacyFetchOneObject('SELECT lastname FROM '.MAIN_DB_PREFIX.'socpeople WHERE rowid = '.$contactId);
-		self::assertSame('MVC contact', $contact?->lastname, 'The newly linked contact is not overwritten by the user');
+		$contactName = $this->connection->fetchValue('SELECT lastname FROM @socpeople WHERE rowid = :id', ['id' => $contactId]);
+		self::assertSame('MVC contact', $contactName, 'The newly linked contact is not overwritten by the user');
 	}
 
 	public function testUpdateWithoutTheContactFieldLeavesTheLinkUntouched(): void
@@ -213,7 +213,7 @@ final class UserUpdateTest extends TestCase
 		$userCompany = $this->company('MVC user company');
 		$contactId = $this->contact('MVC contact', $contactCompany);
 		// The user's company differs from the contact's: the raw UPDATE of card.php l.653-685 would resync it
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_socpeople = '.$contactId.', fk_soc = '.$userCompany.' WHERE rowid = '.$target->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_socpeople = '.$contactId.', fk_soc = '.$userCompany.' WHERE rowid = '.$target->id);
 		$target = $this->repo()->find($target->id);
 		self::assertNotNull($target);
 
@@ -252,10 +252,10 @@ final class UserUpdateTest extends TestCase
 	{
 		$target = $this->disposable('Kept');
 		$apiKey = 'mvcapikey'.uniqid();
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET note_public = 'public note', note_private = 'private note', personal_email = 'me@home.test', api_key = '".$apiKey."' WHERE rowid = ".$target->id);
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
+		$this->connection->execute("UPDATE @user SET note_public = 'public note', note_private = 'private note', personal_email = 'me@home.test', api_key = :key WHERE rowid = :id", ['key' => $apiKey, 'id' => $target->id]);
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
 		$tagId = $this->connection->lastInsertId('categorie');
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
 
 		$response = $this->controller()->update(
 			$this->request('POST', [], $this->posted($target, ['job' => 'Pilot', 'usercats' => [(string) $tagId]]), $target->id),
@@ -268,19 +268,19 @@ final class UserUpdateTest extends TestCase
 		self::assertSame('public note', $after?->notePublic);
 		self::assertSame('private note', $after?->notePrivate);
 		self::assertSame('me@home.test', $after?->personalEmail);
-		$row = $this->connection->legacyFetchOneObject('SELECT api_key FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$target->id);
-		self::assertSame($apiKey, dolDecrypt((string) ($row?->api_key ?? '')), 'update() rewrites the api_key it fetched (encrypted)');
-		$tags = $this->connection->legacyFetchAllObjects('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
-		self::assertSame([$tagId], array_map(static fn (object $tag): int => (int) $tag->fk_categorie, $tags));
+		$storedKey = $this->connection->fetchValue('SELECT api_key FROM @user WHERE rowid = :id', ['id' => $target->id]);
+		self::assertSame($apiKey, dolDecrypt((string) $storedKey), 'update() rewrites the api_key it fetched (encrypted)');
+		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM @categorie_user WHERE fk_user = :id', ['id' => $target->id]);
+		self::assertSame([$tagId], array_map(static fn (array $tag): int => (int) $tag['fk_categorie'], $tags));
 	}
 
 	public function testEditorWithoutTheTagsRightKeepsTheTags(): void
 	{
 		$actor = $this->disposable('Actor');
 		$target = $this->disposable('Tagged');
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."categorie (label, type, entity) VALUES ('MVC tag ".uniqid()."', 7, 1)");
 		$tagId = $this->connection->lastInsertId('categorie');
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX.'categorie_user (fk_categorie, fk_user) VALUES ('.$tagId.', '.$target->id.')');
 		$modules = $this->ctx->conf->modules;
 		$this->ctx->conf->modules['categorie'] = 'categorie';
 		try {
@@ -295,8 +295,8 @@ final class UserUpdateTest extends TestCase
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('Pilot', $this->repo()->find($target->id)?->job);
-		$tags = $this->connection->legacyFetchAllObjects('SELECT fk_categorie FROM '.MAIN_DB_PREFIX.'categorie_user WHERE fk_user = '.$target->id);
-		self::assertSame([$tagId], array_map(static fn (object $tag): int => (int) $tag->fk_categorie, $tags));
+		$tags = $this->connection->fetchAll('SELECT fk_categorie FROM @categorie_user WHERE fk_user = :id', ['id' => $target->id]);
+		self::assertSame([$tagId], array_map(static fn (array $tag): int => (int) $tag['fk_categorie'], $tags));
 	}
 
 	public function testUpdateByNonAdminOnAdminIsForbidden(): void
@@ -330,7 +330,7 @@ final class UserUpdateTest extends TestCase
 	{
 		$target = $this->disposable('External');
 		$companyId = $this->company('MVC external company');
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_soc = '.$companyId.' WHERE rowid = '.$target->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_soc = '.$companyId.' WHERE rowid = '.$target->id);
 		$target = $this->repo()->find($target->id);
 		self::assertNotNull($target);
 
@@ -342,16 +342,16 @@ final class UserUpdateTest extends TestCase
 		);
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
-		$row = $this->connection->legacyFetchOneObject('SELECT lastname, fk_soc FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$target->id);
-		self::assertSame('Renamed', $row?->lastname);
-		self::assertSame($companyId, (int) $row?->fk_soc, 'fk_soc unchanged');
+		$row = $this->connection->fetchOne('SELECT lastname, fk_soc FROM @user WHERE rowid = :id', ['id' => $target->id]);
+		self::assertSame('Renamed', $row['lastname'] ?? null);
+		self::assertSame($companyId, (int) ($row['fk_soc'] ?? 0), 'fk_soc unchanged');
 	}
 
 	public function testNonAdminWriterKeepsTheEmailOfAnAdmin(): void
 	{
 		$actor = $this->disposable('Actor');
 		$admin = $this->disposable('Admin', true);
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET email = 'admin@example.com' WHERE rowid = ".$admin->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET email = 'admin@example.com' WHERE rowid = ".$admin->id);
 		$admin = $this->repo()->find($admin->id);
 		self::assertNotNull($admin);
 
@@ -369,7 +369,7 @@ final class UserUpdateTest extends TestCase
 	{
 		$actor = $this->disposable('Actor');
 		$target = $this->disposable('Target');
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET ldap_sid = 'S-1-5-21' WHERE rowid = ".$target->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET ldap_sid = 'S-1-5-21' WHERE rowid = ".$target->id);
 		$before = $this->passCrypted($target->id);
 		// No Modify button (card.php l.2315: !$object->ldap_sid): the POST is refused too
 		$me = new RightsCurrentUser($actor->id, true, ['user.user.read', 'user.user.password']);
@@ -536,7 +536,7 @@ final class UserUpdateTest extends TestCase
 	{
 		$self = $this->disposable('Self');
 		// RightsCurrentUser::login() is "user<id>": the stored login is made to match
-		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX."user SET login = 'user".$self->id."' WHERE rowid = ".$self->id);
+		$this->connection->execute('UPDATE '.MAIN_DB_PREFIX."user SET login = 'user".$self->id."' WHERE rowid = ".$self->id);
 		$self = $this->repo()->find($self->id);
 		self::assertNotNull($self);
 		$me = new RightsCurrentUser($self->id, true, ['user.self.write']);
@@ -571,14 +571,14 @@ final class UserUpdateTest extends TestCase
 
 	private function company(string $name): int
 	{
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."societe (nom, entity, datec) VALUES ('".$this->connection->escape($name)."', 1, NOW())");
+		$this->connection->execute('INSERT INTO @societe (nom, entity, datec) VALUES (:name, 1, NOW())', ['name' => $name]);
 
 		return $this->connection->lastInsertId('societe');
 	}
 
 	private function contact(string $lastname, ?int $companyId): int
 	{
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES ('".$this->connection->escape($lastname)."', ".($companyId ?? 'NULL').', 1, NOW(), 1)');
+		$this->connection->execute('INSERT INTO @socpeople (lastname, fk_soc, entity, datec, fk_user_creat) VALUES (:lastname, :company, 1, NOW(), 1)', ['lastname' => $lastname, 'company' => $companyId]);
 
 		return $this->connection->lastInsertId('socpeople');
 	}
@@ -621,9 +621,7 @@ final class UserUpdateTest extends TestCase
 
 	private function passCrypted(int $id): string
 	{
-		$row = $this->connection->legacyFetchOneObject('SELECT pass_crypted FROM '.MAIN_DB_PREFIX.'user WHERE rowid = '.$id);
-
-		return (string) ($row?->pass_crypted ?? '');
+		return (string) $this->connection->fetchValue('SELECT pass_crypted FROM @user WHERE rowid = :id', ['id' => $id]);
 	}
 
 	/**

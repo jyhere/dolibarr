@@ -32,7 +32,7 @@ final class NotesRepository
 		if (!in_array($field, self::FIELDS, true)) {
 			throw new \InvalidArgumentException('Not a note field: '.$field);
 		}
-		if (preg_match('/^[a-z0-9_]+$/', $tableElement) !== 1) {
+		if (preg_match('/\A[a-z0-9_]+\z/', $tableElement) !== 1) {
 			throw new \InvalidArgumentException('Not a table element: '.$tableElement);
 		}
 
@@ -44,11 +44,10 @@ final class NotesRepository
 			default => 'fk_user_modif',
 		};
 
-		$sql = 'UPDATE '.$this->connection->prefix().$tableElement;
-		$sql .= ' SET '.$column.' = '.(!empty($value) ? "'".$this->connection->escape($value)."'" : 'NULL');
-		$sql .= ', '.$modifierColumn.' = '.$modifierId;
-		$sql .= ' WHERE rowid = '.$id;
-
-		$this->connection->legacyExecute($sql);
+		// The table and the columns are identifiers checked above (never bound), the values are bound
+		$this->connection->execute(
+			'UPDATE '.$this->connection->prefix().$tableElement.' SET '.$column.' = :note, '.$modifierColumn.' = :modifier WHERE rowid = :id',
+			['note' => !empty($value) ? $value : null, 'modifier' => $modifierId, 'id' => $id]
+		);
 	}
 }

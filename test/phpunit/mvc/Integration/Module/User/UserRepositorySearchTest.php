@@ -156,7 +156,7 @@ final class UserRepositorySearchTest extends TestCase
 
 	private function insertUser(string $login, int $status, string $lastname = 'List', ?int $supervisor = null): int
 	{
-		$this->connection->legacyExecute('INSERT INTO '.MAIN_DB_PREFIX."user (login, lastname, entity, statut, datec, fk_user) VALUES ('".$login."', '".$lastname."', 1, ".$status.', NOW(), '.($supervisor ?? 'NULL').')');
+		$this->connection->execute('INSERT INTO '.MAIN_DB_PREFIX."user (login, lastname, entity, statut, datec, fk_user) VALUES ('".$login."', '".$lastname."', 1, ".$status.', NOW(), '.($supervisor ?? 'NULL').')');
 
 		return $this->connection->lastInsertId('user');
 	}

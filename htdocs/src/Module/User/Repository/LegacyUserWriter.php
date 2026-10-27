@@ -204,30 +204,33 @@ final class LegacyUserWriter implements UserWriter
 
 	/**
 	 * user/card.php l.653-685: \User::update() does not write fk_soc / fk_socpeople, the card
-	 * runs this raw UPDATE. It is the only write SQL of the module, reproduced as is: a contact
+	 * runs this raw UPDATE. It is the only write SQL of the module, reproduced with bound values: a contact
 	 * gives its company; a contact without company and a posted company clear the company.
 	 */
 	public function linkToContact(int $id, int $contactId, int $companyId): bool
 	{
 		$mismatch = false;
-		$table = $this->db->prefix().'user';
+		$params = ['id' => $id];
 		if ($contactId > 0) {
-			$row = $this->db->legacyFetchOneObject('SELECT fk_soc FROM '.$this->db->prefix().'socpeople WHERE rowid = '.$contactId);
-			$contactCompany = $row === null ? 0 : (int) (is_numeric($fk = get_object_vars($row)['fk_soc'] ?? null) ? $fk : 0);
-			$sql = 'UPDATE '.$table.' SET fk_socpeople = '.$contactId;
+			$contactCompany = $this->db->fetchValue('SELECT fk_soc FROM @socpeople WHERE rowid = :contact', ['contact' => $contactId]);
+			$contactCompany = is_numeric($contactCompany) ? (int) $contactCompany : 0;
+			$sql = 'UPDATE @user SET fk_socpeople = :contact';
+			$params['contact'] = $contactId;
 			if ($contactCompany > 0) {
-				$sql .= ', fk_soc = '.$contactCompany;
+				$sql .= ', fk_soc = :company';
+				$params['company'] = $contactCompany;
 			} elseif ($companyId > 0) {
 				$sql .= ', fk_soc = null';
 				$mismatch = true;
 			}
 		} elseif ($companyId > 0) {
-			$sql = 'UPDATE '.$table.' SET fk_socpeople = NULL, fk_soc = '.$companyId;
+			$sql = 'UPDATE @user SET fk_socpeople = NULL, fk_soc = :company';
+			$params['company'] = $companyId;
 		} else {
-			$sql = 'UPDATE '.$table.' SET fk_socpeople = NULL, fk_soc = NULL';
+			$sql = 'UPDATE @user SET fk_socpeople = NULL, fk_soc = NULL';
 		}
 		try {
-			$this->db->legacyExecute($sql.' WHERE rowid = '.$id);
+			$this->db->execute($sql.' WHERE rowid = :id', $params);
 		} catch (DatabaseException) {
 			// card.php l.680-683: the database message (e.g. uk_user_fk_socpeople, a contact already linked to a user)
 			throw new ValidationException([$this->ctx->db->lasterror()]);
