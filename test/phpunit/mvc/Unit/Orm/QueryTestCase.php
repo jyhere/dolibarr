@@ -266,14 +266,189 @@ abstract class QueryTestCase extends TestCase
 
 	public function testIsSortableRejectsSecretAndExpressions(): void
 	{
-		$query = $this->articles()->join('author', 'a', 'a.rowid', 't.fk_author')->leftJoin('article', 'parent', 'parent.rowid', 't.fk_author');
+		$query = $this->articles()
+			->join('author', 'a', 'a.rowid', 't.fk_author', Author::class)
+			->leftJoin('c_country', 'co', 'co.rowid', 't.fk_author', ['label'])
+			->leftJoin('societe', 's', 's.rowid', 't.fk_author')
+			->leftJoin('article', 'parent', 'parent.rowid', 't.fk_author');
 
-		$refused = ['pass_crypted', 't.pass_crypted', '(SELECT 1)', 'u.login; DROP', 't.title DESC', 'title, (SELECT 1)', 'author', '', 'zz.name', 'a.name desc', 'parent.pass_crypted', 'T.title'];
+		$refused = [
+			'pass_crypted', 't.pass_crypted', '(SELECT 1)', 'u.login; DROP', 't.title DESC', 'title, (SELECT 1)', 'author', '',
+			'zz.name', 'a.name desc', 'parent.pass_crypted', 'T.title', "title\n", "t.title\n", 'a.nonexistent', 's.nom',
+			'co.code', 'co.pass_crypted', 's.api_key', 'title AS x',
+		];
 		foreach ($refused as $column) {
 			self::assertFalse($query->isSortable($column), $column);
 		}
-		foreach (['title', 't.title', 'viewCount', 't.view_count', 'a.name', 'parent.title', 'parent.viewCount'] as $column) {
+		foreach (['title', 't.title', 'viewCount', 't.view_count', 'a.name', 'a.rowid', 'co.label', 'parent.title', 'parent.viewCount'] as $column) {
 			self::assertTrue($query->isSortable($column), $column);
+		}
+	}
+
+	public function testSecretColumnsRefusedOnAnyAlias(): void
+	{
+		$attempts = [
+			'select' => static fn (Query $query): Query => $query->select('u.pass_crypted'),
+			'select as' => static fn (Query $query): Query => $query->select('u.api_key AS key'),
+			'where' => static fn (Query $query): Query => $query->where('u.Pass_Crypted', 'x'),
+			'whereNull' => static fn (Query $query): Query => $query->whereNull('u.pass_temp'),
+			'orderBy' => static fn (Query $query): Query => $query->orderBy('u.ldap_sid'),
+			'groupBy' => static fn (Query $query): Query => $query->groupBy('u.openid'),
+			'join on' => static fn (Query $query): Query => $query->leftJoin('user', 'u2', 'u2.pass', 't.title'),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt($this->articles()->join('user', 'u', 'u.rowid', 't.fk_author'));
+				self::fail('Secret column accepted: '.$label);
+			} catch (\InvalidArgumentException $e) {
+				self::assertStringContainsString('ecret', $e->getMessage(), $label);
+			}
+		}
+		self::assertFalse($this->articles()->join('user', 'u', 'u.rowid', 't.fk_author')->isSortable('u.pass_crypted'));
+
+		$compiled = $this->articles()->withoutEntityScope()->join('user', 'u', 'u.rowid', 't.fk_author')->select('u.login')->where('u.statut', 1)->compile();
+		$this->assertCompiled('SELECT u.login FROM @article AS t INNER JOIN @user AS u ON u.rowid = t.fk_author WHERE u.statut = :p1', ['p1' => 1], $compiled);
+	}
+
+	public function testJoinDeclarations(): void
+	{
+		$compiled = $this->articles()->withoutEntityScope()
+			->join('author', 'a', 'a.id', 't.authorId', Author::class)
+			->select('a.name')
+			->where('a.id', '7')
+			->compile();
+		$this->assertCompiled('SELECT a.name FROM @article AS t INNER JOIN @author AS a ON a.rowid = t.fk_author WHERE a.rowid = :p1', ['p1' => 7], $compiled);
+
+		$invalid = [
+			'unmapped column of a mapped join' => static fn (Query $query): Query => $query->join('author', 'a', 'a.rowid', 't.fk_author', Author::class)->where('a.nope', 1),
+			'unknown class' => static fn (Query $query): Query => $query->join('author', 'a', 'a.rowid', 't.fk_author', 'No\\Such\\Entity'),
+			'not an entity' => static fn (Query $query): Query => $query->join('author', 'a', 'a.rowid', 't.fk_author', \stdClass::class),
+			'secret declared' => static fn (Query $query): Query => $query->join('user', 'u', 'u.rowid', 't.fk_author', ['login', 'pass_crypted']),
+			'invalid declared' => static fn (Query $query): Query => $query->join('user', 'u', 'u.rowid', 't.fk_author', ['login; DROP']),
+		];
+		foreach ($invalid as $label => $attempt) {
+			try {
+				$attempt($this->articles());
+				self::fail('Accepted: '.$label);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
+		}
+	}
+
+	public function testSelectAliasesAndRawExpressions(): void
+	{
+		$compiled = $this->articles()->withoutEntityScope()
+			->join('author', 'a', 'a.rowid', 't.fk_author')
+			->select('t.title AS heading', 'a.name as author_name', 'viewCount')
+			->selectRaw("CASE WHEN t.summary IS NOT NULL AND t.summary <> '' THEN 1 ELSE 0 END", 'has_summary')
+			->selectRaw('CASE WHEN t.view_count > :threshold THEN 1 ELSE 0 END', 'popular', ['threshold' => 100])
+			->where('title', 'x')
+			->compile();
+
+		$this->assertCompiled(
+			'SELECT t.title AS heading, a.name AS author_name, t.view_count,'
+			." (CASE WHEN t.summary IS NOT NULL AND t.summary <> '' THEN 1 ELSE 0 END) AS has_summary,"
+			.' (CASE WHEN t.view_count > :p1 THEN 1 ELSE 0 END) AS popular'
+			.' FROM @article AS t INNER JOIN @author AS a ON a.rowid = t.fk_author WHERE t.title = :p2',
+			['p1' => 100, 'p2' => 'x'],
+			$compiled
+		);
+
+		$distinct = $this->articles()->withoutEntityScope()->distinct()->selectRaw('t.view_count > :threshold', 'popular', ['threshold' => 5])->where('title', 'x');
+		$this->assertCompiled(
+			'SELECT COUNT(*) AS total FROM (SELECT DISTINCT (t.view_count > :p1) AS popular FROM @article AS t WHERE t.title = :p2) AS counted',
+			['p1' => 5, 'p2' => 'x'],
+			$distinct->compileCount()
+		);
+
+		$invalid = [
+			'alias with spaces' => static fn (Query $query): Query => $query->select('title AS x y'),
+			'alias expression' => static fn (Query $query): Query => $query->select('title AS (SELECT 1)'),
+			'alias digit' => static fn (Query $query): Query => $query->select('title AS 1x'),
+			'alias newline' => static fn (Query $query): Query => $query->select("title AS x\n"),
+			'column newline' => static fn (Query $query): Query => $query->select("title\n"),
+			'aliased unknown column' => static fn (Query $query): Query => $query->select('nope AS x'),
+			'raw alias' => static fn (Query $query): Query => $query->selectRaw('1', 'x; DROP'),
+			'raw alias newline' => static fn (Query $query): Query => $query->selectRaw('1', "x\n"),
+			'raw missing parameter' => static fn (Query $query): Query => $query->selectRaw('t.view_count > :min', 'popular'),
+			'raw unused parameter' => static fn (Query $query): Query => $query->selectRaw('1', 'one', ['min' => 1]),
+		];
+		foreach ($invalid as $label => $attempt) {
+			try {
+				$attempt($this->articles());
+				self::fail('Accepted: '.$label);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
+		}
+	}
+
+	public function testWhereNotExists(): void
+	{
+		$articles = $this->articles('a')->withoutEntityScope()->select('id')->whereRaw('a.fk_author = t.rowid')->where('a.title', 'x');
+
+		$compiled = $this->authors()->where('name', 'n')->whereNotExists($articles)->compile();
+
+		$this->assertCompiled(
+			'SELECT t.rowid, t.name FROM @author AS t WHERE t.name = :p1 AND NOT EXISTS (SELECT a.rowid FROM @article AS a WHERE (a.fk_author = t.rowid) AND a.title = :p2)',
+			['p1' => 'n', 'p2' => 'x'],
+			$compiled
+		);
+	}
+
+	public function testGroupRefusesNonConditionCalls(): void
+	{
+		$calls = [
+			'legacyFragment' => static fn (Query $group): Query => $group->legacyFragment('1 = 1'),
+			'join' => static fn (Query $group): Query => $group->join('tag', 'tg', 'tg.rowid', 't.rowid'),
+			'leftJoin' => static fn (Query $group): Query => $group->leftJoin('tag', 'tg', 'tg.rowid', 't.rowid'),
+			'orderBy' => static fn (Query $group): Query => $group->orderBy('name'),
+			'groupBy' => static fn (Query $group): Query => $group->groupBy('name'),
+			'limit' => static fn (Query $group): Query => $group->limit(1),
+			'offset' => static fn (Query $group): Query => $group->offset(1),
+			'distinct' => static fn (Query $group): Query => $group->distinct(),
+			'caseInsensitive' => static fn (Query $group): Query => $group->caseInsensitive(),
+			'withoutEntityScope' => static fn (Query $group): Query => $group->withoutEntityScope(),
+			'select' => static fn (Query $group): Query => $group->select('name'),
+			'selectRaw' => static fn (Query $group): Query => $group->selectRaw('1', 'one'),
+			'with' => static fn (Query $group): Query => $group->with(),
+			'compile' => static fn (Query $group): mixed => $group->compile(),
+		];
+		foreach ($calls as $label => $call) {
+			try {
+				$this->authors()->where(static function (Query $group) use ($call): void {
+					$call($group->where('name', 'x'));
+				});
+				self::fail('Accepted in a group: '.$label);
+			} catch (\LogicException $e) {
+				self::assertStringContainsString('group', $e->getMessage(), $label);
+			}
+		}
+
+		$compiled = $this->authors()->where(static function (Query $group): void {
+			$group->whereIn('id', [1])->orWhere('name', 'x')->whereNull('name')->whereNotNull('name')->whereRaw('1 = 1')
+				->whereExists(new Query((new MappingReader())->read(Author::class), new \Dolibarr\Core\Orm\MysqlGrammar(), null, null, 'a'));
+		})->compile();
+		self::assertStringContainsString('WHERE (t.rowid IN (:p1) OR t.name = :p2 AND t.name IS NULL AND t.name IS NOT NULL AND (1 = 1) AND EXISTS (', $compiled->sql);
+	}
+
+	public function testIdentifiersRefuseTrailingNewline(): void
+	{
+		$invalid = [
+			'join table' => fn (): Query => $this->articles()->join("author\n", 'a', 'a.rowid', 't.fk_author'),
+			'join alias' => fn (): Query => $this->articles()->join('author', "a\n", 'a.rowid', 't.fk_author'),
+			'where column' => fn (): Query => $this->articles()->where("title\n", 'x'),
+			'aliased column' => fn (): Query => $this->articles()->where("t.title\n", 'x'),
+			'query alias' => fn (): Query => new Query((new MappingReader())->read(Author::class), $this->grammar(), null, null, "t\n"),
+		];
+		foreach ($invalid as $label => $attempt) {
+			try {
+				$attempt();
+				self::fail('Accepted: '.$label);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
 		}
 	}
 

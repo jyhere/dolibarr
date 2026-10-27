@@ -8,6 +8,7 @@ use Dolibarr\Core\Orm\MappingReader;
 use Dolibarr\Core\Orm\PgsqlGrammar;
 use Dolibarr\Core\Orm\Query;
 use Dolibarr\Tests\Unit\Orm\Fixture\Article;
+use Dolibarr\Tests\Unit\Orm\Fixture\Author;
 use Dolibarr\Tests\Unit\Orm\Fixture\FakeEntityScope;
 use PHPUnit\Framework\TestCase;
 
@@ -61,6 +62,27 @@ final class LegacySqlTest extends TestCase
 			$sql
 		);
 		self::assertSame([], $fragments, 'The legacy DoliDB converts the fragments itself');
+	}
+
+	public function testComputedColumnsAliasesAndNotExists(): void
+	{
+		$db = $GLOBALS['db'];
+		$prefix = $db->prefix();
+		$authors = new Query((new MappingReader())->read(Author::class), new PgsqlGrammar(static fn (string $sql): string => $sql), null, null, 'a');
+
+		$sql = $this->articles()
+			->select('title AS heading')
+			->selectRaw("CASE WHEN t.summary IS NOT NULL AND t.summary <> '' THEN 1 ELSE 0 END", 'has_summary')
+			->selectRaw('CASE WHEN t.title = :label THEN 1 ELSE 0 END', 'is_label', ['label' => "o'clock"])
+			->whereNotExists($authors->select('id')->whereRaw('a.rowid = t.fk_author')->where('name', 'x'))
+			->toLegacySql($db);
+
+		self::assertSame(
+			"SELECT t.title AS heading, (CASE WHEN t.summary IS NOT NULL AND t.summary <> '' THEN 1 ELSE 0 END) AS has_summary,"
+			." (CASE WHEN t.title = 'o\\'clock' THEN 1 ELSE 0 END) AS is_label FROM ".$prefix.'article AS t'
+			.' WHERE t.entity IN (1, 2) AND NOT EXISTS (SELECT a.rowid FROM '.$prefix."author AS a WHERE (a.rowid = t.fk_author) AND a.name = 'x')",
+			$sql
+		);
 	}
 
 	private function articles(): Query

@@ -24,17 +24,24 @@ final class Query
 {
 	public const OPERATORS = ['=', '!=', '<>', '<', '<=', '>', '>=', 'like', 'not like'];
 
-	private const ALIAS = '/^[a-z_][a-z0-9_]*$/';
-	private const TABLE = '/^[a-z0-9_]+$/';
-	private const COLUMN = '/^(?:([a-z_][a-z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)$/';
+	private const ALIAS = '/^[a-z_][a-z0-9_]*$/D';
+	private const TABLE = '/^[a-z0-9_]+$/D';
+	private const COLUMN = '/^(?:([a-z_][a-z0-9_]*)\.)?([a-zA-Z_][a-zA-Z0-9_]*)$/D';
+	private const SELECT_AS = '/^(\S+)\s+AS\s+([a-zA-Z_][a-zA-Z0-9_]*)$/Di';
+	private const OUTPUT_ALIAS = '/^[a-zA-Z_][a-zA-Z0-9_]*$/D';
 
-	/** @var list<string> Resolved column SQL */
+	/** @var list<string|array{expression: string, alias: string, params: array<string, mixed>}> Resolved column SQL, or a selectRaw() */
 	private array $columns = [];
 
 	/** @var list<Condition> */
 	private array $conditions = [];
 
-	/** @var array<string, string> Table (without prefix) by alias declared by join()/leftJoin() */
+	/**
+	 * Aliases declared by join()/leftJoin(): their table (without prefix), and their declared columns, by the
+	 * mapping of an entity or by name (null: none declared).
+	 *
+	 * @var array<string, array{table: string, mapping: ?EntityMapping, columns: ?list<string>}>
+	 */
 	private array $joinAliases = [];
 
 	/** @var list<string> */
@@ -62,6 +69,9 @@ final class Query
 
 	private bool $caseInsensitive = false;
 
+	/** A where(Closure) group: only where-family calls are allowed on it. */
+	private bool $isGroup = false;
+
 	/**
 	 * @param EntityScope|null   $entityScope Required to compile an entity with an 'entity' column (unless withoutEntityScope())
 	 * @param QueryExecutor|null $executor    Runs get(), first()…; null for a query only compiled
@@ -74,7 +84,8 @@ final class Query
 		private readonly ?EntityScope $entityScope = null,
 		private readonly ?QueryExecutor $executor = null,
 		private readonly string $alias = 't',
-		private readonly CastRegistry $casts = new CastRegistry()
+		private readonly CastRegistry $casts = new CastRegistry(),
+		private readonly MappingRegistry $mappings = new MappingRegistry()
 	) {
 		if (preg_match(self::ALIAS, $alias) !== 1) {
 			throw new \InvalidArgumentException('Invalid query alias "'.$alias.'"');
@@ -92,13 +103,41 @@ final class Query
 	}
 
 	/**
-	 * Selected columns (default: every mapped column of the main alias, never an unmapped one).
+	 * Selected columns (default: every mapped column of the main alias, never an unmapped one), each optionally
+	 * renamed: 'a.name AS author_name'.
+	 *
+	 * @throws \InvalidArgumentException
 	 */
 	public function select(string ...$columns): static
 	{
+		$this->refuseInGroup('select');
 		foreach ($columns as $column) {
-			$this->columns[] = $this->resolve($column)[0];
+			if (preg_match(self::SELECT_AS, $column, $match) === 1) {
+				$this->columns[] = $this->resolve($match[1])[0].' AS '.$match[2];
+			} else {
+				$this->columns[] = $this->resolve($column)[0];
+			}
 		}
+
+		return $this;
+	}
+
+	/**
+	 * A computed column written by the code, a constant expression such as
+	 * "CASE WHEN t.api_key IS NOT NULL AND t.api_key <> '' THEN 1 ELSE 0 END": never request input. Its ':name'
+	 * placeholders are bound to $params, checked as whereRaw() does.
+	 *
+	 * @param array<string, mixed> $params
+	 * @throws \InvalidArgumentException Invalid alias, a placeholder without value or a value without placeholder
+	 */
+	public function selectRaw(string $expression, string $alias, array $params = []): static
+	{
+		$this->refuseInGroup('selectRaw');
+		if (preg_match(self::OUTPUT_ALIAS, $alias) !== 1) {
+			throw new \InvalidArgumentException('Invalid column alias "'.$alias.'"');
+		}
+		Condition::bindRaw($expression, $params, $this->grammar->dialect(), new QueryParameters());
+		$this->columns[] = ['expression' => $expression, 'alias' => $alias, 'params' => $params];
 
 		return $this;
 	}
@@ -164,7 +203,14 @@ final class Query
 	 */
 	public function whereExists(Query $subquery): static
 	{
-		$this->conditions[] = Condition::exists('AND', $subquery);
+		$this->conditions[] = Condition::exists('AND', $subquery, false);
+
+		return $this;
+	}
+
+	public function whereNotExists(Query $subquery): static
+	{
+		$this->conditions[] = Condition::exists('AND', $subquery, true);
 
 		return $this;
 	}
@@ -192,6 +238,7 @@ final class Query
 	 */
 	public function legacyFragment(string $where = '', string $select = '', string $from = ''): static
 	{
+		$this->refuseInGroup('legacyFragment');
 		foreach (['where' => $where, 'select' => $select, 'from' => $from] as $part => $fragment) {
 			if ($fragment !== '') {
 				$this->legacyFragments[$part][] = $fragment;
@@ -204,20 +251,27 @@ final class Query
 	/**
 	 * INNER JOIN '@'.$table AS $alias ON $leftColumn = $rightColumn.
 	 *
-	 * @param string $table Table without prefix, named by the code
-	 * @throws \InvalidArgumentException Invalid table, alias already used, unknown column
+	 * The columns of the alias may be declared: by an entity class (its mapping, which then also refuses unmapped
+	 * columns and casts values) or by a list of names. Only declared columns are sortable (isSortable()); a join on
+	 * the entity's own table uses its mapping. Secret columns (MappingReader::SECRET_COLUMNS) are refused on any
+	 * alias.
+	 *
+	 * @param string                   $table   Table without prefix, named by the code
+	 * @param class-string|list<string>|null $columns Entity class or column names of the alias
+	 * @throws \InvalidArgumentException Invalid table, alias, declaration or column, alias already used
 	 */
-	public function join(string $table, string $alias, string $leftColumn, string $rightColumn): static
+	public function join(string $table, string $alias, string $leftColumn, string $rightColumn, string|array|null $columns = null): static
 	{
-		return $this->addJoin('INNER JOIN', $table, $alias, $leftColumn, $rightColumn);
+		return $this->addJoin('INNER JOIN', $table, $alias, $leftColumn, $rightColumn, $columns);
 	}
 
 	/**
+	 * @param class-string|list<string>|null $columns
 	 * @throws \InvalidArgumentException
 	 */
-	public function leftJoin(string $table, string $alias, string $leftColumn, string $rightColumn): static
+	public function leftJoin(string $table, string $alias, string $leftColumn, string $rightColumn, string|array|null $columns = null): static
 	{
-		return $this->addJoin('LEFT JOIN', $table, $alias, $leftColumn, $rightColumn);
+		return $this->addJoin('LEFT JOIN', $table, $alias, $leftColumn, $rightColumn, $columns);
 	}
 
 	/**
@@ -226,6 +280,7 @@ final class Query
 	 */
 	public function orderBy(string $column, string $direction = 'ASC'): static
 	{
+		$this->refuseInGroup('orderBy');
 		$direction = strtoupper(trim($direction));
 		$this->orders[] = $this->resolve($column)[0].' '.($direction === 'DESC' ? 'DESC' : 'ASC');
 
@@ -233,16 +288,14 @@ final class Query
 	}
 
 	/**
-	 * Whether orderBy() accepts the column: a mapped column of the main alias (or of a join on the entity's own
-	 * table, 'u2.login'), or an identifier of another joined alias. Unmapped (secret) columns, expressions and
-	 * anything else are refused.
+	 * Whether a column from the request may be sorted on: a mapped column of the main alias (or of a join on the
+	 * entity's own table, 'u2.login'), or a declared column of a joined alias (join() $columns). Undeclared joined
+	 * columns, secret columns, expressions and anything else are refused.
 	 */
 	public function isSortable(string $column): bool
 	{
 		try {
-			$this->resolve($column);
-
-			return true;
+			return $this->resolve($column)[2];
 		} catch (\InvalidArgumentException) {
 			return false;
 		}
@@ -250,6 +303,7 @@ final class Query
 
 	public function groupBy(string ...$columns): static
 	{
+		$this->refuseInGroup('groupBy');
 		foreach ($columns as $column) {
 			$this->groups[] = $this->resolve($column)[0];
 		}
@@ -262,6 +316,7 @@ final class Query
 	 */
 	public function limit(int $limit): static
 	{
+		$this->refuseInGroup('limit');
 		if ($limit < 0) {
 			throw new \InvalidArgumentException('Negative query limit');
 		}
@@ -275,6 +330,7 @@ final class Query
 	 */
 	public function offset(int $offset): static
 	{
+		$this->refuseInGroup('offset');
 		if ($offset < 0) {
 			throw new \InvalidArgumentException('Negative query offset');
 		}
@@ -285,6 +341,7 @@ final class Query
 
 	public function distinct(): static
 	{
+		$this->refuseInGroup('distinct');
 		$this->distinct = true;
 
 		return $this;
@@ -295,6 +352,7 @@ final class Query
 	 */
 	public function withoutEntityScope(): static
 	{
+		$this->refuseInGroup('withoutEntityScope');
 		$this->entityScoped = false;
 
 		return $this;
@@ -305,6 +363,7 @@ final class Query
 	 */
 	public function caseInsensitive(): static
 	{
+		$this->refuseInGroup('caseInsensitive');
 		$this->caseInsensitive = true;
 
 		return $this;
@@ -317,6 +376,7 @@ final class Query
 	 */
 	public function with(string ...$relations): static
 	{
+		$this->refuseInGroup('with');
 		foreach ($relations as $relation) {
 			if (!isset($this->mapping->relations[$relation])) {
 				throw new \InvalidArgumentException($this->mapping->class.' has no relation "'.$relation.'"');
@@ -342,6 +402,7 @@ final class Query
 	 */
 	public function compile(): CompiledQuery
 	{
+		$this->refuseInGroup('compile');
 		$parameters = new QueryParameters();
 		$sql = $this->compileSelect($this->grammar, $parameters);
 
@@ -356,9 +417,10 @@ final class Query
 	 */
 	public function compileCount(): CompiledQuery
 	{
+		$this->refuseInGroup('compileCount');
 		$parameters = new QueryParameters();
 		if ($this->distinct || $this->groups !== []) {
-			$sql = 'SELECT COUNT(*) AS total FROM ('.$this->selectList($this->grammar).$this->body($this->grammar, $parameters).$this->groupClause().') AS counted';
+			$sql = 'SELECT COUNT(*) AS total FROM ('.$this->selectList($this->grammar, $parameters).$this->body($this->grammar, $parameters).$this->groupClause().') AS counted';
 		} else {
 			$sql = 'SELECT COUNT(*) AS total'.$this->body($this->grammar, $parameters);
 		}
@@ -376,6 +438,7 @@ final class Query
 	 */
 	public function toLegacySql(\DoliDB $db): string
 	{
+		$this->refuseInGroup('toLegacySql');
 		$parameters = new QueryParameters();
 		$sql = $this->compileSelect(new MysqlGrammar(), $parameters);
 		$statement = (new ParameterBinder((string) $db->prefix(), $db->type === 'pgsql' ? 'pgsql' : 'mysql'))->bind($sql, $parameters->all());
@@ -393,7 +456,7 @@ final class Query
 	{
 		$order = $this->orders === [] ? '' : ' ORDER BY '.implode(', ', $this->orders);
 
-		return $this->selectList($grammar).$this->body($grammar, $parameters).$this->groupClause().$order.$grammar->limit($this->limit, $this->offset);
+		return $this->selectList($grammar, $parameters).$this->body($grammar, $parameters).$this->groupClause().$order.$grammar->limit($this->limit, $this->offset);
 	}
 
 	/**
@@ -446,6 +509,16 @@ final class Query
 		return $this->executor()->rows($this);
 	}
 
+	/**
+	 * @throws \LogicException On a where(Closure) group, which only keeps its conditions
+	 */
+	private function refuseInGroup(string $method): void
+	{
+		if ($this->isGroup) {
+			throw new \LogicException($method.'() on a where(Closure) group: only where-family conditions are allowed there');
+		}
+	}
+
 	private function executor(): QueryExecutor
 	{
 		return $this->executor ?? throw new \LogicException('This Query has no executor: build it from a Repository to run it');
@@ -454,8 +527,9 @@ final class Query
 	private function addWhere(string $boolean, int $argumentCount, string|\Closure $column, mixed $operatorOrValue, mixed $value): static
 	{
 		if ($column instanceof \Closure) {
-			$group = new self($this->mapping, $this->grammar, null, null, $this->alias, $this->casts);
+			$group = new self($this->mapping, $this->grammar, null, null, $this->alias, $this->casts, $this->mappings);
 			$group->joinAliases = $this->joinAliases;
+			$group->isGroup = true;
 			$column($group);
 			if ($group->conditions !== []) {
 				$this->conditions[] = Condition::group($boolean, $group->conditions);
@@ -506,15 +580,19 @@ final class Query
 		return $this;
 	}
 
-	private function addJoin(string $type, string $table, string $alias, string $leftColumn, string $rightColumn): static
+	/**
+	 * @param class-string|list<string>|null $columns
+	 */
+	private function addJoin(string $type, string $table, string $alias, string $leftColumn, string $rightColumn, string|array|null $columns): static
 	{
+		$this->refuseInGroup($type === 'LEFT JOIN' ? 'leftJoin' : 'join');
 		if (preg_match(self::TABLE, $table) !== 1) {
 			throw new \InvalidArgumentException('Invalid join table "'.$table.'"');
 		}
 		if (preg_match(self::ALIAS, $alias) !== 1 || $alias === $this->alias || isset($this->joinAliases[$alias])) {
 			throw new \InvalidArgumentException('Invalid or already used join alias "'.$alias.'"');
 		}
-		$this->joinAliases[$alias] = $table;
+		$this->joinAliases[$alias] = $this->joinDeclaration($table, $columns);
 		try {
 			$this->joins[] = ' '.$type.' @'.$table.' AS '.$alias.' ON '.$this->resolve($leftColumn)[0].' = '.$this->resolve($rightColumn)[0];
 		} catch (\InvalidArgumentException $e) {
@@ -527,7 +605,42 @@ final class Query
 	}
 
 	/**
-	 * @return array{string, ?ColumnMapping} Column SQL, and its mapping on the main alias
+	 * @param class-string|list<string>|null $columns
+	 * @return array{table: string, mapping: ?EntityMapping, columns: ?list<string>}
+	 * @throws \InvalidArgumentException
+	 */
+	private function joinDeclaration(string $table, string|array|null $columns): array
+	{
+		if ($table === $this->mapping->table) {
+			return ['table' => $table, 'mapping' => $this->mapping, 'columns' => null];
+		}
+		if (is_string($columns)) {
+			if (!class_exists($columns)) {
+				throw new \InvalidArgumentException('Unknown entity class '.$columns.' for the join on '.$table);
+			}
+			try {
+				return ['table' => $table, 'mapping' => $this->mappings->get($columns), 'columns' => null];
+			} catch (\LogicException $e) {
+				throw new \InvalidArgumentException('Join on '.$table.': '.$e->getMessage(), 0, $e);
+			}
+		}
+		if ($columns === null) {
+			return ['table' => $table, 'mapping' => null, 'columns' => null];
+		}
+		$names = [];
+		foreach ($columns as $name) {
+			if (!is_string($name) || preg_match(self::ALIAS, $name) !== 1 || self::isSecret($name)) {
+				throw new \InvalidArgumentException('Invalid or secret declared column for the join on '.$table);
+			}
+			$names[] = $name;
+		}
+
+		return ['table' => $table, 'mapping' => null, 'columns' => $names];
+	}
+
+	/**
+	 * @return array{string, ?ColumnMapping, bool} Column SQL, its mapping (main alias or mapped join), whether
+	 *                                             it is declared (sortable)
 	 * @throws \InvalidArgumentException
 	 */
 	private function resolve(string $column): array
@@ -535,20 +648,34 @@ final class Query
 		if (preg_match(self::COLUMN, $column, $match) !== 1) {
 			throw new \InvalidArgumentException('Invalid column "'.$column.'"');
 		}
-		$alias = $match[1] !== '' ? $match[1] : $this->alias;
-		if ($alias === $this->alias || ($this->joinAliases[$alias] ?? null) === $this->mapping->table) {
-			$mapped = $this->mapping->column($match[2]);
-			if ($mapped === null) {
-				throw new \InvalidArgumentException('Unknown column "'.$column.'" for '.$this->mapping->class);
-			}
-
-			return [$alias.'.'.$mapped->name, $mapped];
+		if (self::isSecret($match[2])) {
+			throw new \InvalidArgumentException('Secret column "'.$column.'" refused');
 		}
-		if (!isset($this->joinAliases[$alias])) {
+		$alias = $match[1] !== '' ? $match[1] : $this->alias;
+		if ($alias === $this->alias) {
+			$mapping = $this->mapping;
+			$declaredColumns = null;
+		} elseif (isset($this->joinAliases[$alias])) {
+			$mapping = $this->joinAliases[$alias]['mapping'];
+			$declaredColumns = $this->joinAliases[$alias]['columns'];
+		} else {
 			throw new \InvalidArgumentException('Unknown alias in column "'.$column.'"');
 		}
+		if ($mapping !== null) {
+			$mapped = $mapping->column($match[2]);
+			if ($mapped === null) {
+				throw new \InvalidArgumentException('Unknown column "'.$column.'" for '.$mapping->class);
+			}
 
-		return [$alias.'.'.$match[2], null];
+			return [$alias.'.'.$mapped->name, $mapped, true];
+		}
+
+		return [$alias.'.'.$match[2], null, $declaredColumns !== null && in_array($match[2], $declaredColumns, true)];
+	}
+
+	private static function isSecret(string $column): bool
+	{
+		return in_array(strtolower($column), MappingReader::SECRET_COLUMNS, true);
 	}
 
 	private function operator(mixed $operator): string
@@ -592,9 +719,14 @@ final class Query
 		}
 	}
 
-	private function selectList(Grammar $grammar): string
+	private function selectList(Grammar $grammar, QueryParameters $parameters): string
 	{
-		$columns = $this->columns;
+		$columns = [];
+		foreach ($this->columns as $column) {
+			$columns[] = is_string($column)
+				? $column
+				: '('.Condition::bindRaw($column['expression'], $column['params'], $grammar->dialect(), $parameters).') AS '.$column['alias'];
+		}
 		if ($columns === []) {
 			foreach ($this->mapping->columns as $mapped) {
 				$columns[] = $this->alias.'.'.$mapped->name;

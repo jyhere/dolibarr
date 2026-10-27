@@ -71,9 +71,9 @@ final class Condition
 		return new self($boolean, self::NULL_CHECK, $column, '', null, $negated);
 	}
 
-	public static function exists(string $boolean, Query $subquery): self
+	public static function exists(string $boolean, Query $subquery, bool $negated): self
 	{
-		return new self($boolean, self::EXISTS, '', '', null, false, $subquery);
+		return new self($boolean, self::EXISTS, '', '', null, $negated, $subquery);
 	}
 
 	/**
@@ -82,7 +82,7 @@ final class Condition
 	 */
 	public static function raw(string $boolean, string $sql, array $params, string $dialect): self
 	{
-		self::renameParameters($sql, $params, $dialect, new QueryParameters());
+		self::bindRaw($sql, $params, $dialect, new QueryParameters());
 
 		return new self($boolean, self::RAW, $sql, '', null, false, null, $params);
 	}
@@ -132,8 +132,8 @@ final class Condition
 			self::IN => $this->sql.' '.$not.'IN ('.$parameters->add($this->value).')',
 			self::IN_SUBQUERY => $this->sql.' '.$not.'IN ('.$this->subquery()->compileSelect($grammar, $parameters).')',
 			self::NULL_CHECK => $this->sql.' IS '.$not.'NULL',
-			self::EXISTS => 'EXISTS ('.$this->subquery()->compileSelect($grammar, $parameters).')',
-			self::RAW => '('.self::renameParameters($this->sql, $this->params, $grammar->dialect(), $parameters).')',
+			self::EXISTS => $not.'EXISTS ('.$this->subquery()->compileSelect($grammar, $parameters).')',
+			self::RAW => '('.self::bindRaw($this->sql, $this->params, $grammar->dialect(), $parameters).')',
 			self::GROUP => '('.self::compileList($this->children, $grammar, $parameters, $caseInsensitive).')',
 			default => $this->sql,
 		};
@@ -145,12 +145,13 @@ final class Condition
 	}
 
 	/**
-	 * Each ':name' of the SQL (outside literals and '::' casts) becomes the placeholder of its value.
+	 * Each ':name' of code-authored SQL (outside literals and '::' casts) becomes the placeholder of its value
+	 * (whereRaw(), selectRaw()).
 	 *
 	 * @param array<string, mixed> $params
 	 * @throws \InvalidArgumentException
 	 */
-	private static function renameParameters(string $sql, array $params, string $dialect, QueryParameters $parameters): string
+	public static function bindRaw(string $sql, array $params, string $dialect, QueryParameters $parameters): string
 	{
 		$placeholders = [];
 		$renamed = preg_replace_callback(
@@ -161,7 +162,7 @@ final class Condition
 					return $match[0];
 				}
 				if (!array_key_exists($name, $params)) {
-					throw new \InvalidArgumentException('Missing whereRaw() parameter :'.$name);
+					throw new \InvalidArgumentException('Missing raw SQL parameter :'.$name);
 				}
 
 				return $placeholders[$name] ??= $parameters->add($params[$name]);
@@ -169,11 +170,11 @@ final class Condition
 			$sql
 		);
 		if ($renamed === null) {
-			throw new \InvalidArgumentException('whereRaw() SQL could not be parsed: '.preg_last_error_msg());
+			throw new \InvalidArgumentException('Raw SQL could not be parsed: '.preg_last_error_msg());
 		}
 		$unused = array_diff_key($params, $placeholders);
 		if ($unused !== []) {
-			throw new \InvalidArgumentException('Unused whereRaw() parameter(s) :'.implode(', :', array_keys($unused)));
+			throw new \InvalidArgumentException('Unused raw SQL parameter(s) :'.implode(', :', array_keys($unused)));
 		}
 
 		return $renamed;
