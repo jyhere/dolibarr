@@ -346,6 +346,10 @@ final class Query
 	}
 
 	/**
+	 * A column as where() takes it, or the alias of a selectRaw() column of this query (a computed column written
+	 * by the code, ordered by its alias: 'ORDER BY date_modification'). isSortable() does not accept such an alias:
+	 * the code maps a request sort field onto it.
+	 *
 	 * @param string $direction ASC or DESC (any case), anything else is ASC
 	 * @throws \InvalidArgumentException Unknown column (a column from the request: check isSortable() first)
 	 */
@@ -353,7 +357,15 @@ final class Query
 	{
 		$this->refuseInGroup('orderBy');
 		$direction = strtoupper(trim($direction));
-		$this->orders[] = $this->resolve($column)[0].' '.($direction === 'DESC' ? 'DESC' : 'ASC');
+		try {
+			$sql = $this->resolve($column)[0];
+		} catch (\InvalidArgumentException $e) {
+			if (!$this->isComputedAlias($column)) {
+				throw $e;
+			}
+			$sql = $column;
+		}
+		$this->orders[] = $sql.' '.($direction === 'DESC' ? 'DESC' : 'ASC');
 
 		return $this;
 	}
@@ -764,6 +776,20 @@ final class Query
 		}
 
 		return [$alias.'.'.$match[2], null, $declaredColumns !== null && in_array($match[2], $declaredColumns, true)];
+	}
+
+	/**
+	 * The alias of a selectRaw() column of this query.
+	 */
+	private function isComputedAlias(string $column): bool
+	{
+		foreach ($this->columns as $selected) {
+			if (is_array($selected) && $selected['alias'] === $column) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static function isSecret(string $column): bool

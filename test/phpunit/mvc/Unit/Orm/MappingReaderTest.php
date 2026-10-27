@@ -11,6 +11,7 @@ use Dolibarr\Core\Orm\Attribute\Table;
 use Dolibarr\Core\Orm\MappingReader;
 use Dolibarr\Core\Orm\RelationMapping;
 use Dolibarr\Module\User\Entity\User;
+use Dolibarr\Module\User\Repository\UserRepository;
 use Dolibarr\Tests\Unit\Orm\Fixture\Article;
 use Dolibarr\Tests\Unit\Orm\Fixture\ArticleStatus;
 use Dolibarr\Tests\Unit\Orm\Fixture\Author;
@@ -278,6 +279,32 @@ final class MappingReaderTest extends TestCase
 
 		self::assertSame(['id', 'entity', 'login', 'status', 'dateStartValidity'], array_keys($mapping->columns));
 		self::assertFalse($mapping->id()->nullable);
-		self::assertTrue(class_exists(User::class));
+	}
+
+	public function testUserEntityIsMappedOnTheColumnsOfItsRepository(): void
+	{
+		$mapping = (new MappingReader())->read(User::class);
+
+		self::assertSame('user', $mapping->table);
+		self::assertSame('user', $mapping->element);
+		self::assertSame('id', $mapping->idProperty);
+		self::assertSame('rowid', $mapping->id()->name);
+		self::assertTrue($mapping->hasEntityColumn);
+		// The list reads its extra fields with the legacy helpers: the entity does not map them
+		self::assertNull($mapping->extraFieldsProperty);
+		$columns = array_map(static fn ($column): string => $column->name, array_values($mapping->columns));
+		self::assertSame(UserRepository::COLUMNS, $columns);
+		// Computed flags, never mapped: their secret columns are not read
+		foreach (['hasApiKey', 'isLdapManaged', 'extraFields'] as $property) {
+			self::assertArrayNotHasKey($property, $mapping->columns);
+		}
+		self::assertSame('statut', $mapping->columns['status']->name);
+		self::assertSame('bool', $mapping->columns['admin']->cast);
+		self::assertSame('date', $mapping->columns['birth']->cast);
+		self::assertSame('datetime', $mapping->columns['dateLastLogin']->cast);
+		self::assertSame('float', $mapping->columns['salary']->cast);
+		self::assertTrue($mapping->columns['countryId']->nullable);
+		self::assertSame('fk_user', $mapping->columns['supervisorId']->name);
+		self::assertSame('force_pass_change', $mapping->columns['forcePasswordChange']->name);
 	}
 }

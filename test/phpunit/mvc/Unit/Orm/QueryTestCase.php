@@ -545,6 +545,23 @@ abstract class QueryTestCase extends TestCase
 		$this->assertCompiled('SELECT t.rowid, t.name FROM @author AS t ORDER BY t.name ASC, t.rowid DESC, t.name ASC, t.rowid ASC', [], $compiled);
 	}
 
+	public function testOrderByTheAliasOfAComputedColumn(): void
+	{
+		$compiled = $this->authors()->select('name')->selectRaw('UPPER(t.name)', 'shout')->orderBy('shout', 'DESC')->orderBy('name')->compile();
+
+		$this->assertCompiled('SELECT t.name, (UPPER(t.name)) AS shout FROM @author AS t ORDER BY shout DESC, t.name ASC', [], $compiled);
+		// Not a request column: isSortable() stays limited to the mapped and declared ones
+		self::assertFalse($this->authors()->selectRaw('UPPER(t.name)', 'shout')->isSortable('shout'));
+		foreach (['unknown', 'shout ', 't.shout'] as $column) {
+			try {
+				$this->authors()->selectRaw('UPPER(t.name)', 'shout')->orderBy($column);
+				self::fail('Ordered by '.$column);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
+		}
+	}
+
 	public function testCount(): void
 	{
 		$compiled = $this->authors()->where('name', 'a')->orderBy('name')->limit(10)->offset(20)->compileCount();

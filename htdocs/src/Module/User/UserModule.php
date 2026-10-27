@@ -18,6 +18,7 @@ use Dolibarr\Core\Legacy\LegacyTriggers;
 use Dolibarr\Core\Legacy\Redirect\LegacyRedirect;
 use Dolibarr\Core\Logger;
 use Dolibarr\Core\Module\ModuleInterface;
+use Dolibarr\Core\Orm\Orm;
 use Dolibarr\Core\Routing\UrlGenerator;
 use Dolibarr\Core\Session;
 use Dolibarr\Core\Translator;
@@ -79,7 +80,12 @@ final class UserModule implements ModuleInterface
 			self::get($container, Logger::class)
 		));
 		$container->set(UserRepository::class, static function (Container $container): UserRepository {
-			return new UserRepository(self::get($container, Connection::class), self::get($container, Config::class)->entity());
+			return new UserRepository(
+				self::get($container, Connection::class),
+				self::get($container, Config::class)->entity(),
+				self::get($container, Orm::class),
+				self::get($container, Translator::class)
+			);
 		});
 		$container->set(UserWriter::class, static fn (Container $container): UserWriter => new LegacyUserWriter(
 			self::get($container, LegacyContext::class),
