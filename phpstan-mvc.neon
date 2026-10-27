@@ -3,6 +3,7 @@ includes:
 parameters:
 	paths!:
 		- htdocs/src
+		- test/phpunit/mvc/Pgsql
 	level: 10
 	scanDirectories:
 		- htdocs/includes/latte

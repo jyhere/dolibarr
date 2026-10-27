@@ -230,12 +230,13 @@ final class Connection
 	}
 
 	/**
-	 * Task 3 maps 'pgsql' to PgsqlDriver; until then PostgreSQL goes through the fallback driver.
+	 * Native drivers for MySQL/MariaDB and PostgreSQL, the interpolating fallback for any other DoliDB.
 	 */
 	private static function driverFor(\DoliDB $db): Driver
 	{
 		return match ($db->type) {
 			'mysqli' => new MysqliDriver($db),
+			'pgsql' => new PgsqlDriver($db),
 			default => new LegacyDriver($db),
 		};
 	}
