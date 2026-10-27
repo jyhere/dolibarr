@@ -21,6 +21,7 @@ final class OrmBadPivotArticle
 	public function __construct(
 		#[Id] public readonly ?int $id,
 		#[Column] public readonly string $title,
+		#[Column] public readonly int $entity = 1,
 		#[BelongsToMany(OrmTag::class, pivotTable: 'mvc_orm_article_tag; DROP TABLE x', localKey: 'fk_article', foreignKey: 'fk_tag')] public readonly array $tags = []
 	) {
 	}

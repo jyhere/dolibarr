@@ -11,7 +11,7 @@ use Dolibarr\Core\Orm\Attribute\Table;
 /**
  * Row of the natural search equivalence tests (llx_mvc_orm_search): no entity column, no extra fields.
  */
-#[Table('mvc_orm_search')]
+#[Table('mvc_orm_search', entityScoped: false)]
 final class OrmSearchRow
 {
 	public function __construct(

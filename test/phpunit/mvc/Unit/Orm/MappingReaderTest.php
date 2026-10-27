@@ -8,6 +8,7 @@ use Dolibarr\Core\Orm\Attribute\Column;
 use Dolibarr\Core\Orm\Attribute\ExtraFields;
 use Dolibarr\Core\Orm\Attribute\Id;
 use Dolibarr\Core\Orm\Attribute\Table;
+use Dolibarr\Core\Orm\EntityMapping;
 use Dolibarr\Core\Orm\MappingReader;
 use Dolibarr\Core\Orm\RelationMapping;
 use Dolibarr\Module\User\Entity\User;
@@ -30,12 +31,12 @@ final class MappingReaderTest extends TestCase
 		self::assertSame('blog_article', $mapping->element);
 		self::assertSame('id', $mapping->idProperty);
 		self::assertSame('rowid', $mapping->id()->name);
-		self::assertTrue($mapping->hasEntityColumn);
+		self::assertTrue($mapping->entityScoped);
 		self::assertSame('extraFields', $mapping->extraFieldsProperty);
 
 		$author = (new MappingReader())->read(Author::class);
 		self::assertSame('author', $author->element);
-		self::assertFalse($author->hasEntityColumn);
+		self::assertFalse($author->entityScoped);
 		self::assertNull($author->extraFieldsProperty);
 	}
 
@@ -119,37 +120,37 @@ final class MappingReaderTest extends TestCase
 	 */
 	public static function secretColumns(): iterable
 	{
-		yield 'pass' => [new #[Table('user')] class (1) {
+		yield 'pass' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('pass')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'pass_crypted' => [new #[Table('user')] class (1) {
+		yield 'pass_crypted' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('pass_crypted')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'pass_temp' => [new #[Table('user')] class (1) {
+		yield 'pass_temp' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('pass_temp')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'api_key' => [new #[Table('user')] class (1) {
+		yield 'api_key' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('api_key')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'openid' => [new #[Table('user')] class (1) {
+		yield 'openid' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('openid')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'ldap_sid' => [new #[Table('user')] class (1) {
+		yield 'ldap_sid' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('ldap_sid')] public ?string $secret = null)
 			{
 			}
 		}];
-		yield 'upper case' => [new #[Table('user')] class (1) {
+		yield 'upper case' => [new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(#[Id] public int $id, #[Column('PASS_CRYPTED')] public ?string $secret = null)
 			{
 			}
@@ -166,7 +167,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testSecretColumnNamedByPropertyIsRefused(): void
 	{
-		$entity = new #[Table('user')] class (1, 'x') {
+		$entity = new #[Table('user', entityScoped: false)] class (1, 'x') {
 			public function __construct(
 				#[Id] public int $id,
 				#[Column] public string $apiKey
@@ -180,7 +181,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testMissingIdIsRefused(): void
 	{
-		$entity = new #[Table('user')] class ('x') {
+		$entity = new #[Table('user', entityScoped: false)] class ('x') {
 			public function __construct(#[Column] public string $login)
 			{
 			}
@@ -206,7 +207,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testTwoPropertiesOnTheSameColumnAreRefused(): void
 	{
-		$entity = new #[Table('user')] class (1, 1, 1) {
+		$entity = new #[Table('user', entityScoped: false)] class (1, 1, 1) {
 			public function __construct(
 				#[Id] public int $id,
 				#[Column('statut')] public int $status,
@@ -221,7 +222,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testUnmappedConstructorParameterWithoutDefaultIsRefused(): void
 	{
-		$entity = new #[Table('user')] class (1, true) {
+		$entity = new #[Table('user', entityScoped: false)] class (1, true) {
 			public function __construct(
 				#[Id] public int $id,
 				public bool $computed
@@ -235,7 +236,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testExtraFieldsMustBeAnArray(): void
 	{
-		$entity = new #[Table('user')] class (1) {
+		$entity = new #[Table('user', entityScoped: false)] class (1) {
 			public function __construct(
 				#[Id] public int $id,
 				#[ExtraFields] public ?string $extraFields = null
@@ -249,7 +250,7 @@ final class MappingReaderTest extends TestCase
 
 	public function testIncompatibleExplicitCastIsRefused(): void
 	{
-		$entity = new #[Table('user')] class (1, 'x') {
+		$entity = new #[Table('user', entityScoped: false)] class (1, 'x') {
 			public function __construct(
 				#[Id] public int $id,
 				#[Column(cast: 'datetime')] public string $createdAt
@@ -259,6 +260,57 @@ final class MappingReaderTest extends TestCase
 
 		$this->expectException(\LogicException::class);
 		(new MappingReader())->read($entity::class);
+	}
+
+	public function testScopedMappingWithoutEntityColumnIsRefused(): void
+	{
+		// A multicompany table whose entity column is forgotten must not silently lose its scope
+		$entity = new #[Table('societe')] class (1, 'x') {
+			public function __construct(
+				#[Id] public int $id,
+				#[Column] public string $nom
+			) {
+			}
+		};
+
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessageMatches('/^class@anonymous.*entity scoped mapping must map the entity column.*entityScoped: false/s');
+		(new MappingReader())->read($entity::class);
+	}
+
+	public function testUnscopedMappingWithEntityColumnIsRefused(): void
+	{
+		$entity = new #[Table('societe', entityScoped: false)] class (1, 1) {
+			public function __construct(
+				#[Id] public int $id,
+				#[Column] public int $entity
+			) {
+			}
+		};
+
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessageMatches('/^class@anonymous.*entityScoped: false\)\] contradicts its mapped entity column/s');
+		(new MappingReader())->read($entity::class);
+	}
+
+	public function testUnscopedMappingIsDeclaredAndSurvivesTheCacheArray(): void
+	{
+		$author = (new MappingReader())->read(Author::class);
+		$article = (new MappingReader())->read(Article::class);
+
+		self::assertFalse($author->entityScoped);
+		self::assertTrue($article->entityScoped);
+		self::assertFalse(EntityMapping::fromArray($author->toArray())->entityScoped);
+		self::assertTrue(EntityMapping::fromArray($article->toArray())->entityScoped);
+	}
+
+	public function testCacheArrayWithoutTheScopeFlagIsRejected(): void
+	{
+		$data = (new MappingReader())->read(Article::class)->toArray();
+		unset($data['entityScoped']);
+
+		$this->expectException(\UnexpectedValueException::class);
+		EntityMapping::fromArray($data);
 	}
 
 	public function testUserEntityShapeIsSupported(): void
@@ -289,7 +341,7 @@ final class MappingReaderTest extends TestCase
 		self::assertSame('user', $mapping->element);
 		self::assertSame('id', $mapping->idProperty);
 		self::assertSame('rowid', $mapping->id()->name);
-		self::assertTrue($mapping->hasEntityColumn);
+		self::assertTrue($mapping->entityScoped);
 		// The list reads its extra fields with the legacy helpers: the entity does not map them
 		self::assertNull($mapping->extraFieldsProperty);
 		$columns = array_map(static fn ($column): string => $column->name, array_values($mapping->columns));

@@ -9,12 +9,10 @@ namespace Dolibarr\Core\Orm;
  *
  * @phpstan-import-type ColumnArray from ColumnMapping
  * @phpstan-import-type RelationArray from RelationMapping
- * @phpstan-type EntityArray array{class: string, table: string, element: string, idProperty: string, columns: list<ColumnArray>, relations: list<RelationArray>, extraFieldsProperty: ?string}
+ * @phpstan-type EntityArray array{class: string, table: string, element: string, entityScoped: bool, idProperty: string, columns: list<ColumnArray>, relations: list<RelationArray>, extraFieldsProperty: ?string}
  */
 final class EntityMapping
 {
-	public readonly bool $hasEntityColumn;
-
 	/** @var array<string, ColumnMapping> Column name => column */
 	private readonly array $byColumnName;
 
@@ -22,14 +20,16 @@ final class EntityMapping
 	 * @param class-string                  $class
 	 * @param string                        $table     Table without prefix
 	 * @param string                        $element   Element given to getEntity()
+	 * @param bool                          $entityScoped Multicompany scope on `entity` (#[Table(entityScoped: ...)])
 	 * @param array<string, ColumnMapping>  $columns   By property
 	 * @param array<string, RelationMapping> $relations By property
-	 * @throws \LogicException When the id property is not a column
+	 * @throws \LogicException When the id property is not a column, or the scope does not match the entity column
 	 */
 	public function __construct(
 		public readonly string $class,
 		public readonly string $table,
 		public readonly string $element,
+		public readonly bool $entityScoped,
 		public readonly string $idProperty,
 		public readonly array $columns,
 		public readonly array $relations,
@@ -43,7 +43,13 @@ final class EntityMapping
 			$byColumnName[$column->name] = $column;
 		}
 		$this->byColumnName = $byColumnName;
-		$this->hasEntityColumn = isset($byColumnName['entity']);
+		// The scope is declared, never deduced: a forgotten entity column must not silently drop the multicompany filter
+		if ($entityScoped && !isset($byColumnName['entity'])) {
+			throw new \LogicException($class.': an entity scoped mapping must map the entity column, or declare #[Table(..., entityScoped: false)]');
+		}
+		if (!$entityScoped && isset($byColumnName['entity'])) {
+			throw new \LogicException($class.': #[Table(..., entityScoped: false)] contradicts its mapped entity column');
+		}
 	}
 
 	/**
@@ -69,6 +75,7 @@ final class EntityMapping
 			'class' => $this->class,
 			'table' => $this->table,
 			'element' => $this->element,
+			'entityScoped' => $this->entityScoped,
 			'idProperty' => $this->idProperty,
 			'columns' => array_values(array_map(static fn (ColumnMapping $column): array => $column->toArray(), $this->columns)),
 			'relations' => array_values(array_map(static fn (RelationMapping $relation): array => $relation->toArray(), $this->relations)),
@@ -107,6 +114,7 @@ final class EntityMapping
 				$class,
 				MappingArrays::string($data, 'table'),
 				MappingArrays::string($data, 'element'),
+				MappingArrays::bool($data, 'entityScoped'),
 				MappingArrays::string($data, 'idProperty'),
 				$columns,
 				$relations,

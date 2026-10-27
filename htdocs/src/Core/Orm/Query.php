@@ -303,8 +303,9 @@ final class Query
 	/**
 	 * Raw SQL of the legacy hooks (printFieldListSelect/From/Where) and extrafields search, the only unbound SQL
 	 * a Query accepts; reserved to them. Inserted as is: $select after the columns, $from after the joins,
-	 * $where as ' AND (…)', or as is when it starts with AND/OR (as the legacy lists do). PgsqlGrammar converts
-	 * them from MySQL first. They go through Connection's parameter parsing: no '?', ':name' or '@name' outside
+	 * $where as ' AND (…)', or as is when it starts with AND/OR (as the legacy lists do). A $where starting with
+	 * OR therefore escapes the entity scope and every other condition ('entity IN (…) AND … OR x'): legacy parity
+	 * with '$sql .= $hookmanager->resPrint', kept on purpose. PgsqlGrammar converts them from MySQL first. They go through Connection's parameter parsing: no '?', ':name' or '@name' outside
 	 * literals.
 	 */
 	public function legacyFragment(string $where = '', string $select = '', string $from = ''): static
@@ -911,10 +912,10 @@ final class Query
 	private function whereClause(Grammar $grammar, QueryParameters $parameters): string
 	{
 		$parts = [];
-		$entityScoped = $this->mapping->hasEntityColumn && $this->entityScoped;
+		$entityScoped = $this->mapping->entityScoped && $this->entityScoped;
 		if ($entityScoped) {
 			if ($this->entityScope === null) {
-				throw new \LogicException($this->mapping->class.' has an entity column: its Query needs an EntityScope, or withoutEntityScope()');
+				throw new \LogicException($this->mapping->class.' is entity scoped: its Query needs an EntityScope, or withoutEntityScope()');
 			}
 			$parts[] = $this->alias.'.entity IN ('.$parameters->named('entities', $this->entityScope->entitiesFor($this->mapping->element)).')';
 		}

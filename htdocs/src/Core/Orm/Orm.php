@@ -222,17 +222,17 @@ final class Orm implements QueryExecutor
 	 * rows, not matched ones, and the shared link has no CLIENT_FOUND_ROWS) by a SELECT of the row with the same
 	 * WHERE; so is an update of the extra fields alone, which has no main UPDATE to check the row.
 	 *
-	 * @template T of object
-	 * @param T    $entity
-	 * @param bool $entityScoped False: UPDATE without the entity scope (Repository::withoutEntityScope())
-	 * @return T The new entity with its id after an INSERT, $entity after an UPDATE
-	 * @throws \LogicException           A partial entity, or a class that is not an entity
 	 * The entity column written (INSERT, or UPDATE when it changed) must be one of the scope's entities, unless
 	 * $entityScoped is false: a row is never moved to, or created in, an entity the scope cannot read.
 	 *
 	 * No statement that writes data runs before the row is known to be in scope: inside an enclosing (service or
 	 * legacy) transaction, DoliDB::rollback() only lowers the nesting level and undoes nothing.
 	 *
+	 * @template T of object
+	 * @param T    $entity
+	 * @param bool $entityScoped False: UPDATE without the entity scope (Repository::withoutEntityScope())
+	 * @return T The new entity with its id after an INSERT, $entity after an UPDATE
+	 * @throws \LogicException           A partial entity, or a class that is not an entity
 	 * @throws \InvalidArgumentException Invalid extra field name or value, entity column outside the scope
 	 * @throws EntityNotFoundException   UPDATE of a row missing or outside the entity scope (nothing written)
 	 * @throws DatabaseException         The transaction is rolled back
@@ -445,7 +445,7 @@ final class Orm implements QueryExecutor
 	 */
 	private function refuseEntityOutsideScope(EntityMapping $mapping, array $columns, bool $entityScoped): void
 	{
-		if (!$entityScoped || !$mapping->hasEntityColumn || !isset($columns['entity'])) {
+		if (!$entityScoped || !$mapping->entityScoped || !isset($columns['entity'])) {
 			return;
 		}
 		$entities = $this->scope->entitiesFor($mapping->element);
@@ -464,7 +464,7 @@ final class Orm implements QueryExecutor
 	{
 		$where = $mapping->id()->name.' = :id';
 		$params = ['id' => $id];
-		if ($entityScoped && $mapping->hasEntityColumn) {
+		if ($entityScoped && $mapping->entityScoped) {
 			$where .= ' AND entity IN (:entities)';
 			$params['entities'] = $this->scope->entitiesFor($mapping->element);
 		}

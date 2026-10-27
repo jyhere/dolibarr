@@ -9,7 +9,7 @@ use Dolibarr\Core\Orm\Attribute\HasMany;
 use Dolibarr\Core\Orm\Attribute\Id;
 use Dolibarr\Core\Orm\Attribute\Table;
 
-#[Table('author')]
+#[Table('author', entityScoped: false)]
 final class Author
 {
 	/**

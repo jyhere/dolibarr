@@ -137,7 +137,7 @@ final class HydratorTest extends TestCase
 
 	public function testStringBackedAndNullableEnum(): void
 	{
-		$entity = new #[Table('thing')] class (1, BinderStatus::Enabled) {
+		$entity = new #[Table('thing', entityScoped: false)] class (1, BinderStatus::Enabled) {
 			public function __construct(
 				#[Id] public int $id,
 				#[Column] public BinderStatus $state,

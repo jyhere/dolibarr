@@ -24,7 +24,8 @@ final class MappingReader
 
 	/**
 	 * @param class-string $class
-	 * @throws \LogicException When the class is not a valid entity mapping
+	 * @throws \LogicException When the class is not a valid entity mapping (an entity scoped mapping without
+	 *                         entity column, or entityScoped: false with one, included)
 	 */
 	public function read(string $class): EntityMapping
 	{
@@ -113,7 +114,7 @@ final class MappingReader
 			}
 		}
 
-		return new EntityMapping($class, $table->name, $table->element ?? $table->name, $idProperty, $columns, $relations, $extraFieldsProperty);
+		return new EntityMapping($class, $table->name, $table->element ?? $table->name, $table->entityScoped, $idProperty, $columns, $relations, $extraFieldsProperty);
 	}
 
 	private function relation(\ReflectionProperty $property): ?RelationMapping

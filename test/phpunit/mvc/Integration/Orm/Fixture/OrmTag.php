@@ -8,7 +8,7 @@ use Dolibarr\Core\Orm\Attribute\Column;
 use Dolibarr\Core\Orm\Attribute\Id;
 use Dolibarr\Core\Orm\Attribute\Table;
 
-#[Table('mvc_orm_tag')]
+#[Table('mvc_orm_tag', entityScoped: false)]
 final class OrmTag
 {
 	public function __construct(

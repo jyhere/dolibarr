@@ -12,7 +12,7 @@ namespace Dolibarr\Core\Orm;
 final class MappingCache
 {
 	/** Version of the cached array shape, part of the stamps. */
-	public const FORMAT = 1;
+	public const FORMAT = 2;
 
 	/** @var array<string, array{stamp: string, mapping: array<mixed>}>|null */
 	private ?array $entries = null;
