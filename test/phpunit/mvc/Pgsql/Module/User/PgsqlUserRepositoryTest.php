@@ -122,6 +122,39 @@ final class PgsqlUserRepositoryTest extends TestCase
 		self::assertSame(1, $legacy->num_rows($result));
 	}
 
+	/**
+	 * The computed sorts order by expressions PostgreSQL accepts with the DISTINCT of the list ($sql runs). The grand
+	 * total of list_print_total.tpl.php ('SELECT sum(…)' with the ORDER BY kept) fails on PostgreSQL for every sort,
+	 * u.login included, as on list.php: an ORDER BY column outside an aggregate. Only that error, no unknown or
+	 * ambiguous column.
+	 */
+	public function testComputedSortsAndTheGrandTotalSql(): void
+	{
+		$this->insertUser('mvc_pg_alpha', 1, 'Alpha');
+		$this->connection->execute("UPDATE @user SET import_key = 'imp', salary = 10 WHERE login = 'mvc_pg_alpha'");
+		$legacy = PgsqlDatabase::doliDb();
+
+		foreach (['u.login', 'u.import_key', 'u.api_key', 'date_modification'] as $sortField) {
+			$page = $this->search(['search_login' => 'mvc_pg_', 'sortfield' => $sortField]);
+			self::assertSame(['mvc_pg_alpha'], self::logins($page), $sortField);
+			$result = $legacy->query($page->sql);
+			self::assertNotFalse($result, $sortField.': '.(string) $legacy->lasterror());
+
+			$total = (string) preg_replace('/GROUP BY .*$/', '', 'SELECT sum(u.salary) as total'.substr($page->sql, strlen($page->sqlFields)));
+			if ($sortField === 'date_modification') {
+				continue; // ORDER BY the alias, as list.php: unknown once the select list is replaced, on both engines
+			}
+			// A failed statement aborts the PostgreSQL transaction of the test: within a savepoint
+			$legacy->query('SAVEPOINT mvc_grand_total');
+			$failed = $legacy->query($total) === false;
+			$error = (string) $legacy->lasterror();
+			$legacy->query('ROLLBACK TO SAVEPOINT mvc_grand_total');
+			self::assertTrue($failed, $sortField);
+			self::assertStringContainsString('GROUP BY', $error, $sortField);
+			self::assertStringNotContainsString('ambiguous', $error, $sortField);
+		}
+	}
+
 	private function repository(): UserRepository
 	{
 		return new UserRepository($this->connection, 1);

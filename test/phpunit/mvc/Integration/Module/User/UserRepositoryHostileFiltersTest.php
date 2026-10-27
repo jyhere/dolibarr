@@ -108,14 +108,35 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 		self::assertSame(1, $this->search(['search_login' => 'mvc_hostile_', 'search_employee' => '1'])->total);
 	}
 
-	public function testHostileNumericAndListFiltersRunWithoutError(): void
+	/**
+	 * @return array<string, array{string, string, int}>
+	 */
+	public static function hostileNumericFilters(): array
 	{
-		$this->insertUser('mvc_hostile_n', 1);
+		return [
+			// mode 1 (l.452): the criteria '1)', 'OR', '(1' are ANDed, 'OR' is not a number: 1 = 2
+			'rowid' => ['search_rowid', '1) OR (1', 0],
+			// l.479 IN (sanitized): no integer in the list, IN (NULL) as before; a cast to 1 would find the user
+			'country' => ['search_country', '1) OR (1', 0],
+			// GETPOST intcomma empties a value with other characters (functions.lib.php l.1434): no category filter
+			'categ' => ['search_categ', '1) OR (1', 1],
+			// l.446 natural_search() of the words on fk_warehouse (none matches 1), then fk_warehouse = (int) 1
+			'warehouse' => ['search_warehouse', '1) OR (1', 0],
+			// The words "'", 'OR' and "''='" ANDed on the search_all columns: none holds them all
+			'search_all' => ['search_all', "' OR ''='", 0],
+		];
+	}
 
-		foreach (['search_rowid' => '1) OR (1', 'search_country' => '1) OR (1', 'search_categ' => '1) OR (1', 'search_warehouse' => '1) OR (1', 'search_all' => "' OR ''='"] as $name => $value) {
-			$page = $this->search(['search_login' => 'mvc_hostile_', $name => $value]);
-			self::assertLessThanOrEqual(1, $page->total, $name);
-		}
+	#[DataProvider('hostileNumericFilters')]
+	public function testHostileNumericAndListFiltersGiveTheLegacyResult(string $name, string $value, int $expected): void
+	{
+		$id = $this->insertUser('mvc_hostile_n', 1);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET fk_country = 1, fk_warehouse = 1 WHERE rowid = '.$id);
+
+		$page = $this->search(['search_login' => 'mvc_hostile_', $name => $value]);
+
+		self::assertSame($expected, $page->total);
+		self::assertCount($expected, $page->items);
 	}
 
 	public function testApiKeyIsAFilterNeverAColumn(): void
@@ -149,6 +170,71 @@ final class UserRepositoryHostileFiltersTest extends TestCase
 			self::assertStringNotContainsString('UNION', $sql);
 			self::assertDoesNotMatchRegularExpression('/\bpass_crypted\b/', $sql);
 		}
+	}
+
+	/**
+	 * list_print_total.tpl.php l.158-163 replaces $sqlfields by its sums and keeps the ORDER BY of $sql: a sort on a
+	 * computed column must order by its expression, not by an alias the sums drop (import_key would also be ambiguous
+	 * with ef.import_key). date_modification is ordered by its alias as list.php l.553 does, so the grand total of
+	 * that sort fails on MariaDB as it does on list.php.
+	 *
+	 * @return array<string, array{string, bool}>
+	 */
+	public static function grandTotalSorts(): array
+	{
+		return [
+			'login' => ['u.login', true],
+			'import key' => ['u.import_key', true],
+			'api key' => ['u.api_key', true],
+			'salary' => ['u.salary', true],
+			'date modification (legacy alias)' => ['date_modification', false],
+		];
+	}
+
+	#[DataProvider('grandTotalSorts')]
+	public function testGrandTotalSqlOfTheListRuns(string $sortField, bool $runs): void
+	{
+		$id = $this->insertUser('mvc_hostile_paid', 1);
+		$this->connection->legacyExecute('UPDATE '.MAIN_DB_PREFIX.'user SET salary = 1500, import_key = \'imp\' WHERE rowid = '.$id);
+
+		$page = $this->search(['search_login' => 'mvc_hostile_', 'sortfield' => $sortField]);
+		self::assertStringStartsWith($page->sqlFields, $page->sql);
+		$sql = (string) preg_replace('/GROUP BY .*$/', '', 'SELECT sum(u.salary) as total'.substr($page->sql, strlen($page->sqlFields)));
+		$result = $this->ctx->db->query($sql);
+
+		if (!$runs) {
+			self::assertFalse($result);
+			self::assertStringContainsString('date_modification', (string) $this->ctx->db->lasterror());
+
+			return;
+		}
+		self::assertNotFalse($result, (string) $this->ctx->db->lasterror());
+		$row = $this->ctx->db->fetch_array($result);
+		self::assertIsArray($row);
+		self::assertEqualsWithDelta(1500.0, (float) $row['total'], 0.001);
+		// The secret stays out of the results: the ApiKey sort orders by the flag expression
+		self::assertDoesNotMatchRegularExpression('/ORDER BY u\.api_key\b/', $page->sql);
+	}
+
+	public function testWritesAreRefused(): void
+	{
+		$repository = new UserRepository($this->connection, (int) $this->ctx->conf->entity);
+		$admin = $repository->find(1);
+		self::assertNotNull($admin);
+		$attempts = [
+			'save' => static fn () => $repository->save($admin),
+			'modify' => static fn () => $repository->modify($admin, ['lastname' => 'Changed']),
+			'delete' => static fn () => $repository->delete($admin),
+		];
+		foreach ($attempts as $method => $attempt) {
+			try {
+				$attempt();
+				self::fail($method.'() accepted');
+			} catch (\LogicException $e) {
+				self::assertStringContainsString('read-only', $e->getMessage(), $method);
+			}
+		}
+		self::assertSame($admin->lastname, $repository->find(1)?->lastname);
 	}
 
 	public function testDateModificationSortUsesTheExtraFieldsDate(): void

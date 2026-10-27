@@ -562,6 +562,25 @@ abstract class QueryTestCase extends TestCase
 		}
 	}
 
+	public function testOrderByTheExpressionOfAComputedColumn(): void
+	{
+		$compiled = $this->authors()->select('name')->selectRaw('UPPER(t.name)', 'shout')->orderByComputed('shout', 'desc')->compile();
+
+		$this->assertCompiled('SELECT t.name, (UPPER(t.name)) AS shout FROM @author AS t ORDER BY UPPER(t.name) DESC', [], $compiled);
+		$attempts = [
+			'unknown alias' => fn (): Query => $this->authors()->selectRaw('UPPER(t.name)', 'shout')->orderByComputed('name'),
+			'parameters' => fn (): Query => $this->authors()->selectRaw('t.name = :given', 'same', ['given' => 'x'])->orderByComputed('same'),
+		];
+		foreach ($attempts as $label => $attempt) {
+			try {
+				$attempt();
+				self::fail('Accepted: '.$label);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
+		}
+	}
+
 	public function testCount(): void
 	{
 		$compiled = $this->authors()->where('name', 'a')->orderBy('name')->limit(10)->offset(20)->compileCount();

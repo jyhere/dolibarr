@@ -371,6 +371,33 @@ final class Query
 	}
 
 	/**
+	 * ORDER BY the expression of a selectRaw() column of this query, not its alias: an SQL that keeps its ORDER BY
+	 * when its select list is replaced (list_print_total.tpl.php: 'SELECT sum(…)' instead of the columns) stays
+	 * valid. The expression is the code's, as selectRaw() took it; one with parameters is refused (an ORDER BY
+	 * binds none).
+	 *
+	 * @param string $direction ASC or DESC (any case), anything else is ASC
+	 * @throws \InvalidArgumentException No selectRaw() column of that alias, or one with parameters
+	 */
+	public function orderByComputed(string $alias, string $direction = 'ASC'): static
+	{
+		$this->refuseInGroup('orderByComputed');
+		foreach ($this->columns as $selected) {
+			if (is_array($selected) && $selected['alias'] === $alias) {
+				if ($selected['params'] !== []) {
+					throw new \InvalidArgumentException('orderByComputed("'.$alias.'"): the expression has parameters');
+				}
+				$direction = strtoupper(trim($direction));
+				$this->orders[] = trim($selected['expression']).' '.($direction === 'DESC' ? 'DESC' : 'ASC');
+
+				return $this;
+			}
+		}
+
+		throw new \InvalidArgumentException('orderByComputed(): no computed column "'.$alias.'"');
+	}
+
+	/**
 	 * Whether a column from the request may be sorted on: a mapped column of the main alias (or of a join on the
 	 * entity's own table, 'u2.login'), or a declared column of a joined alias (join() $columns). Undeclared joined
 	 * columns, secret columns, expressions and anything else are refused.

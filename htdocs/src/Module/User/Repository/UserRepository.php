@@ -69,11 +69,16 @@ final class UserRepository extends Repository implements EntityRepository
 	];
 
 	/**
-	 * The sort fields of UserSearch::SORTABLE that are not a column of the mapping or of a declared join: ordered by
-	 * the alias of a computed column. u.api_key is ordered by the has_api_key flag: the secret never reaches the
-	 * ORDER BY (the keys without value first in ASC, as the legacy sort on u.api_key).
+	 * The sort fields of UserSearch::SORTABLE that are not a column of the mapping or of a declared join, and the
+	 * computed column they order by. date_modification by its alias, as list.php; the others by the expression
+	 * (Query::orderByComputed()), so that $sql keeps a valid ORDER BY once list_print_total.tpl.php has replaced its
+	 * select list: u.import_key as list.php, u.api_key by the has_api_key flag expression, the secret value never
+	 * reaching the ORDER BY (the keys without value first in ASC, as the legacy sort on u.api_key).
 	 */
 	private const COMPUTED_SORTS = ['date_modification' => 'date_modification', 'u.import_key' => 'import_key', 'u.api_key' => 'has_api_key'];
+
+	/** The computed sorts ordered by their alias (list.php l.553 orders by the date_modification alias). */
+	private const SORTS_BY_ALIAS = ['date_modification'];
 
 	/** An extra field column (ef.<name>) declared on the join, so that the list may be sorted on it. */
 	private const EXTRA_FIELD_COLUMN = '/^[a-z_][a-z0-9_]*$/D';
@@ -197,6 +202,32 @@ final class UserRepository extends Repository implements EntityRepository
 		}
 
 		return new UserPage($items, $total, $search->page, $search->limit, $hasMore, $legacySql, $this->selectPart($legacySql));
+	}
+
+	/**
+	 * Read-only: the writes of a user go through UserWriter (LegacyUserWriter, the legacy \User and its triggers).
+	 *
+	 * @throws \LogicException Always
+	 */
+	public function save(object $entity): object
+	{
+		throw new \LogicException('UserRepository is read-only: write a user through UserWriter');
+	}
+
+	/**
+	 * @throws \LogicException Always (read-only, see save())
+	 */
+	public function modify(object $entity, array $changes): object
+	{
+		throw new \LogicException('UserRepository is read-only: write a user through UserWriter');
+	}
+
+	/**
+	 * @throws \LogicException Always (read-only, see save())
+	 */
+	public function delete(object $entity): void
+	{
+		throw new \LogicException('UserRepository is read-only: delete a user through UserWriter');
 	}
 
 	/**
@@ -426,7 +457,12 @@ final class UserRepository extends Repository implements EntityRepository
 			}
 		}
 		foreach ($fields as $field) {
-			$query->orderBy(self::COMPUTED_SORTS[$field] ?? $field, $search->sortOrder);
+			$computed = self::COMPUTED_SORTS[$field] ?? null;
+			if ($computed === null || in_array($computed, self::SORTS_BY_ALIAS, true)) {
+				$query->orderBy($computed ?? $field, $search->sortOrder);
+			} else {
+				$query->orderByComputed($computed, $search->sortOrder);
+			}
 		}
 	}
 
