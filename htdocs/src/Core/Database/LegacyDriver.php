@@ -93,13 +93,20 @@ final class LegacyDriver implements Driver
 		return $sql;
 	}
 
+	/**
+	 * A negative number is parenthesised: 'amount-?' with -5 must not become 'amount--5', a comment on
+	 * PostgreSQL and SQLite.
+	 */
 	private function literal(int|float|string|null $value): string
 	{
-		return match (true) {
-			$value === null => 'NULL',
-			is_int($value) => (string) $value,
-			is_float($value) => var_export($value, true),
-			default => "'".$this->db->escape($value)."'",
-		};
+		if ($value === null) {
+			return 'NULL';
+		}
+		if (is_string($value)) {
+			return "'".$this->db->escape($value)."'";
+		}
+		$number = is_int($value) ? (string) $value : var_export($value, true);
+
+		return $value < 0 ? '('.$number.')' : $number;
 	}
 }

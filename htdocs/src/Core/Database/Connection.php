@@ -79,10 +79,16 @@ final class Connection
 
 	/**
 	 * @param string $table Table name without prefix ('user', or '@user')
+	 * @throws \InvalidArgumentException When the name already holds the prefix ('llx_user')
 	 */
 	public function lastInsertId(string $table, string $column = 'rowid'): int
 	{
-		return $this->driver->lastInsertId($this->prefix().ltrim($table, '@'), $column);
+		$name = ltrim($table, '@');
+		if ($this->prefix() !== '' && str_starts_with($name, $this->prefix())) {
+			throw new \InvalidArgumentException('lastInsertId() takes the table without prefix, not "'.$table.'"');
+		}
+
+		return $this->driver->lastInsertId($this->prefix().$name, $column);
 	}
 
 	/**

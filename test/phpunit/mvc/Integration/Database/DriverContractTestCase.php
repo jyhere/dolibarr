@@ -99,6 +99,31 @@ abstract class DriverContractTestCase extends TestCase
 		self::assertSame('second', $this->connection->fetchValue('SELECT label FROM @mvc_driver_test WHERE rowid = :id', ['id' => $second]));
 	}
 
+	public function testLastInsertIdRefusesAPrefixedTable(): void
+	{
+		$this->insert('first', null, null, null);
+
+		try {
+			$this->connection->lastInsertId('llx_'.DriverTestTable::NAME);
+			self::fail('A prefixed table name must throw');
+		} catch (\InvalidArgumentException $e) {
+			self::assertStringContainsString('llx_mvc_driver_test', $e->getMessage());
+		}
+	}
+
+	public function testNegativeNumberAfterMinusIsNotAComment(): void
+	{
+		self::assertSame(15, (int) $this->connection->fetchValue('SELECT 10-:number', ['number' => -5]));
+		self::assertSame(12.5, (float) $this->connection->fetchValue('SELECT 10-:number', ['number' => -2.5]));
+
+		$target = $this->insert('target', 10.0, null, null);
+		$other = $this->insert('other', 10.0, null, null);
+
+		self::assertSame(1, $this->connection->execute('UPDATE @mvc_driver_test SET amount = amount-:delta WHERE rowid = :id', ['delta' => -5, 'id' => $target]));
+		self::assertSame(15.0, (float) $this->connection->fetchValue('SELECT amount FROM @mvc_driver_test WHERE rowid = :id', ['id' => $target]));
+		self::assertSame(10.0, (float) $this->connection->fetchValue('SELECT amount FROM @mvc_driver_test WHERE rowid = :id', ['id' => $other]));
+	}
+
 	public function testErrorHidesBoundValues(): void
 	{
 		$secret = 'secret-'.bin2hex(random_bytes(6));
