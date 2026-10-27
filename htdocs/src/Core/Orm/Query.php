@@ -413,12 +413,15 @@ final class Query
 	/**
 	 * Relations to load with the entities (run by the executor).
 	 *
-	 * @throws \InvalidArgumentException When the entity has no such relation
+	 * @throws \InvalidArgumentException When the entity has no such relation, or the relation is nested ('author.tags')
 	 */
 	public function with(string ...$relations): static
 	{
 		$this->refuseInGroup('with');
 		foreach ($relations as $relation) {
+			if (str_contains($relation, '.')) {
+				throw new \InvalidArgumentException($this->mapping->class.': nested relation "'.$relation.'" is not supported');
+			}
 			if (!isset($this->mapping->relations[$relation])) {
 				throw new \InvalidArgumentException($this->mapping->class.' has no relation "'.$relation.'"');
 			}

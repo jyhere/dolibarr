@@ -522,15 +522,6 @@ abstract class RepositoryTestCase extends TestCase
 		self::assertSame(1, (int) $this->connection->fetchValue('SELECT status FROM @mvc_orm_article WHERE rowid = :id', ['id' => $id]));
 	}
 
-	public function testRelationsAreNotLoadedYet(): void
-	{
-		$this->insertArticle('Related');
-
-		$this->expectException(\LogicException::class);
-		$this->expectExceptionMessage('relations are loaded in Task 7');
-		$this->articles->query()->with('author')->get();
-	}
-
 	public function testOtherEntitiesAndQueriesRefused(): void
 	{
 		$attempts = [

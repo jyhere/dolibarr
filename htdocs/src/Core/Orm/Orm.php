@@ -28,6 +28,8 @@ use Dolibarr\Core\Database\DatabaseException;
  * Entities are readonly: modify() builds a modified copy that keeps the snapshot of the original, so save()
  * updates only what changed. An entity read with a select() lacking mapped columns is partial: save() refuses it
  * (LogicException) rather than writing its absent columns as their constructor defaults.
+ *
+ * Relations asked by Query::with() are loaded after the entities are read (RelationLoader).
  */
 final class Orm implements QueryExecutor
 {
@@ -46,6 +48,8 @@ final class Orm implements QueryExecutor
 	private const EXTRA_FIELD_NAME = '/^[a-z_][a-z0-9_]*$/D';
 
 	private ?Grammar $grammar = null;
+
+	private ?RelationLoader $relationLoader = null;
 
 	/** @var array<string, list<string>> Extra fields table => its extra field columns (cached once found) */
 	private array $extraFieldColumns = [];
@@ -130,16 +134,18 @@ final class Orm implements QueryExecutor
 	 * @template T of object
 	 * @param Query<T> $query
 	 * @return list<T>
-	 * @throws \LogicException When the query asks for relations (with())
 	 */
 	public function get(Query $query): array
 	{
-		$this->refuseRelations($query);
 		$entities = [];
 		foreach ($this->rows($query) as $row) {
 			/** @var T $entity */
 			$entity = $this->entity($query->mapping(), $row);
 			$entities[] = $entity;
+		}
+		if ($query->relations() !== [] && $entities !== []) {
+			/** @var list<T> $entities */
+			$entities = $this->relations()->load($query->mapping(), $entities, $query->relations());
 		}
 
 		return $entities;
@@ -185,7 +191,6 @@ final class Orm implements QueryExecutor
 		if ($page < 1 || $perPage < 1) {
 			throw new \InvalidArgumentException('Invalid page '.$page.' of '.$perPage.' items');
 		}
-		$this->refuseRelations($query);
 		$total = $this->count($query);
 		$items = $this->get((clone $query)->limit($perPage)->offset(($page - 1) * $perPage));
 
@@ -653,15 +658,9 @@ final class Orm implements QueryExecutor
 		return $values;
 	}
 
-	/**
-	 * @param Query<object> $query
-	 * @throws \LogicException
-	 */
-	private function refuseRelations(Query $query): void
+	private function relations(): RelationLoader
 	{
-		if ($query->relations() !== []) {
-			throw new \LogicException('with('.implode(', ', $query->relations()).'): relations are loaded in Task 7');
-		}
+		return $this->relationLoader ??= new RelationLoader($this);
 	}
 
 	/**
