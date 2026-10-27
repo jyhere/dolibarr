@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
+	bootstrap="bootstrap-integration.php"
+	cacheDirectory="/tmp/phpunit-mvc-pgsql.cache"
+	colors="true"
+	failOnWarning="true"
+	failOnDeprecation="true">
+	<testsuites>
+		<testsuite name="pgsql">
+			<directory>Pgsql</directory>
+		</testsuite>
+	</testsuites>
+</phpunit>

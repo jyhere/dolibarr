@@ -4,6 +4,7 @@ Run from the parent directory (where `docker-compose.yml` lives):
 
 - Unit suite: `docker compose exec -T php-fpm phpunit -c dolibarr/test/phpunit/mvc/phpunit-unit.xml`
 - Integration suite: `docker compose exec -T php-fpm phpunit -c dolibarr/test/phpunit/mvc/phpunit-integration.xml`
+- PostgreSQL suite (DB driver and ORM tests, second connection reserved to the tests; the website stays on MariaDB): first `docker compose up -d pgsql && bash docker/install-pgsql.sh` (separate install, data root `documents-pgsql`, conf `docker/php-fpm/conf.pgsql.php`, credentials `PGSQL_*` of `.env`), then `docker compose exec -T php-fpm phpunit -c dolibarr/test/phpunit/mvc/phpunit-pgsql.xml`
 - HTTP smoke test: `bash dolibarr/test/mvc/smoke.sh http://127.0.0.1:8480 admin admin` (only PASS lines expected, stops at the first FAIL)
 - Static analysis: `docker compose exec -T php-fpm phpstan analyse -c dolibarr/phpstan-mvc.neon --memory-limit=1G` (needs 1G of memory)
 
