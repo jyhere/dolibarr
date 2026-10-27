@@ -6,8 +6,8 @@ namespace Dolibarr\Core\Orm;
 
 /**
  * PostgreSQL. LIKE stays case sensitive, as convertSQLFromMysql() leaves it, unless Query::caseInsensitive()
- * asks for ILIKE. Legacy fragments (MySQL syntax) go through the converter of the DoliDB first; the SQL the
- * Query generates is already PostgreSQL and is not converted.
+ * asks for ILIKE; the 'ilike' operator is always ILIKE. Legacy fragments (MySQL syntax) go through the converter
+ * of the DoliDB first; the SQL the Query generates is already PostgreSQL and is not converted.
  */
 final class PgsqlGrammar implements Grammar
 {
@@ -34,7 +34,7 @@ final class PgsqlGrammar implements Grammar
 
 	public function operator(string $operator, bool $caseInsensitive): string
 	{
-		if ($caseInsensitive && str_ends_with($operator, 'like')) {
+		if ($caseInsensitive && str_ends_with($operator, 'like') && !str_ends_with($operator, 'ilike')) {
 			return strtoupper(substr($operator, 0, -4)).'ILIKE';
 		}
 

@@ -24,7 +24,12 @@ use Dolibarr\Core\Orm\Cast\CastRegistry;
  */
 final class Query
 {
-	public const OPERATORS = ['=', '!=', '<>', '<', '<=', '>', '>=', 'like', 'not like'];
+	/**
+	 * 'ilike'/'not ilike': LIKE on MySQL (its collations are case insensitive), ILIKE on PostgreSQL, for one
+	 * condition (caseInsensitive() is for the whole query): what DoliDBPgsql::convertSQLFromMysql() makes of the
+	 * " LIKE '" of the legacy SQL (NaturalSearch).
+	 */
+	public const OPERATORS = ['=', '!=', '<>', '<', '<=', '>', '>=', 'like', 'not like', 'ilike', 'not ilike'];
 
 	private const ALIAS = '/^[a-z_][a-z0-9_]*$/D';
 	private const TABLE = '/^[a-z0-9_]+$/D';
@@ -268,6 +273,31 @@ final class Query
 		$this->conditions[] = Condition::raw('AND', $sql, $params, $this->grammar->dialect());
 
 		return $this;
+	}
+
+	/**
+	 * whereRaw() joined with OR.
+	 *
+	 * @param array<string, mixed> $params
+	 * @throws \InvalidArgumentException A placeholder without value, or a value without placeholder
+	 */
+	public function orWhereRaw(string $sql, array $params = []): static
+	{
+		$this->conditions[] = Condition::raw('OR', $sql, $params, $this->grammar->dialect());
+
+		return $this;
+	}
+
+	/**
+	 * The SQL of a column as where() resolves it ('viewCount' → 't.view_count'), through the same whitelist
+	 * (mapping, declared joins, secret columns refused): for the code that writes a whereRaw() on a column it
+	 * was given (NaturalSearch).
+	 *
+	 * @throws \InvalidArgumentException Unknown, invalid or secret column
+	 */
+	public function column(string $column): string
+	{
+		return $this->resolve($column)[0];
 	}
 
 	/**

@@ -19,6 +19,10 @@ final class MysqlGrammar implements Grammar
 
 	public function operator(string $operator, bool $caseInsensitive): string
 	{
+		if (str_ends_with($operator, 'ilike')) {
+			return strtoupper(substr($operator, 0, -5)).'LIKE';
+		}
+
 		return strtoupper($operator);
 	}
 

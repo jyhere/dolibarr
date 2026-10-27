@@ -29,6 +29,13 @@ final class QueryMysqlTest extends QueryTestCase
 		$this->assertCompiled('SELECT t.rowid, t.name FROM @author AS t WHERE t.name LIKE :p1 AND t.name NOT LIKE :p2', ['p1' => 'a%', 'p2' => 'b%'], $compiled);
 	}
 
+	public function testIlikeIsLikeOnMysql(): void
+	{
+		$compiled = $this->authors()->where('name', 'ilike', 'a%')->orWhere('name', 'NOT ILIKE', 'b%')->compile();
+
+		$this->assertCompiled('SELECT t.rowid, t.name FROM @author AS t WHERE t.name LIKE :p1 OR t.name NOT LIKE :p2', ['p1' => 'a%', 'p2' => 'b%'], $compiled);
+	}
+
 	public function testLegacyFragmentNotConvertedOnMysql(): void
 	{
 		$compiled = $this->authors()->legacyFragment("AND GROUP_CONCAT(t.name SEPARATOR ',') <> ''")->compile();

@@ -199,6 +199,36 @@ abstract class QueryTestCase extends TestCase
 		}
 	}
 
+	public function testOrWhereRawAndColumn(): void
+	{
+		$compiled = $this->authors()
+			->where('name', 'x')
+			->orWhereRaw('t.rowid > :min', ['min' => 2.5])
+			->where(static function (Query $group): void {
+				$group->whereRaw('1 = 0')->orWhereRaw('t.name IN (:names)', ['names' => ['a', 'b']]);
+			})
+			->compile();
+
+		$this->assertCompiled(
+			'SELECT t.rowid, t.name FROM @author AS t WHERE t.name = :p1 OR (t.rowid > :p2) AND ((1 = 0) OR (t.name IN (:p3)))',
+			['p1' => 'x', 'p2' => 2.5, 'p3' => ['a', 'b']],
+			$compiled
+		);
+
+		$query = $this->articles()->join('author', 'a', 'a.rowid', 't.fk_author', Author::class);
+		self::assertSame('t.view_count', $query->column('viewCount'));
+		self::assertSame('t.rowid', $query->column('id'));
+		self::assertSame('a.name', $query->column('a.name'));
+		foreach (['nope', 't.pass_crypted', '(SELECT 1)', 'zz.name', "title\n"] as $column) {
+			try {
+				$query->column($column);
+				self::fail('Column accepted: '.$column);
+			} catch (\InvalidArgumentException) {
+				self::addToAssertionCount(1);
+			}
+		}
+	}
+
 	public function testJoinsAndAliasedColumns(): void
 	{
 		$compiled = $this->articles()->withoutEntityScope()

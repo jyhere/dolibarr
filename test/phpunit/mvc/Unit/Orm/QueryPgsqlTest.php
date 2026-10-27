@@ -39,6 +39,17 @@ final class QueryPgsqlTest extends QueryTestCase
 		$this->assertCompiled('SELECT t.rowid, t.name FROM @author AS t WHERE t.name ILIKE :p1 AND (t.name NOT ILIKE :p2)', ['p1' => 'a%', 'p2' => 'b%'], $insensitive);
 	}
 
+	public function testIlikeIsIlikeOnPgsql(): void
+	{
+		$compiled = $this->authors()->where('name', 'ilike', 'a%')->orWhere('name', 'NOT ILIKE', 'b%')->where('name', 'like', 'c%')->compile();
+
+		$this->assertCompiled(
+			'SELECT t.rowid, t.name FROM @author AS t WHERE t.name ILIKE :p1 OR t.name NOT ILIKE :p2 AND t.name LIKE :p3',
+			['p1' => 'a%', 'p2' => 'b%', 'p3' => 'c%'],
+			$compiled
+		);
+	}
+
 	public function testLegacyFragmentConvertedOnPgsql(): void
 	{
 		$grammar = new PgsqlGrammar(function (string $sql): string {
