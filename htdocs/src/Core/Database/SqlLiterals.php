@@ -12,10 +12,12 @@ namespace Dolibarr\Core\Database;
  * pgsql dialect (standard_conforming_strings=on): '…' is a string, "…" an identifier, only a doubled quote
  * escapes, a backslash is an ordinary character. E'…' and $$…$$ literals are not supported in MVC SQL.
  *
- * SQL comments (double dash, slash-star blocks, '#') are not tokenised: MVC SQL carries no comment. A quote
- * inside one is read as the start of a literal, which swallows the placeholders up to the next quote, and a
- * ':name' inside one is read as a parameter: the binding then throws (unused or missing parameter) or the
- * engine refuses the statement (placeholder count). It fails safe: no value is ever spliced into the SQL.
+ * SQL comments (double dash, slash-star blocks, '#') are not tokenised: MVC SQL must not contain comments.
+ * A quote inside one opens a literal up to the next quote of the statement: the placeholders in between are not
+ * bound (the binding throws on the unused parameter, or the engine refuses the statement); with no later quote,
+ * the quote is ignored and the statement runs unchanged, comment included. A ':name' inside one is read as a
+ * parameter: the native drivers (MysqliDriver, PgsqlDriver) never splice a value into the SQL, so the engine
+ * refuses the statement (placeholder count), but LegacyDriver interpolates its escaped value inside the comment.
  */
 final class SqlLiterals
 {
