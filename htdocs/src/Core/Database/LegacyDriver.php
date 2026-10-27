@@ -64,9 +64,11 @@ final class LegacyDriver implements Driver
 	}
 
 	/**
+	 * The SQL with each '?' replaced by its escaped value (also Query::toLegacySql(), for the legacy code).
+	 *
 	 * @throws \InvalidArgumentException When placeholders and values do not match
 	 */
-	private function interpolate(BoundStatement $statement): string
+	public function interpolate(BoundStatement $statement): string
 	{
 		$values = $statement->values;
 		$position = 0;
