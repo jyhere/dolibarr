@@ -65,6 +65,33 @@ final class PgsqlRightsAndNotesTest extends TestCase
 		self::assertGreaterThanOrEqual(count($catalog['user']), count($advanced['user']));
 	}
 
+	public function testCatalogFiltersAreCaseInsensitiveLikeTheLegacyIlike(): void
+	{
+		// perms.php writes LIKE, which DoliDBPgsql rewrites to ILIKE: an upper-case 'Tou…' label and an
+		// '…_ADVANCE' perms are filtered on PostgreSQL exactly as on MySQL (a plain LIKE would keep them)
+		$fixtures = [
+			999901 => ['Tous les droits mvc', 'mvc_tou'],
+			999902 => ['Advanced mvc right', 'mvc_ADVANCE'],
+			999903 => ['Visible mvc right', 'mvc_visible'],
+		];
+		foreach ($fixtures as $id => [$label, $perms]) {
+			$this->connection->execute(
+				"INSERT INTO @rights_def (id, entity, libelle, module, module_position, family, family_position, perms, subperms, type, bydefault) VALUES (:id, 1, :label, 'user', 5, 'hr', 0, :perms, NULL, 'r', 0)",
+				['id' => $id, 'label' => $label, 'perms' => $perms]
+			);
+		}
+
+		$standardIds = $this->userRightIds($this->repository()->catalogFor(1, 1, false)->byModule);
+		$advancedIds = $this->userRightIds($this->repository()->catalogFor(1, 1, true)->byModule);
+
+		self::assertContains(999903, $standardIds);
+		self::assertNotContains(999901, $standardIds, "NOT ILIKE 'tou%' excludes 'Tous…'");
+		self::assertNotContains(999902, $standardIds, "NOT ILIKE '%_advance' excludes 'mvc_ADVANCE'");
+		self::assertContains(999903, $advancedIds);
+		self::assertContains(999902, $advancedIds);
+		self::assertNotContains(999901, $advancedIds);
+	}
+
 	public function testDescriptorsOfAnotherEntityReadItsConstants(): void
 	{
 		// Not the current entity: the MAIN_MODULE_* constants come from llx_const (entity IN (0, :entity))
@@ -124,6 +151,15 @@ final class PgsqlRightsAndNotesTest extends TestCase
 	private function repository(): RightsRepository
 	{
 		return new RightsRepository($this->connection, new RightsChrome($this->ctx, $this->connection), new LegacyConfig($this->ctx));
+	}
+
+	/**
+	 * @param array<string, list<RightDefinition>> $catalog
+	 * @return list<int>
+	 */
+	private function userRightIds(array $catalog): array
+	{
+		return array_map(static fn (RightDefinition $definition): int => $definition->id, $catalog['user'] ?? []);
 	}
 
 	private function rightId(string $subperms): int

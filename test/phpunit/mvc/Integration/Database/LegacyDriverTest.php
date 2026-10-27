@@ -27,6 +27,15 @@ final class LegacyDriverTest extends DriverContractTestCase
 		self::assertSame([['mark' => '?', 'label' => "it's", 'amount' => '1.5', 'nothing' => null]], $rows);
 	}
 
+	public function testNegativeZeroIsParenthesised(): void
+	{
+		$driver = new LegacyDriver($GLOBALS['db']);
+
+		$driver->fetchAll(new BoundStatement('SELECT 10-? AS amount', [-0.0]));
+
+		self::assertSame('SELECT 10-(-0.0) AS amount', $GLOBALS['db']->lastquery);
+	}
+
 	public function testPlaceholderCountMismatchThrows(): void
 	{
 		$this->expectException(\InvalidArgumentException::class);

@@ -98,7 +98,7 @@ final class LegacyDriver implements Driver
 
 	/**
 	 * A negative number is parenthesised: 'amount-?' with -5 must not become 'amount--5', a comment on
-	 * PostgreSQL and SQLite.
+	 * PostgreSQL and SQLite. The test is on the literal, not the value: -0.0 is not < 0 but prints '-0.0'.
 	 */
 	private function literal(int|float|string|null $value): string
 	{
@@ -110,6 +110,6 @@ final class LegacyDriver implements Driver
 		}
 		$number = is_int($value) ? (string) $value : var_export($value, true);
 
-		return $value < 0 ? '('.$number.')' : $number;
+		return str_starts_with($number, '-') ? '('.$number.')' : $number;
 	}
 }

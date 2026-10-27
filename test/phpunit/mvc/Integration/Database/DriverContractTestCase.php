@@ -115,6 +115,8 @@ abstract class DriverContractTestCase extends TestCase
 	{
 		self::assertSame(15, (int) $this->connection->fetchValue('SELECT 10-:number', ['number' => -5]));
 		self::assertSame(12.5, (float) $this->connection->fetchValue('SELECT 10-:number', ['number' => -2.5]));
+		// -0.0 is not < 0 but prints '-0.0': '10--0.0+1' would end in a comment on PostgreSQL
+		self::assertSame(11.0, (float) $this->connection->fetchValue('SELECT 10-:number+1', ['number' => -0.0]));
 
 		$target = $this->insert('target', 10.0, null, null);
 		$other = $this->insert('other', 10.0, null, null);

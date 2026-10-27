@@ -8,7 +8,9 @@ namespace Dolibarr\Core\Database;
  * Turns the SQL of the MVC core into a BoundStatement:
  * - '@table' becomes the prefixed table name ('@user' → 'llx_user');
  * - ':name' becomes '?', its value appended to the bound values (a name may appear several times);
- * - an array becomes '?, ?, …', an empty array 'NULL' (so 'IN (:ids)' is a false condition, not invalid SQL).
+ * - an array becomes '?, ?, …', an empty array 'NULL' (so 'IN (:ids)' is a false condition, not invalid SQL;
+ *   but 'NOT IN (:ids)' is false too, no row at all, unlike Query::whereNotIn([]) which gives '1 = 1': for a
+ *   NOT IN with a possibly empty list, use Query::whereNotIn() or test the empty case).
  * String literals ('…', "…") and '::' (pgsql casts) are left untouched; a '?' outside them is refused, the
  * drivers owning that placeholder.
  *

@@ -60,6 +60,14 @@ final class ParameterBinderTest extends TestCase
 		self::assertSame([2, 1], $pgsql->values);
 	}
 
+	public function testQuoteInsideACommentFailsSafe(): void
+	{
+		// Comments are not tokenised (SqlLiterals): the apostrophe opens a literal up to the next quote
+		$this->expectException(\InvalidArgumentException::class);
+		$this->expectExceptionMessageMatches('/Unused SQL parameter.*:login/');
+		$this->binder->bind("SELECT rowid -- the user's row\nFROM @user WHERE login = :login AND statut = '1'", ['login' => 'admin']);
+	}
+
 	public function testArrayExpands(): void
 	{
 		$statement = $this->binder->bind('SELECT rowid FROM @user WHERE rowid IN (:ids) AND entity = :entity', ['ids' => [3, 7], 'entity' => 1]);
