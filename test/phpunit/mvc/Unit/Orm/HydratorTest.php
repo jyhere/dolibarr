@@ -199,10 +199,26 @@ final class HydratorTest extends TestCase
 		self::assertSame(['color' => 'red'], $article->extraFields);
 	}
 
-	public function testOnlyRelationsAndExtraFieldsCanBeGiven(): void
+	public function testUnmappedConstructorParameterCanBeGiven(): void
+	{
+		$article = $this->hydrator->hydrate($this->mapping, $this->row([]), ['hasSummary' => true]);
+
+		self::assertInstanceOf(Article::class, $article);
+		self::assertTrue($article->hasSummary);
+	}
+
+	public function testColumnPropertyCannotBeGiven(): void
 	{
 		$this->expectException(\LogicException::class);
-		$this->hydrator->hydrate($this->mapping, $this->row([]), ['hasSummary' => true]);
+		$this->expectExceptionMessageMatches('/title/');
+		$this->hydrator->hydrate($this->mapping, $this->row([]), ['title' => 'Other']);
+	}
+
+	public function testUnknownPropertyCannotBeGiven(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessageMatches('/unknown/');
+		$this->hydrator->hydrate($this->mapping, $this->row([]), ['unknown' => 1]);
 	}
 
 	public function testMissingColumnUsesTheDefaultOrFails(): void

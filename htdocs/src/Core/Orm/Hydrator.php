@@ -20,10 +20,12 @@ final class Hydrator
 
 	/**
 	 * @param array<string, mixed> $row            Column name => value as the driver gives it
-	 * @param array<string, mixed> $propertyValues Relation or extra fields property => value, given as is;
-	 *                                             the others receive their default value
-	 * @throws \LogicException When the row lacks a column without default value, or a property value is
-	 *                         not a relation nor the extra fields
+	 * @param array<string, mixed> $propertyValues Constructor parameter that is not a column => value, given as is:
+	 *                                             relations, extra fields, computed values (User::$hasApiKey,
+	 *                                             read from a secret column the mapping never holds); the
+	 *                                             parameters not given receive their default value
+	 * @throws \LogicException When the row lacks a column without default value, or a property value names a
+	 *                         column or no constructor parameter
 	 */
 	public function hydrate(EntityMapping $mapping, array $row, array $propertyValues = []): object
 	{
@@ -31,13 +33,16 @@ final class Hydrator
 		foreach ($mapping->columns as $property => $column) {
 			if (array_key_exists($column->name, $row)) {
 				$arguments[$property] = $this->casts->for($column)->fromDatabase($row[$column->name]);
-			} elseif (!$this->hasDefault($mapping->class, $property)) {
+			} elseif ($this->parameter($mapping->class, $property)?->isDefaultValueAvailable() !== true) {
 				throw new \LogicException($mapping->class.': the row has no column '.$column->name.' for $'.$property);
 			}
 		}
 		foreach ($propertyValues as $property => $value) {
-			if (!isset($mapping->relations[$property]) && $property !== $mapping->extraFieldsProperty) {
-				throw new \LogicException($mapping->class.'::$'.$property.' is not a relation nor the extra fields');
+			if (isset($mapping->columns[$property])) {
+				throw new \LogicException($mapping->class.'::$'.$property.' is a column: its value comes from the row');
+			}
+			if ($this->parameter($mapping->class, $property) === null) {
+				throw new \LogicException($mapping->class.': no constructor parameter $'.$property);
 			}
 			$arguments[$property] = $value;
 		}
@@ -81,14 +86,14 @@ final class Hydrator
 	/**
 	 * @param class-string $class
 	 */
-	private function hasDefault(string $class, string $property): bool
+	private function parameter(string $class, string $name): ?\ReflectionParameter
 	{
 		foreach ($this->reflection($class)->getConstructor()?->getParameters() ?? [] as $parameter) {
-			if ($parameter->getName() === $property) {
-				return $parameter->isDefaultValueAvailable();
+			if ($parameter->getName() === $name) {
+				return $parameter;
 			}
 		}
 
-		return false;
+		return null;
 	}
 }

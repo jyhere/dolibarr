@@ -7,7 +7,9 @@ namespace Dolibarr\Core\Orm;
 /**
  * Entity mappings for the request: memory, then the file cache when its entry is fresh, then MappingReader.
  * The stamp of a class is the Dolibarr version, the cache format and the hash of the class file, so an edited
- * entity or a deployment invalidates its entry.
+ * entity or a deployment invalidates its entry. Only the entity's own file is hashed: entities are final classes
+ * mapped by their promoted constructor, so no parent class or trait contributes to the mapping (an enum or a
+ * relation target is referenced by name only).
  */
 final class MappingRegistry
 {

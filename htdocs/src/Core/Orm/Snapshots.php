@@ -37,6 +37,9 @@ final class Snapshots
 	/**
 	 * Values compared in their bound form, so a float or a date read and written back unchanged is no change.
 	 *
+	 * For a new entity (no snapshot) every column is returned, the id column included with its value (null
+	 * before INSERT): the repository drops it from the INSERT.
+	 *
 	 * @return array<string, int|float|string|null> Changed columns => value to bind; every column for a new entity
 	 */
 	public function changes(EntityMapping $mapping, object $entity): array
