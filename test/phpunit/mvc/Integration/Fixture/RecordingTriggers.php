@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Dolibarr\Tests\Integration\Fixture;
 
 /**
- * Records the ECMFILES_* triggers the real legacy run_triggers() dispatches, whoever calls it (the legacy
- * \EcmFiles::create/update/delete of a parity test, or LegacyTriggers::run of the new code).
+ * Records the ECMFILES_* and LINK_* triggers the real legacy run_triggers() dispatches, whoever calls it (the legacy
+ * \EcmFiles or \Link create/update/delete of a parity test, or LegacyTriggers::run of the new code).
  *
  * install() registers the directory Triggers/ in $conf->modules_parts['triggers']: run_triggers() scans it like
  * the trigger directory of a module and loads interface_99_all_MvcRecordingTriggers.class.php, whose

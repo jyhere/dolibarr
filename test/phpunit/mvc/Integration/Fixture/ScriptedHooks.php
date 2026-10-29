@@ -122,6 +122,14 @@ final class ScriptedHooks
 	/**
 	 * @param array<string,mixed> $parameters
 	 */
+	public function renameUploadedFile(array $parameters, mixed &$object, string &$action, \HookManager $hm): int
+	{
+		return $this->run(__FUNCTION__, $parameters);
+	}
+
+	/**
+	 * @param array<string,mixed> $parameters
+	 */
 	private function run(string $method, array $parameters): int
 	{
 		$this->calls[] = $method;

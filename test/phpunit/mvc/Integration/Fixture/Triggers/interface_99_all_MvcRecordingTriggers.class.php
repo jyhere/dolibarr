@@ -8,7 +8,8 @@ use Dolibarr\Tests\Integration\Fixture\RecordingTriggers;
 
 /**
  * Trigger file of the tests, loaded by Interfaces::run_triggers() once RecordingTriggers::install() ran.
- * It records the state of the \EcmFiles it receives and fails when RecordingTriggers::failOn() says so.
+ * It records the state of the \EcmFiles (ECMFILES_*) and \Link (LINK_*) it receives and fails when
+ * RecordingTriggers::failOn() says so.
  */
 class InterfaceMvcRecordingTriggers extends DolibarrTriggers
 {
@@ -16,7 +17,7 @@ class InterfaceMvcRecordingTriggers extends DolibarrTriggers
 	{
 		parent::__construct($db);
 		$this->family = 'test';
-		$this->description = 'Records the ECMFILES triggers';
+		$this->description = 'Records the ECMFILES and LINK triggers';
 		$this->version = self::VERSIONS['dev'];
 	}
 
@@ -30,11 +31,15 @@ class InterfaceMvcRecordingTriggers extends DolibarrTriggers
 	 */
 	public function runTrigger($action, $object, User $user, Translate $langs, Conf $conf)
 	{
-		if (strpos($action, 'ECMFILES_') !== 0) {
+		if (strpos($action, 'ECMFILES_') === 0) {
+			$recorded = ['id', 'entity', 'filepath', 'filename', 'label', 'share', 'src_object_type', 'src_object_id', 'fullpath_orig', 'gen_or_uploaded', 'description', 'keywords', 'fk_user_c', 'fk_user_m'];
+		} elseif (strpos($action, 'LINK_') === 0) {
+			$recorded = ['id', 'entity', 'url', 'label', 'objecttype', 'objectid', 'share'];
+		} else {
 			return 0;
 		}
 		$properties = [];
-		foreach (['id', 'entity', 'filepath', 'filename', 'label', 'share', 'src_object_type', 'src_object_id', 'fullpath_orig', 'gen_or_uploaded', 'description', 'keywords', 'fk_user_c', 'fk_user_m'] as $property) {
+		foreach ($recorded as $property) {
 			$properties[$property] = $object->$property ?? null;
 		}
 		RecordingTriggers::record([
