@@ -339,6 +339,136 @@ restore_note
 trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
 [ "$(smoke_sql "SELECT IFNULL(note_public, '<NULL>'), IFNULL(fk_user_modif, '<NULL>') FROM llx_user WHERE rowid = 1")" = "$NOTE_ORIG" ] && ok "note of user 1 restored" || fail "note of user 1 restored" "differs"
 
+echo "== Documents component (/{entity}/{id}/documents)"
+# The documents of user 1 (directory, llx_ecm_files and llx_links rows, agenda events) are restored on the way out
+DOCS_DIR="/application/documents/users/1"
+DOCS_SNAPSHOT="/tmp/smoke_documents_users_1_$$"
+docs_exec() { (cd "$COMPOSE_DIR" && docker compose exec -T php-fpm "$@"); }
+DOCS_DIR_EXISTED="$(docs_exec sh -c "[ -d $DOCS_DIR ] && echo yes || echo no")"
+[ "$DOCS_DIR_EXISTED" = "yes" ] && docs_exec sh -c "rm -rf $DOCS_SNAPSHOT && cp -a $DOCS_DIR $DOCS_SNAPSHOT"
+DOCS_MAX_ECM="$(smoke_sql "SELECT IFNULL(MAX(rowid), 0) FROM llx_ecm_files")"
+DOCS_MAX_LINK="$(smoke_sql "SELECT IFNULL(MAX(rowid), 0) FROM llx_links")"
+DOCS_MAX_AC="$(smoke_sql "SELECT IFNULL(MAX(id), 0) FROM llx_actioncomm")"
+docs_disk() { docs_exec sh -c "ls -1 $DOCS_DIR 2>/dev/null | grep -v '^temp\$' | sort" || true; }
+DOCS_LISTING_ORIG="$(docs_disk)"
+DOCS_FILE="$(mktemp)"; JARS+=("$DOCS_FILE")
+printf 'smoke fixed content\n' > "$DOCS_FILE"
+DOCS_SCRIPT="$(mktemp)"; JARS+=("$DOCS_SCRIPT")
+printf '#!/bin/sh\necho smoke\n' > "$DOCS_SCRIPT"
+restore_documents() {
+	docs_exec sh -c "rm -rf $DOCS_DIR" || true
+	[ "$DOCS_DIR_EXISTED" = "yes" ] && { docs_exec sh -c "cp -a $DOCS_SNAPSHOT $DOCS_DIR && rm -rf $DOCS_SNAPSHOT" || true; }
+	smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_FILE_EXTENSION_UPLOAD_RESTRICTION' AND value = 'smoke_none';
+		DELETE FROM llx_ecm_files WHERE rowid > $DOCS_MAX_ECM AND filepath = 'users/1';
+		DELETE FROM llx_links WHERE rowid > $DOCS_MAX_LINK AND objecttype = 'user' AND objectid = 1;
+		DELETE r FROM llx_actioncomm_resources r JOIN llx_actioncomm a ON a.id = r.fk_actioncomm WHERE a.id > $DOCS_MAX_AC AND a.elementtype = 'user' AND a.fk_element = 1;
+		DELETE FROM llx_actioncomm WHERE id > $DOCS_MAX_AC AND elementtype = 'user' AND fk_element = 1;" > /dev/null || true
+}
+# A failing check exits: the documents are restored on the way out
+trap 'restore_documents; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+DOCS_INDEX="SELECT filepath, filename, label, IFNULL(fullpath_orig, '<NULL>'), IFNULL(gen_or_uploaded, '<NULL>'), IFNULL(position, '<NULL>'), entity, IFNULL(src_object_type, '<NULL>'), IFNULL(src_object_id, '<NULL>'), IFNULL(description, '<NULL>'), IFNULL(keywords, '<NULL>'), IFNULL(cover, '<NULL>'), IFNULL(fk_user_c, '<NULL>'), IFNULL(fk_user_m, '<NULL>'), IFNULL(agenda_id, '<NULL>') FROM llx_ecm_files WHERE filepath = 'users/1' AND entity = 0 AND rowid > $DOCS_MAX_ECM ORDER BY filename"
+DOCS_NAME="smoke-é a.TXT"
+# docs_post <extra curl args...>: POST /user/1/documents with a fresh token, prints the code and the redirection
+docs_post() {
+	local tok
+	tok="$(token_from "$J1" /user/1/documents)"
+	curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -b "$J1" -c "$J1" -X POST --data-urlencode "token=$tok" "$@" "$BASE/user/1/documents"
+}
+# docs_upload <file> <name> [url]: multipart upload with a fresh token (route by default)
+docs_upload() {
+	local tok
+	tok="$(token_from "$J1" /user/1/documents)"
+	curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -F "token=$tok" -F "sendit=Send" -F "userfile[]=@$1;filename=$2" "${3:-$BASE/user/1/documents}"
+}
+# User 1 has entity 0: its rows are written with entity 0, but the listing (list_of_documents, legacy and route alike)
+# looks them up with the current entity and indexes the file a second time with entity 1; no deletion removes that
+# row. The checks count the rows of entity 0, and the deletion helper purges the leftover of entity 1.
+docs_delete() {
+	docs_post -d "action=confirm_deletefile&confirm=yes" --data-urlencode "urlfile=$1" > /dev/null
+	[ -n "$(docs_disk)" ] || smoke_sql "DELETE FROM llx_ecm_files WHERE filepath = 'users/1' AND entity <> 0 AND rowid > $DOCS_MAX_ECM" > /dev/null
+}
+docs_count() { smoke_sql "SELECT COUNT(*) FROM llx_ecm_files WHERE filepath = 'users/1' AND entity = 0 AND rowid > $DOCS_MAX_ECM"; }
+
+expect_code "GET /user/1/documents 200" 200 -b "$J1" "$BASE/user/1/documents"
+expect_grep "document tab of the card points to the route" 'id="document" class="tab inline-block valignmiddle" href="/user/1/documents"' 1 -b "$J1" "$BASE/user/1"
+expect_location_suffix "legacy document.php?id=1 redirects to the route" "/user/1/documents" -b "$J1" "$BASE/user/document.php?id=1"
+expect_location_suffix "legacy document.php?userid=1 (tab link) redirects to the route" "/user/1/documents" -b "$J1" "$BASE/user/document.php?userid=1"
+expect_location_suffix "legacy document.php?id=1&action=deletefile keeps action and file" "/user/1/documents?action=deletefile&urlfile=a.pdf" -b "$J1" "$BASE/user/document.php?id=1&action=deletefile&urlfile=a.pdf"
+# legacy answers (its CSRF check refuses an action without token): no redirection
+expect_code "legacy document.php?id=1&action=confirm_deletefile stays legacy" 403 -b "$J1" "$BASE/user/document.php?id=1&action=confirm_deletefile"
+expect_code "GET /nothing/1/documents 404" 404 -b "$J1" "$BASE/nothing/1/documents"
+
+# Upload parity (R7): the same file through the legacy page and through the route, same name on disk and same index
+docs_upload "$DOCS_FILE" "$DOCS_NAME" "$BASE/user/document.php?id=1" > /dev/null
+LEGACY_DISK="$(docs_disk)"
+LEGACY_INDEX="$(smoke_sql "$DOCS_INDEX")"
+[ -n "$LEGACY_DISK" ] && ok "legacy upload stored a file ($LEGACY_DISK)" || fail "legacy upload stored a file" "nothing on disk"
+[ -n "$LEGACY_INDEX" ] && ok "legacy upload indexed the file" || fail "legacy upload indexed the file" "no row"
+docs_delete "$(printf '%s\n' "$LEGACY_DISK" | head -1)"
+[ -z "$(docs_disk)" ] && [ "$(docs_count)" = "0" ] && ok "delete between the two uploads left nothing" || fail "delete between the two uploads" "file or row left"
+OUT="$(docs_upload "$DOCS_FILE" "$DOCS_NAME")"
+[ "$OUT" = "302" ] && ok "POST /user/1/documents upload 302" || fail "POST /user/1/documents upload" "$OUT"
+MVC_DISK="$(docs_disk)"
+MVC_INDEX="$(smoke_sql "$DOCS_INDEX")"
+[ "$MVC_DISK" = "$LEGACY_DISK" ] && ok "same name on disk as the legacy upload" || fail "same name on disk" "legacy '$LEGACY_DISK', route '$MVC_DISK'"
+[ "$MVC_INDEX" = "$LEGACY_INDEX" ] && ok "same index columns as the legacy upload" || fail "same index columns" "legacy '$LEGACY_INDEX', route '$MVC_INDEX'"
+[ "$(docs_exec sh -c "cat '$DOCS_DIR/$MVC_DISK'")" = "smoke fixed content" ] && ok "uploaded content is intact" || fail "uploaded content" "differs"
+expect_grep "the documents page lists the uploaded file" 'smoke-e a.txt<' 1 -b "$J1" "$BASE/user/1/documents?sortfield=name"
+
+# The same name again, without overwrite: refused, index and disk unchanged
+OUT="$(docs_upload "$DOCS_FILE" "$DOCS_NAME")"
+[ "$OUT" = "302" ] && [ "$(docs_count)" = "1" ] && [ "$(docs_disk)" = "$MVC_DISK" ] && ok "a second upload without overwrite changes nothing" || fail "second upload without overwrite" "$OUT"
+
+# Rename, share, unshare
+NEWNAME="smoke-renamed.txt"
+OUT="$(docs_post -d "action=renamefile&renamefilesave=Save" --data-urlencode "renamefilefrom=$MVC_DISK" -d "renamefileto=$NEWNAME")"
+[ "${OUT%% *}" = "302" ] && [ "$(docs_disk)" = "$NEWNAME" ] && [ "$(smoke_sql "SELECT COUNT(*) FROM llx_ecm_files WHERE filepath = 'users/1' AND entity = 0 AND filename = '$NEWNAME'")" = "1" ] && ok "rename moves the file and its index row" || fail "rename" "$OUT / $(docs_disk)"
+ECMID="$(smoke_sql "SELECT rowid FROM llx_ecm_files WHERE filepath = 'users/1' AND entity = 0 AND filename = '$NEWNAME'")"
+OUT="$(docs_post -d "action=renamefile&renamefilesave=Save&renamefilefrom=$NEWNAME&renamefileto=$NEWNAME&shareenabled=1&ecmfileid=$ECMID")"
+[ -n "$(smoke_sql "SELECT IFNULL(share, '') FROM llx_ecm_files WHERE rowid = $ECMID")" ] && ok "sharing creates a non-empty key" || fail "sharing" "$OUT"
+OUT="$(docs_post -d "action=renamefile&renamefilesave=Save&renamefilefrom=$NEWNAME&renamefileto=$NEWNAME&ecmfileid=$ECMID")"
+[ "$(smoke_sql "SELECT IFNULL(share, '<NULL>') FROM llx_ecm_files WHERE rowid = $ECMID")" = "<NULL>" ] && ok "removing the share sets NULL" || fail "unshare" "$OUT"
+expect_grep "the popup of deletefile uses the legacy confirm form" 'dolSubmitConfirmForm(urljump, pageyes, options, 1)' 1 -b "$J1" "$BASE/user/1/documents?action=deletefile&urlfile=$NEWNAME&token=$(token_from "$J1" /user/1/documents)"
+expect_grep "the editfile page shows the rename form" 'name="renamefileto"' 1 -b "$J1" "$BASE/user/1/documents?action=editfile&urlfile=1/$NEWNAME&token=$(token_from "$J1" /user/1/documents)"
+
+# A POST without a valid token writes nothing
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -X POST -d "token=bogus&action=confirm_deletefile&confirm=yes&urlfile=$NEWNAME" "$BASE/user/1/documents")"
+[ "$OUT" = "302" ] && [ "$(docs_disk)" = "$NEWNAME" ] && [ "$(docs_count)" = "1" ] && ok "invalid token deletes nothing" || fail "invalid token deletes nothing" "$OUT"
+OUT="$(curl -s -o /dev/null -w '%{http_code}' -b "$J1" -c "$J1" -F "token=bogus" -F "sendit=Send" -F "userfile[]=@$DOCS_FILE;filename=smoke-notoken.txt" "$BASE/user/1/documents")"
+[ "$OUT" = "302" ] && [ "$(docs_disk)" = "$NEWNAME" ] && [ "$(docs_count)" = "1" ] && ok "invalid token uploads nothing" || fail "invalid token uploads nothing" "$OUT"
+
+# Delete by POST: file and row absent
+docs_delete "$NEWNAME"
+[ -z "$(docs_disk)" ] && [ "$(docs_count)" = "0" ] && ok "delete by POST removes the file and its row" || fail "delete by POST" "file or row left"
+
+# A forbidden extension (.sh) is refused, as the legacy does
+printf '#!/bin/sh\necho smoke\n' > "$DOCS_SCRIPT"
+docs_upload "$DOCS_SCRIPT" "smoke.sh" > /dev/null
+[ -z "$(docs_disk)" ] && [ "$(docs_count)" = "0" ] && ok "smoke.sh (forbidden extension) is refused" || fail "smoke.sh refused" "$(docs_disk)"
+# With the extension restriction lifted (a dummy list), an executable file is stored as .noexe (removed by restore_documents)
+[ "$(smoke_sql "SELECT COUNT(*) FROM llx_const WHERE name = 'MAIN_FILE_EXTENSION_UPLOAD_RESTRICTION'")" = "0" ] || fail "MAIN_FILE_EXTENSION_UPLOAD_RESTRICTION not set before the smoke" "already set"
+smoke_sql "INSERT INTO llx_const (name, value, type, visible, entity) VALUES ('MAIN_FILE_EXTENSION_UPLOAD_RESTRICTION', 'smoke_none', 'chaine', 0, 1)" > /dev/null
+docs_upload "$DOCS_SCRIPT" "smoke.sh" > /dev/null
+smoke_sql "DELETE FROM llx_const WHERE name = 'MAIN_FILE_EXTENSION_UPLOAD_RESTRICTION' AND value = 'smoke_none'" > /dev/null
+[ "$(docs_disk)" = "smoke.sh.noexe" ] && ok "executable smoke.sh stored as smoke.sh.noexe" || fail "executable file name" "$(docs_disk)"
+docs_delete "smoke.sh.noexe"
+[ -z "$(docs_disk)" ] && [ "$(docs_count)" = "0" ] && ok "smoke.sh.noexe removed" || fail "smoke.sh.noexe removed" "left"
+
+# Links: add, update, delete
+LINKS="SELECT COUNT(*) FROM llx_links WHERE objecttype = 'user' AND objectid = 1 AND rowid > $DOCS_MAX_LINK"
+OUT="$(docs_post -d "linkit=Add&link=example.com/smoke&label=smoke&objecttype=user&objectid=1")"
+LINKID="$(smoke_sql "SELECT IFNULL(MAX(rowid), 0) FROM llx_links WHERE objecttype = 'user' AND objectid = 1 AND rowid > $DOCS_MAX_LINK")"
+[ "${OUT%% *}" = "302" ] && [ "$(smoke_sql "SELECT url FROM llx_links WHERE rowid = $LINKID")" = "http://example.com/smoke" ] && ok "link added with its scheme" || fail "link added" "$OUT / $LINKID"
+OUT="$(docs_post -d "action=confirm_updateline&save=Save&link=example.com/smoke2&label=smoke2&linkid=$LINKID")"
+[ "$(smoke_sql "SELECT CONCAT(url, ' ', label) FROM llx_links WHERE rowid = $LINKID")" = "http://example.com/smoke2 smoke2" ] && ok "link updated" || fail "link updated" "$OUT"
+expect_grep "the update link of the page loads the edit form" 'name="linkid" value="'"$LINKID"'"' 1 -b "$J1" "$BASE/user/1/documents?action=update&linkid=$LINKID&token=$(token_from "$J1" /user/1/documents)"
+OUT="$(docs_post -d "action=confirm_deletefile&confirm=yes&linkid=$LINKID")"
+[ "$(smoke_sql "$LINKS")" = "0" ] && ok "link deleted" || fail "link deleted" "$OUT"
+
+restore_documents
+trap 'rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
+[ "$(docs_disk)" = "$DOCS_LISTING_ORIG" ] && [ "$(docs_count)" = "0" ] && ok "documents of user 1 restored" || fail "documents of user 1 restored" "differs"
+
 echo "== Rights tab (/user/{id}/rights)"
 CLEANUP_JAR="$J1"
 trap 'cleanup_smoke_users || true; rm -f ${JARS[@]+"${JARS[@]}"}' EXIT
