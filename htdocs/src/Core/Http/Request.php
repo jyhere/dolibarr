@@ -30,6 +30,8 @@ final class Request
 	 * @param array<string,mixed>  $post    Body parameters
 	 * @param array<string,string> $headers Headers, any case
 	 * @param array<string,string> $cookies Cookies
+	 * @param string               $urlRoot DOL_URL_ROOT
+	 * @param array<string,mixed>  $files   Uploaded files, in the shape of $_FILES
 	 */
 	public function __construct(
 		string $method,
@@ -38,7 +40,8 @@ final class Request
 		private readonly array $post,
 		array $headers,
 		private readonly array $cookies,
-		string $urlRoot = ''
+		string $urlRoot = '',
+		private readonly array $files = []
 	) {
 		$this->method = strtoupper($method);
 
@@ -100,6 +103,10 @@ final class Request
 		/** @var array<string,mixed> $post */
 		$post = isset($_POST) && is_array($_POST) ? $_POST : []; // @phpstan-ignore isset.variable
 
+		// $_FILES is absent from the PHP-CLI superglobals of some runners: read defensively
+		/** @var array<string,mixed> $files */
+		$files = isset($_FILES) && is_array($_FILES) ? $_FILES : []; // @phpstan-ignore isset.variable
+
 		return new self(
 			is_string($method) ? $method : 'GET',
 			is_string($uri) ? $uri : '/',
@@ -107,7 +114,8 @@ final class Request
 			$post,
 			$headers,
 			$cookies,
-			$urlRoot
+			$urlRoot,
+			$files
 		);
 	}
 
@@ -175,6 +183,52 @@ final class Request
 	public function optionals(string $element, bool $update = false): array
 	{
 		return $this->inputFilter()->optionals($element, $update);
+	}
+
+	/**
+	 * The files uploaded under the field $key: a single field (userfile) or a multiple one (userfile[]).
+	 *
+	 * @return list<UploadedFile>
+	 */
+	public function uploadedFiles(string $key): array
+	{
+		$entry = $this->files[$key] ?? null;
+		if (!is_array($entry)) {
+			return [];
+		}
+
+		if (!is_array($entry['tmp_name'] ?? null)) {
+			return [new UploadedFile(
+				self::stringOf($entry['name'] ?? null),
+				self::stringOf($entry['tmp_name'] ?? null),
+				self::stringOf($entry['type'] ?? null),
+				self::intOf($entry['size'] ?? null),
+				self::intOf($entry['error'] ?? null)
+			)];
+		}
+
+		$uploads = [];
+		foreach (array_keys($entry['tmp_name']) as $index) {
+			$uploads[] = new UploadedFile(
+				self::stringOf(is_array($entry['name'] ?? null) ? ($entry['name'][$index] ?? null) : null),
+				self::stringOf($entry['tmp_name'][$index]),
+				self::stringOf(is_array($entry['type'] ?? null) ? ($entry['type'][$index] ?? null) : null),
+				self::intOf(is_array($entry['size'] ?? null) ? ($entry['size'][$index] ?? null) : null),
+				self::intOf(is_array($entry['error'] ?? null) ? ($entry['error'][$index] ?? null) : null)
+			);
+		}
+
+		return $uploads;
+	}
+
+	private static function stringOf(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private static function intOf(mixed $value): int
+	{
+		return is_int($value) ? $value : (is_numeric($value) ? (int) $value : 0);
 	}
 
 	public function method(): string
