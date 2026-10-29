@@ -28,10 +28,25 @@ final class DocumentsTarget
 	}
 
 	/**
-	 * The entity of the index rows of the object (ruling R2): the entity of the object when it has one, the current
-	 * entity otherwise (dol_dir_list_in_database()).
+	 * The entity the index rows of the object are written and looked up with (ruling R2, write side): the entity of
+	 * the object whenever it is set, 0 included (the default admin user has the entity 0), the current entity
+	 * otherwise. addFileIntoDatabaseIndex() and deleteFilesIntoDatabaseIndex() test isset($object->entity),
+	 * dol_delete_file() fetches with $object->entity, dol_move() receives $object->entity ?? $conf->entity.
 	 */
 	public function indexEntity(): int
+	{
+		global $conf;
+
+		$objectEntity = $this->legacyObject->entity ?? null;
+
+		return $objectEntity !== null ? (int) $objectEntity : (int) $conf->entity;
+	}
+
+	/**
+	 * The entity the index rows of the object are listed with (ruling R2, read side): the entity of the object when
+	 * it is not empty, the current entity otherwise (dol_dir_list_in_database() l.348-351).
+	 */
+	public function listingEntity(): int
 	{
 		global $conf;
 

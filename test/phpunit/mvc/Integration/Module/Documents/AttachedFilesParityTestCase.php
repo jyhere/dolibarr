@@ -36,6 +36,7 @@ use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\View\UserCardChrome;
 use Dolibarr\Tests\Integration\Fixture\RecordingTriggers;
 use Dolibarr\Tests\Integration\Fixture\RenamingUploadedFileMover;
+use Dolibarr\Tests\Integration\Fixture\ScriptedHooks;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -174,6 +175,76 @@ abstract class AttachedFilesParityTestCase extends TestCase
 
 		$this->assertSameMessages($legacyMessages, $result);
 		self::assertFalse($result->ok);
+	}
+
+	public function testDeleteFileTakenOverByTheHookMatchesLegacy(): void
+	{
+		$this->createTextInBoth('kept.txt');
+		$this->legacyIndex($this->legacyObject, 'kept.txt');
+		$this->legacyIndex($this->newObject, 'kept.txt');
+		RecordingTriggers::forget();
+		$hookManager = $GLOBALS['hookmanager'];
+		self::assertInstanceOf(\HookManager::class, $hookManager);
+		$scripted = new ScriptedHooks(['deleteFile' => ['code' => 1]]);
+		ScriptedHooks::register($hookManager, 'fileslib', $scripted);
+
+		try {
+			$this->legacyDeleteFile($this->legacyObject, 'kept.txt');
+			$legacyCalls = RecordingTriggers::forget();
+			$legacyMessages = $this->legacyMessages();
+			$result = $this->service->deleteFile($this->target, 'kept.txt');
+			$newCalls = RecordingTriggers::forget();
+		} finally {
+			unset($hookManager->hooks['fileslib']['mvctest'], $hookManager->hooksSorted['fileslib']['50:mvctest']);
+		}
+
+		self::assertSame([], $newCalls, 'no ECMFILES_DELETE');
+		self::assertSame(['deleteFile', 'deleteFile'], $scripted->calls);
+		self::assertFileExists($this->directoryOf($this->newObject).'/kept.txt');
+		self::assertCount(1, $this->indexRowsOf($this->newObject));
+		$this->assertSameState($legacyCalls, $newCalls);
+		$this->assertSameMessages($legacyMessages, $result);
+		self::assertTrue($result->ok);
+	}
+
+	public function testRenameWithAFailingModifyTriggerMatchesLegacy(): void
+	{
+		$this->createTextInBoth('indexed.txt');
+		$this->legacyIndex($this->legacyObject, 'indexed.txt');
+		$this->legacyIndex($this->newObject, 'indexed.txt');
+		RecordingTriggers::forget();
+		RecordingTriggers::failOn('ECMFILES_MODIFY', 'The index refuses the move');
+
+		$this->legacyRename($this->legacyObject, 'indexed.txt', 'moved.txt');
+		$legacyCalls = RecordingTriggers::forget();
+		$legacyMessages = $this->legacyMessages();
+		$result = $this->service->rename($this->target, 'indexed.txt', 'moved.txt');
+		$newCalls = RecordingTriggers::forget();
+
+		self::assertSame(['ECMFILES_MODIFY'], array_column($newCalls, 'action'));
+		self::assertFileExists($this->directoryOf($this->newObject).'/moved.txt', 'the file is moved before the index');
+		$this->assertSameState($legacyCalls, $newCalls);
+		$this->assertSameMessages($legacyMessages, $result);
+		self::assertFalse($result->ok);
+	}
+
+	public function testRenameOfAnUnindexedFileWithAFailingCreateTriggerMatchesLegacy(): void
+	{
+		$this->createImageInBoth('plain.png');
+		RecordingTriggers::failOn('ECMFILES_CREATE', 'The index refuses the file');
+
+		$this->legacyRename($this->legacyObject, 'plain.png', 'moved.png');
+		$legacyCalls = RecordingTriggers::forget();
+		$legacyMessages = $this->legacyMessages();
+		$result = $this->service->rename($this->target, 'plain.png', 'moved.png');
+		$newCalls = RecordingTriggers::forget();
+
+		self::assertSame(['ECMFILES_CREATE'], array_column($newCalls, 'action'));
+		self::assertFileDoesNotExist($this->directoryOf($this->newObject).'/thumbs/moved_mini.png', 'no thumbnails after a failed move');
+		self::assertSame([], $this->indexRowsOf($this->newObject));
+		$this->assertSameState($legacyCalls, $newCalls);
+		$this->assertSameMessages($legacyMessages, $result);
+		self::assertArrayHasKey('warnings', $legacyMessages);
 	}
 
 	public function testRenameMatchesLegacy(): void

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dolibarr\Tests\Integration\Files;
 
+use Dolibarr\Core\Files\Deletion;
 use Dolibarr\Core\Files\FileStorage;
 use Dolibarr\Core\Files\PathGuard;
 use Dolibarr\Core\Files\Refusal;
@@ -225,14 +226,14 @@ final class FileStorageTest extends TestCase
 	{
 		file_put_contents($this->directory.'/a.txt', 'a');
 
-		self::assertTrue($this->storage()->delete($this->directory.'/a.txt', null));
+		self::assertSame(Deletion::Deleted, $this->storage()->delete($this->directory.'/a.txt', null));
 		self::assertFileDoesNotExist($this->directory.'/a.txt');
-		self::assertFalse($this->storage()->delete($this->directory.'/a.txt', null));
+		self::assertSame(Deletion::Failed, $this->storage()->delete($this->directory.'/a.txt', null));
 	}
 
 	public function testDeleteRefusesTraversal(): void
 	{
-		self::assertFalse($this->storage()->delete($this->directory.'/../x.txt', null));
+		self::assertSame(Deletion::Failed, $this->storage()->delete($this->directory.'/../x.txt', null));
 	}
 
 	public function testDeleteRunsTheDeleteFileHook(): void
@@ -240,7 +241,9 @@ final class FileStorageTest extends TestCase
 		file_put_contents($this->directory.'/a.txt', 'a');
 		$scripted = new ScriptedHooks(['deleteFile' => ['code' => 1]]);
 
-		self::assertTrue($this->storage($scripted)->delete($this->directory.'/a.txt', null));
+		$deletion = $this->storage($scripted)->delete($this->directory.'/a.txt', null);
+		self::assertSame(Deletion::TakenOverByHook, $deletion);
+		self::assertTrue($deletion->succeeded());
 		self::assertFileExists($this->directory.'/a.txt');
 		self::assertSame(1, $scripted->parameters['deleteFile']['disableglob']);
 		self::assertSame(0, $scripted->parameters['deleteFile']['nophperrors']);
@@ -252,7 +255,7 @@ final class FileStorageTest extends TestCase
 		file_put_contents($this->directory.'/a.txt', 'a');
 		$scripted = new ScriptedHooks(['deleteFile' => ['code' => -1]]);
 
-		self::assertFalse($this->storage($scripted)->delete($this->directory.'/a.txt', null));
+		self::assertSame(Deletion::Failed, $this->storage($scripted)->delete($this->directory.'/a.txt', null));
 		self::assertFileExists($this->directory.'/a.txt');
 	}
 

@@ -6,6 +6,7 @@ namespace Dolibarr\Module\Documents\Service;
 
 use Dolibarr\Core\Config;
 use Dolibarr\Core\Database\DatabaseException;
+use Dolibarr\Core\Files\Deletion;
 use Dolibarr\Core\Files\EcmFileRepository;
 use Dolibarr\Core\Files\ExternalLink;
 use Dolibarr\Core\Files\ExternalLinkRepository;
@@ -164,10 +165,10 @@ final class AttachedFilesService
 	/**
 	 * Deletion of a file (actions_linkedfiles.inc.php l.137-183): only the base name of $urlFile is kept, inside the
 	 * directory of the target. A failing ECMFILES_DELETE leaves the row but the file is gone: a warning, as
-	 * dol_delete_file() l.1745-1749, and the deletion is reported.
+	 * dol_delete_file() l.1745-1749, and the deletion is reported. A deleteFile hook that takes the deletion over
+	 * leaves the index alone (dol_delete_file() l.1693-1698 returns at once) and the deletion is reported.
 	 *
-	 * @throws \LogicException   Without a logged user, or if the trigger object cannot be loaded
-	 * @throws DatabaseException
+	 * @throws \LogicException Without a logged user, or if the trigger object cannot be loaded
 	 */
 	public function deleteFile(DocumentsTarget $target, string $urlFile): ActionResult
 	{
@@ -185,16 +186,21 @@ final class AttachedFilesService
 			return $result;
 		}
 
-		if (!$this->storage->delete($path, $target->legacyObject)) {
+		$deletion = $this->storage->delete($path, $target->legacyObject);
+		if ($deletion === Deletion::Failed) {
 			$result->add('errors', $this->translator->transHtml('ErrorFailToDeleteFile', $fileName));
 
 			return $result;
 		}
 
-		try {
-			$this->index->removeFile($path, $target->indexEntity());
-		} catch (FileTriggerException $e) {
-			$result->addAll('warnings', '', $e->errors);
+		if ($deletion === Deletion::Deleted) {
+			try {
+				$this->index->removeFile($path, $target->indexEntity());
+			} catch (FileTriggerException $e) {
+				$result->addAll('warnings', '', $e->errors);
+			} catch (DatabaseException $e) {
+				$result->add('warnings', self::databaseError($e));
+			}
 		}
 		$this->thumbnails->deleteFor($path, $target->legacyObject);
 		$result->add('mesgs', $this->translator->transHtml('FileWasRemoved', $fileName));
@@ -233,8 +239,13 @@ final class AttachedFilesService
 	 * take the action over; the index row follows the file (created for a file the index does not know) and the
 	 * thumbnails are made again for the new name.
 	 *
+	 * When the index cannot follow, the file stays moved but dol_move() returns false (files.lib.php l.1321-1325):
+	 * the rename is reported as failed, without thumbnails. Only a failing creation of the row (unindexed source)
+	 * shows its errors as warnings first (l.1305-1307); a failing update of the row shows nothing more.
+	 *
 	 * @throws \LogicException   Without a logged user, or if a trigger object cannot be loaded
-	 * @throws DatabaseException
+	 * @throws DatabaseException When the index row of the source cannot be read
+	 * @throws \InvalidArgumentException
 	 */
 	public function rename(DocumentsTarget $target, string $from, string $to): ActionResult
 	{
@@ -292,16 +303,32 @@ final class AttachedFilesService
 
 			return $result;
 		}
+		$sourceIndexed = $this->files->findByPath(
+			$target->indexEntity(),
+			self::relativeDirectory($target->directory),
+			(string) preg_replace('/\.noexe$/', '', $fromName)
+		) !== null;
 		if (!$this->storage->rename($sourcePath, $targetPath, $target->legacyObject)) {
 			$result->add('errors', $failure);
 
 			return $result;
 		}
 
+		$indexErrors = null;
 		try {
 			$this->index->rename($sourcePath, $targetPath, $target->indexEntity());
 		} catch (FileTriggerException $e) {
-			$result->addAll('warnings', '', $e->errors);
+			$indexErrors = $e->errors;
+		} catch (DatabaseException $e) {
+			$indexErrors = [self::databaseError($e)];
+		}
+		if ($indexErrors !== null) {
+			if (!$sourceIndexed) {
+				$result->addAll('warnings', '', $indexErrors);
+			}
+			$result->add('errors', $failure);
+
+			return $result;
 		}
 		// No thumbnails for the medias (website module), nor for an object not saved
 		if ($target->modulePart !== 'medias' && (int) $target->legacyObject->id > 0) {
@@ -335,6 +362,8 @@ final class AttachedFilesService
 			$this->index->setShared($file, $enabled);
 		} catch (FileTriggerException $e) {
 			$result->addAll('warnings', '', $e->errors);
+		} catch (DatabaseException $e) {
+			$result->add('warnings', self::databaseError($e));
 		}
 
 		return $result;
@@ -369,7 +398,7 @@ final class AttachedFilesService
 		} catch (LinkWriteException $e) {
 			$result->addAll(
 				'errors',
-				trim($this->translator->transHtml('ErrorFailedToUpdateLink', $this->linkWriter->cleanedLabel($normalizedUrl, $label))),
+				$this->translator->transHtml('ErrorFailedToUpdateLink', $this->linkWriter->cleanedLabel($normalizedUrl, $label)),
 				$e->errors
 			);
 		}
@@ -457,6 +486,14 @@ final class AttachedFilesService
 		$relative = (string) preg_replace('/^'.preg_quote(DOL_DATA_ROOT, '/').'/', '', $directory);
 
 		return trim($relative, '/\\');
+	}
+
+	/**
+	 * The message \EcmFiles keeps for a database error ('Error '.$db->lasterror()).
+	 */
+	private static function databaseError(DatabaseException $exception): string
+	{
+		return 'Error '.$exception->getMessage();
 	}
 
 	/**

@@ -239,8 +239,10 @@ final class AttachedFilesServiceTest extends TestCase
 		self::assertFileDoesNotExist($this->directoryOf($this->object).'/x.pdf');
 		self::assertFileExists($siblingDirectory.'/x.pdf');
 
+		file_put_contents($this->directoryOf($this->object).'/.htaccess', 'deny from all');
 		$refused = $this->service()->deleteFile($this->target, '../../.htaccess');
 		self::assertSame([['type' => 'errors', 'text' => $this->text('ErrorFailToDeleteFile', '.htaccess')]], $refused->messages);
+		self::assertFileExists($this->directoryOf($this->object).'/.htaccess', 'refused by the path guard');
 	}
 
 	public function testDeleteFileTriggerFailureIsAWarning(): void
@@ -257,6 +259,56 @@ final class AttachedFilesServiceTest extends TestCase
 		], $result->messages);
 		self::assertTrue($result->ok);
 		self::assertFileDoesNotExist($this->directoryOf($this->object).'/kept.txt');
+	}
+
+	public function testFilesOfAnObjectOfEntityZeroKeepTheirIndexInSync(): void
+	{
+		// The default admin has the entity 0: the legacy writes and looks up its index rows with the entity 0
+		$this->object->entity = 0;
+		$relativeDirectory = 'users/'.$this->object->id;
+		$service = $this->service();
+
+		$service->upload($this->target, [$this->upload('doc.txt', 'first')], false, '');
+		$overwritten = $service->upload($this->target, [$this->upload('doc.txt', 'second')], true, '');
+		self::assertSame([['type' => 'mesgs', 'text' => $this->text('FileTransferComplete')]], $overwritten->messages);
+		$rows = $this->files->inDirectory(0, $relativeDirectory);
+		self::assertCount(1, $rows);
+		self::assertSame(md5('second'), $rows[0]->label);
+
+		$shared = $service->share($this->target, (int) $rows[0]->id, true);
+		self::assertSame([], $shared->messages);
+		$sharedRow = $this->files->find((int) $rows[0]->id);
+		self::assertNotNull($sharedRow);
+		self::assertNotNull($sharedRow->share);
+
+		$renamed = $service->rename($this->target, 'doc.txt', 'renamed.txt');
+		self::assertSame([['type' => 'mesgs', 'text' => $this->text('FileRenamed')]], $renamed->messages);
+		$renamedRows = $this->files->inDirectory(0, $relativeDirectory);
+		self::assertCount(1, $renamedRows);
+		self::assertSame('renamed.txt', $renamedRows[0]->filename);
+		self::assertSame($rows[0]->id, $renamedRows[0]->id, 'the row follows the file');
+
+		RecordingTriggers::forget();
+		$deleted = $service->deleteFile($this->target, 'renamed.txt');
+		self::assertSame([['type' => 'mesgs', 'text' => $this->text('FileWasRemoved', 'renamed.txt')]], $deleted->messages);
+		self::assertSame(['ECMFILES_DELETE'], array_column(RecordingTriggers::calls(), 'action'));
+		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @ecm_files WHERE filepath = :filepath', ['filepath' => $relativeDirectory]));
+	}
+
+	public function testTargetEntities(): void
+	{
+		$entity = (int) $this->context->conf->entity;
+		$this->object->entity = 0;
+		self::assertSame(0, $this->target->indexEntity(), 'written and looked up with the entity of the object, 0 included');
+		self::assertSame($entity, $this->target->listingEntity(), 'listed with the current entity when the object has none');
+
+		$this->object->entity = 7;
+		self::assertSame(7, $this->target->indexEntity());
+		self::assertSame(7, $this->target->listingEntity());
+
+		$this->object->entity = null;
+		self::assertSame($entity, $this->target->indexEntity());
+		self::assertSame($entity, $this->target->listingEntity());
 	}
 
 	public function testDeleteLinkOfAnotherObjectIsDenied(): void

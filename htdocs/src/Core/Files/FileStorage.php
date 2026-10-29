@@ -113,12 +113,12 @@ final class FileStorage
 	 * Delete one file by its exact path: the deleteFile hook first (a code other than 0 replaces the deletion),
 	 * then unlink(), retried once after giving the parent directory the write permission.
 	 */
-	public function delete(string $absolutePath, ?\CommonObject $pageObject): bool
+	public function delete(string $absolutePath, ?\CommonObject $pageObject): Deletion
 	{
 		if (str_contains($absolutePath, '..') || preg_match('/[<>|]/', $absolutePath) === 1) {
 			\dol_syslog('FileStorage::delete refused '.$absolutePath, LOG_WARNING);
 
-			return false;
+			return Deletion::Failed;
 		}
 
 		$object = $pageObject;
@@ -130,7 +130,7 @@ final class FileStorage
 			'nophperrors' => 0,
 		], $object, $action);
 		if ($hookResult->code !== 0) {
-			return $hookResult->code > 0;
+			return $hookResult->code > 0 ? Deletion::TakenOverByHook : Deletion::Failed;
 		}
 
 		$osEncodedPath = \dol_osencode($absolutePath);
@@ -141,7 +141,7 @@ final class FileStorage
 			$deleted = @unlink($osEncodedPath);
 		}
 
-		return $deleted;
+		return $deleted ? Deletion::Deleted : Deletion::Failed;
 	}
 
 	/**
