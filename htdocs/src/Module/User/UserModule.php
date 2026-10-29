@@ -28,6 +28,7 @@ use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Controller\UserRightsController;
+use Dolibarr\Module\User\Documents\UserDocuments;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
@@ -67,7 +68,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function entities(): array
 	{
-		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php')];
+		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php', UserDocuments::class)];
 	}
 
 	public function services(Container $container): void
@@ -120,6 +121,7 @@ final class UserModule implements ModuleInterface
 			);
 		});
 		$container->set(UserCardChrome::class, static fn (Container $container): UserCardChrome => new UserCardChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
+		$container->set(UserDocuments::class, static fn (Container $container): UserDocuments => new UserDocuments(self::get($container, LegacyContext::class), self::get($container, UserPermissionChecker::class)));
 		$container->set(UserFormChrome::class, static fn (Container $container): UserFormChrome => new UserFormChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
 		$container->set(UserValidator::class, static fn (Container $container): UserValidator => new UserValidator(self::get($container, Translator::class), self::get($container, Config::class)));
 		$container->set(Authenticator::class, static function (Container $container): Authenticator {

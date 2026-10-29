@@ -40,6 +40,19 @@ final class EntityServices
 	}
 
 	/**
+	 * @return EntityDocuments|null Null when the entity type has no attached files (no documentsId)
+	 * @throws \LogicException When the service is not an EntityDocuments
+	 */
+	public function documents(EntityDefinition $definition): ?EntityDocuments
+	{
+		if ($definition->documentsId === null) {
+			return null;
+		}
+
+		return $this->typed($definition, $definition->documentsId, EntityDocuments::class);
+	}
+
+	/**
 	 * @template T of object
 	 * @param class-string<T> $type
 	 * @return T

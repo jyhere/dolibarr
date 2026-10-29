@@ -7,6 +7,7 @@ namespace Dolibarr\Tests\Unit\Module\User;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class UserPermissionCheckerTest extends TestCase
@@ -37,6 +38,30 @@ final class UserPermissionCheckerTest extends TestCase
 		self::assertFalse($this->checker(me: 5, rights: ['user.self.creer'])->canEditNotes($this->user(id: 6)));
 		self::assertTrue($this->checker(me: 5, rights: ['user.user.creer'])->canEditNotes($this->user(id: 6)));
 		self::assertFalse($this->checker(me: 5, rights: ['user.user.creer'])->canEditNotes($this->user(id: 5)));
+	}
+
+	/**
+	 * user/document.php l.70-80: user->self->write on one's own card, user->user->write on another.
+	 *
+	 * @param list<string> $rights
+	 */
+	#[DataProvider('documentsWriteCases')]
+	public function testCanEditDocumentsSelfAndOther(array $rights, int $targetId, bool $expected): void
+	{
+		self::assertSame($expected, $this->checker(me: 5, rights: $rights)->canEditDocuments($this->user(id: $targetId)));
+	}
+
+	/**
+	 * @return array<string, array{list<string>, int, bool}>
+	 */
+	public static function documentsWriteCases(): array
+	{
+		return [
+			'self with self->write' => [['user.self.creer'], 5, true],
+			'self without the right' => [['user.user.creer'], 5, false],
+			'other with user->write' => [['user.user.creer'], 6, true],
+			'other without the right' => [['user.self.creer'], 6, false],
+		];
 	}
 
 	public function testRejectsForeignEntities(): void

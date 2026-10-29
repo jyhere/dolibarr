@@ -6,6 +6,7 @@ namespace Dolibarr\Tests\Unit\Entity;
 
 use Dolibarr\Core\Container\Container;
 use Dolibarr\Core\Entity\EntityDefinition;
+use Dolibarr\Core\Entity\EntityDocuments;
 use Dolibarr\Core\Entity\EntityPermissions;
 use Dolibarr\Core\Entity\EntityRepository;
 use Dolibarr\Core\Entity\EntityServices;
@@ -81,18 +82,67 @@ final class EntityServicesTest extends TestCase
 		$this->withStdClass()->tabs($this->definition());
 	}
 
+	public function testDocumentsIsNullWithoutService(): void
+	{
+		$services = new EntityServices(new Container());
+
+		self::assertNull($services->documents($this->definition()));
+	}
+
+	public function testDocumentsResolvesTheDeclaredService(): void
+	{
+		$documents = new class () implements EntityDocuments {
+			public function modulePart(): string
+			{
+				return 'thing';
+			}
+
+			public function directory(\CommonObject $legacyObject): string
+			{
+				return '/tmp';
+			}
+
+			public function canWriteDocuments(object $entity): bool
+			{
+				return true;
+			}
+
+			public function pageTitle(\CommonObject $legacyObject): string
+			{
+				return 'Title';
+			}
+
+			public function savingDocMask(\CommonObject $legacyObject): string
+			{
+				return '';
+			}
+		};
+		$container = new Container();
+		$container->instance('docs', $documents);
+
+		self::assertSame($documents, (new EntityServices($container))->documents($this->definition('docs')));
+	}
+
+	public function testDocumentsRefusesAWrongService(): void
+	{
+		$this->expectException(\LogicException::class);
+		$this->expectExceptionMessage(EntityDocuments::class);
+
+		$this->withStdClass()->documents($this->definition('docs'));
+	}
+
 	private function withStdClass(): EntityServices
 	{
 		$container = new Container();
-		foreach (['repo', 'perms', 'tabs'] as $id) {
+		foreach (['repo', 'perms', 'tabs', 'docs'] as $id) {
 			$container->instance($id, new \stdClass());
 		}
 
 		return new EntityServices($container);
 	}
 
-	private function definition(): EntityDefinition
+	private function definition(?string $documentsId = null): EntityDefinition
 	{
-		return new EntityDefinition('thing', \stdClass::class, 'repo', 'thing', 'thing', 'perms', 'tabs', 'thing_show');
+		return new EntityDefinition('thing', \stdClass::class, 'repo', 'thing', 'thing', 'perms', 'tabs', 'thing_show', documentsId: $documentsId);
 	}
 }

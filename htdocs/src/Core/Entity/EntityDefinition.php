@@ -16,6 +16,9 @@ namespace Dolibarr\Core\Entity;
  * 4. The service $permissionCheckerId implements EntityPermissions (canRead, canEditNotes).
  * 5. The service $tabsFactoryId implements EntityTabs: chrome() for the tab ('note'), and
  *    legacyPageSettings('note') with the domains, hook contexts and doActions parameters of its legacy note page.
+ * 6. Optional, for the generic attached files tab: $documentsId names a service implementing EntityDocuments (module part,
+ *    upload directory, write right, page title, saving mask), and the tabs factory supports the 'document' tab (chrome(),
+ *    legacyPageSettings('document')). Leave it null for an entity without attached files.
  * The services are registered in the container by the module's services(); EntityServices resolves and type-checks them.
  */
 final class EntityDefinition
@@ -31,6 +34,7 @@ final class EntityDefinition
 	 * @param string                            $showRouteName       Name of the route showing one entity
 	 * @param class-string<\CommonObject>|null  $legacyClass         Legacy class of the element (e.g. \User::class)
 	 * @param string|null                       $legacyClassFile     Its file under DOL_DOCUMENT_ROOT (e.g. '/user/class/user.class.php')
+	 * @param string|null                       $documentsId         Container id of its EntityDocuments (null: no attached files)
 	 */
 	public function __construct(
 		public readonly string $slug,
@@ -42,7 +46,8 @@ final class EntityDefinition
 		public readonly string $tabsFactoryId,
 		public readonly string $showRouteName,
 		public readonly ?string $legacyClass = null,
-		public readonly ?string $legacyClassFile = null
+		public readonly ?string $legacyClassFile = null,
+		public readonly ?string $documentsId = null
 	) {
 	}
 }

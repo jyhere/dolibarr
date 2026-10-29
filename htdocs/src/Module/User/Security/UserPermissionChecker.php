@@ -59,6 +59,14 @@ final class UserPermissionChecker implements EntityPermissions
 	}
 
 	/**
+	 * user/document.php l.70-80 ($permissiontoedit, used as $permissiontoadd by actions_linkedfiles): same rule as the notes.
+	 */
+	public function canEditDocuments(object $target): bool
+	{
+		return $this->canEditNotes($target);
+	}
+
+	/**
 	 * card.php l.171-175 ($permissiontoseesalary). As there, the hierarchy-less fallback is not limited to internal users,
 	 * and a new user (id 0, the creation form) counts as one under the current user ($id == 0).
 	 */
