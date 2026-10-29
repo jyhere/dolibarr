@@ -4,54 +4,19 @@ declare(strict_types=1);
 
 namespace Dolibarr\Core\Files;
 
-use Dolibarr\Core\Database\DatabaseException;
-use Dolibarr\Core\Orm\EntityNotFoundException;
 use Dolibarr\Core\Orm\Query;
 use Dolibarr\Core\Orm\Repository;
 
 /**
- * Access to the file index llx_ecm_files, every lookup with an explicit entity (see EcmFile).
+ * Access to the file index llx_ecm_files, every lookup with an explicit entity (see EcmFile). The index is read and
+ * written for the entity of the object, not the current one (ruling R2): obtain this repository without the entity
+ * scope, as CoreServices registers it (withoutEntityScope()).
  *
  * @extends Repository<EcmFile>
  */
 final class EcmFileRepository extends Repository
 {
 	protected string $entityClass = EcmFile::class;
-
-	/**
-	 * Without the implicit entity scope, which is the current entity: see EcmFile.
-	 *
-	 * @return Query<EcmFile>
-	 * @throws \InvalidArgumentException Invalid alias
-	 */
-	public function query(string $alias = 't'): Query
-	{
-		return parent::query($alias)->withoutEntityScope();
-	}
-
-	/**
-	 * @param EcmFile $entity
-	 * @return EcmFile
-	 * @throws \InvalidArgumentException
-	 * @throws \LogicException
-	 * @throws EntityNotFoundException
-	 * @throws DatabaseException
-	 */
-	public function save(object $entity): object
-	{
-		return $this->orm->save($entity, false);
-	}
-
-	/**
-	 * @param EcmFile $entity
-	 * @throws \InvalidArgumentException
-	 * @throws EntityNotFoundException
-	 * @throws DatabaseException
-	 */
-	public function delete(object $entity): void
-	{
-		$this->orm->delete($entity, false);
-	}
 
 	/**
 	 * @throws \InvalidArgumentException

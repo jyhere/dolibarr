@@ -47,8 +47,8 @@ abstract class FileRepositoriesTestCase extends TestCase
 			new Snapshots($hydrator),
 			new LegacyExtraFieldCatalog($this->connection, new LegacyConfig(LegacyContext::fromGlobals()), new Logger())
 		);
-		$this->files = new EcmFileRepository($orm);
-		$this->links = new ExternalLinkRepository($orm);
+		$this->files = (new EcmFileRepository($orm))->withoutEntityScope();
+		$this->links = (new ExternalLinkRepository($orm))->withoutEntityScope();
 	}
 
 	protected function tearDown(): void
@@ -101,7 +101,7 @@ abstract class FileRepositoriesTestCase extends TestCase
 				(int) $row['fk_user_c'], (int) $row['fk_user_m'], $row['acl'], (int) $row['agenda_id'],
 			]
 		);
-		$reloaded = $this->files->withoutEntityScope()->find($saved->id);
+		$reloaded = $this->files->find($saved->id);
 		self::assertInstanceOf(EcmFile::class, $reloaded);
 		self::assertSame('photo.jpg', $reloaded->filename);
 		self::assertSame('user', $reloaded->srcObjectType);
@@ -181,6 +181,18 @@ abstract class FileRepositoriesTestCase extends TestCase
 
 		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @ecm_files_extrafields WHERE fk_object = :id', ['id' => $file->id]));
 		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @ecm_files WHERE rowid = :id', ['id' => $file->id]));
+	}
+
+	public function testDeleteOfALinkRemovesItsExtraFieldsRow(): void
+	{
+		$link = $this->links->save($this->link(1, 'user', 5, 'one'));
+		self::assertIsInt($link->id);
+		$this->connection->execute('INSERT INTO @links_extrafields (fk_object) VALUES (:id)', ['id' => $link->id]);
+
+		$this->links->delete($link);
+
+		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @links_extrafields WHERE fk_object = :id', ['id' => $link->id]));
+		self::assertSame(0, (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @links WHERE rowid = :id', ['id' => $link->id]));
 	}
 
 	private function ecmFile(int $entity, string $filepath, string $filename, ?int $position = null): EcmFile

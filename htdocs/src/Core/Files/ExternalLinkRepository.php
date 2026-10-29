@@ -5,53 +5,18 @@ declare(strict_types=1);
 namespace Dolibarr\Core\Files;
 
 use Dolibarr\Core\Orm\Query;
-use Dolibarr\Core\Database\DatabaseException;
-use Dolibarr\Core\Orm\EntityNotFoundException;
 use Dolibarr\Core\Orm\Repository;
 
 /**
- * Access to the links of objects (llx_links), every lookup with an explicit entity (see ExternalLink).
+ * Access to the links of objects (llx_links), every lookup with an explicit entity (see ExternalLink). The entity is
+ * a criterion of the lookups, not the implicit scope (ruling R2): obtain this repository without the entity scope,
+ * as CoreServices registers it (withoutEntityScope()).
  *
  * @extends Repository<ExternalLink>
  */
 final class ExternalLinkRepository extends Repository
 {
 	protected string $entityClass = ExternalLink::class;
-
-	/**
-	 * Without the implicit entity scope, which is the current entity: see ExternalLink.
-	 *
-	 * @return Query<ExternalLink>
-	 * @throws \InvalidArgumentException Invalid alias
-	 */
-	public function query(string $alias = 't'): Query
-	{
-		return parent::query($alias)->withoutEntityScope();
-	}
-
-	/**
-	 * @param ExternalLink $entity
-	 * @return ExternalLink
-	 * @throws \InvalidArgumentException
-	 * @throws \LogicException
-	 * @throws EntityNotFoundException
-	 * @throws DatabaseException
-	 */
-	public function save(object $entity): object
-	{
-		return $this->orm->save($entity, false);
-	}
-
-	/**
-	 * @param ExternalLink $entity
-	 * @throws \InvalidArgumentException
-	 * @throws EntityNotFoundException
-	 * @throws DatabaseException
-	 */
-	public function delete(object $entity): void
-	{
-		$this->orm->delete($entity, false);
-	}
 
 	/**
 	 * The links of an object, oldest first. The entity filter is the one of \Link::fetchAll(): the current entity,

@@ -92,8 +92,8 @@ final class CoreServices
 				self::get($container, ExtraFieldCatalog::class)
 			);
 		});
-		$container->set(EcmFileRepository::class, static fn (Container $container): EcmFileRepository => new EcmFileRepository(self::get($container, Orm::class)));
-		$container->set(ExternalLinkRepository::class, static fn (Container $container): ExternalLinkRepository => new ExternalLinkRepository(self::get($container, Orm::class)));
+		$container->set(EcmFileRepository::class, static fn (Container $container): EcmFileRepository => (new EcmFileRepository(self::get($container, Orm::class)))->withoutEntityScope());
+		$container->set(ExternalLinkRepository::class, static fn (Container $container): ExternalLinkRepository => (new ExternalLinkRepository(self::get($container, Orm::class)))->withoutEntityScope());
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {
