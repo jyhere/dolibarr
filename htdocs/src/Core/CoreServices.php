@@ -9,6 +9,8 @@ use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRegistry;
 use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Files\EcmFileRepository;
+use Dolibarr\Core\Files\ExternalLinkRepository;
 use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Legacy\FlashBag;
@@ -90,6 +92,8 @@ final class CoreServices
 				self::get($container, ExtraFieldCatalog::class)
 			);
 		});
+		$container->set(EcmFileRepository::class, static fn (Container $container): EcmFileRepository => new EcmFileRepository(self::get($container, Orm::class)));
+		$container->set(ExternalLinkRepository::class, static fn (Container $container): ExternalLinkRepository => new ExternalLinkRepository(self::get($container, Orm::class)));
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {
