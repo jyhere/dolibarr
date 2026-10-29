@@ -36,4 +36,11 @@ final class RequestUploadedFilesTest extends TestCase
 	{
 		self::assertSame([], (new Request('POST', '/x', [], [], [], []))->uploadedFiles('userfile'));
 	}
+
+	public function testHasBody(): void
+	{
+		self::assertFalse((new Request('POST', '/x', ['uploadform' => '1'], [], [], []))->hasBody());
+		self::assertTrue((new Request('POST', '/x', [], ['token' => 't'], [], []))->hasBody());
+		self::assertTrue((new Request('POST', '/x', [], [], [], [], '', ['userfile' => ['name' => 'a.txt']]))->hasBody());
+	}
 }

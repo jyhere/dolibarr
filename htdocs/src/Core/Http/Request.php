@@ -286,6 +286,14 @@ final class Request
 		return is_string($value) ? $value : $default;
 	}
 
+	/**
+	 * Whether the request has body parameters or uploaded files (PHP empties both when post_max_size is exceeded).
+	 */
+	public function hasBody(): bool
+	{
+		return $this->post !== [] || $this->files !== [];
+	}
+
 	public function has(string $key): bool
 	{
 		return array_key_exists($key, $this->query) || array_key_exists($key, $this->post);
