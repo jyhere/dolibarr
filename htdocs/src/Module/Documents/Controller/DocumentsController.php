@@ -108,7 +108,8 @@ final class DocumentsController
 				'outputBeforeHeader' => $doActions->output,
 				'title' => $documents->pageTitle($target->legacyObject),
 				'bodyCss' => 'mod-'.$definition->element.' page-card_document',
-				'twoColumns' => $this->config->string('MAIN_DOCUMENTS_LIST_IN_TWOCOLUMNS') !== '',
+				// document_actions_post_headers.tpl.php l.181: if (getDolGlobalString(...)), '0' is one column
+				'twoColumns' => !in_array($this->config->string('MAIN_DOCUMENTS_LIST_IN_TWOCOLUMNS'), ['', '0'], true),
 				'chrome' => $chrome,
 				'fragments' => $this->chrome->fragments($target, $action, $sortfield, $sortorder),
 			];
@@ -389,9 +390,8 @@ final class DocumentsController
 	{
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/images.lib.php';
 
-		$relativeDirectory = ltrim((string) preg_replace('/^'.preg_quote(DOL_DATA_ROOT, '/').'/', '', $target->directory), '/\\');
 		$indexRows = [];
-		foreach ($this->files->inDirectory($target->listingEntity(), $relativeDirectory) as $row) {
+		foreach ($this->files->inDirectory($target->listingEntity(), $target->relativeDirectory()) as $row) {
 			$indexRows[$row->filename] ??= $row;
 		}
 

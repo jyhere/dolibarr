@@ -298,14 +298,68 @@ final class DocumentsControllerTest extends TestCase
 		$target = $this->disposable('Target');
 		$this->putFile($target->id, 'report.txt');
 		$hooks = new ScriptedHooks([]);
+		$countLinks = fn (): int => (int) $this->connection->fetchValue('SELECT COUNT(*) FROM @links WHERE objecttype = :type AND objectid = :id', ['type' => 'user', 'id' => $target->id]);
 
-		// main.inc.php on an invalid token: $_POST emptied, action and confirm removed from $_GET, errorcode set
-		$response = $this->controller(null, $hooks)->act($this->request('POST', ['errorcode' => 'InvalidToken', 'urlfile' => 'report.txt'], [], $target->id), 'user', $target->id);
+		// main.inc.php on an invalid token sets errorcode; a write payload still present must not be run
+		$response = $this->controller(null, $hooks)->act($this->request(
+			'POST',
+			['errorcode' => 'InvalidToken', 'linkit' => 'Link', 'link' => 'https://example.com/doc', 'label' => 'Doc'],
+			['action' => 'confirm_deletefile', 'confirm' => 'yes', 'urlfile' => 'report.txt', 'token' => 'invalid'],
+			$target->id
+		), 'user', $target->id);
 
 		self::assertInstanceOf(RedirectResponse::class, $response);
 		self::assertSame('/user/'.$target->id.'/documents', $response->headers()['Location']);
 		self::assertSame('', $hooks->actions['doActions']);
 		self::assertFileExists($this->directoryOf($target->id).'/report.txt');
+		self::assertSame(0, $countLinks());
+
+		// The same payload with a valid token writes: the test discriminates the InvalidToken branch
+		$this->controller()->act($this->request(
+			'POST',
+			['linkit' => 'Link', 'link' => 'https://example.com/doc', 'label' => 'Doc'],
+			['action' => 'confirm_deletefile', 'confirm' => 'yes', 'urlfile' => 'report.txt', 'token' => 'checked-by-main-inc'],
+			$target->id
+		), 'user', $target->id);
+		self::assertFileDoesNotExist($this->directoryOf($target->id).'/report.txt');
+		self::assertSame(1, $countLinks());
+	}
+
+	public function testTwoColumnsFollowsTheLegacyTruthiness(): void
+	{
+		$target = $this->disposable('Target');
+
+		foreach (['0' => false, '' => false, '1' => true] as $value => $expected) {
+			$this->setConf('MAIN_DOCUMENTS_LIST_IN_TWOCOLUMNS', (string) $value);
+			$view = $this->controller()->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+			self::assertSame($expected, $view->data['twoColumns'], 'MAIN_DOCUMENTS_LIST_IN_TWOCOLUMNS = \''.$value.'\'');
+		}
+	}
+
+	public function testUserOfEntityZeroCanShareAFileIndexedByTheListing(): void
+	{
+		$target = $this->disposable('Admin');
+		// A superadmin (entity 0), as the default admin: its files are written with the entity 0
+		$this->connection->execute('UPDATE @user SET entity = 0 WHERE rowid = :id', ['id' => $target->id]);
+		$this->putFile($target->id, 'first.txt');
+		$entity = (int) $this->context->conf->entity;
+		[$files] = $this->repositories();
+
+		// The page lists the file: list_of_documents() indexes it with the current entity
+		$this->controller()->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+		$this->controller()->act($this->post($target->id, ['action' => 'renamefile', 'renamefilesave' => 'Save', 'renamefilefrom' => 'first.txt', 'renamefileto' => 'second.txt']), 'user', $target->id);
+		$this->controller()->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+		$row = $files->findByPath($entity, 'users/'.$target->id, 'second.txt');
+		self::assertNotNull($row, 'indexed by the listing with the current entity');
+
+		// The rename form of that file, its checkbox ticked, then unticked
+		$response = $this->controller()->act($this->post($target->id, ['action' => 'renamefile', 'renamefilesave' => 'Save', 'renamefilefrom' => 'second.txt', 'renamefileto' => 'second.txt', 'ecmfileid' => (string) $row->id, 'shareenabled' => 'on']), 'user', $target->id);
+		self::assertInstanceOf(RedirectResponse::class, $response);
+		self::assertNotEmpty($files->find((int) $row->id)?->share);
+
+		$this->controller()->act($this->post($target->id, ['action' => 'renamefile', 'renamefilesave' => 'Save', 'renamefilefrom' => 'second.txt', 'renamefileto' => 'second.txt', 'ecmfileid' => (string) $row->id]), 'user', $target->id);
+		self::assertEmpty($files->find((int) $row->id)?->share);
+		self::assertSame([], $_SESSION['dol_events']['errors'] ?? []);
 	}
 
 	public function testDoActionsVetoWritesNothing(): void

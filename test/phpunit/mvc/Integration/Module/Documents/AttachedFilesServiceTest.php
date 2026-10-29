@@ -366,6 +366,41 @@ final class AttachedFilesServiceTest extends TestCase
 		self::assertSame([], $missing->messages);
 	}
 
+	public function testFileOfAnObjectOfEntityZeroIndexedByTheListingCanBeSharedAfterARename(): void
+	{
+		// The default admin has the entity 0; list_of_documents() indexes the files it does not know with the current
+		// entity, and the rename form posts the id of that row
+		$this->object->entity = 0;
+		$entity = (int) $this->context->conf->entity;
+		$service = $this->service();
+		file_put_contents($this->directoryOf($this->object).'/doc.txt', 'content');
+		$renamed = $service->rename($this->target, 'doc.txt', 'renamed.txt');
+		self::assertSame([['type' => 'mesgs', 'text' => $this->text('FileRenamed')]], $renamed->messages);
+		$this->indexAsTheListing($this->object);
+		$row = $this->files->findByPath($entity, 'users/'.$this->object->id, 'renamed.txt');
+		self::assertNotNull($row);
+
+		$shared = $service->share($this->target, (int) $row->id, true);
+		self::assertSame([], $shared->messages);
+		self::assertNotEmpty($this->files->find((int) $row->id)?->share);
+
+		$unshared = $service->share($this->target, (int) $row->id, false);
+		self::assertSame([], $unshared->messages);
+		self::assertEmpty($this->files->find((int) $row->id)?->share);
+	}
+
+	public function testShareOfARowOfTheDirectoryInAnotherEntityIsDenied(): void
+	{
+		file_put_contents($this->directoryOf($this->object).'/doc.txt', 'content');
+		addFileIntoDatabaseIndex($this->directoryOf($this->object), 'doc.txt', 'doc.txt', 'uploaded', 0, $this->object);
+		$row = $this->files->findByPath((int) $this->object->entity, 'users/'.$this->object->id, 'doc.txt');
+		self::assertNotNull($row);
+		$this->connection->execute('UPDATE @ecm_files SET entity = :entity WHERE rowid = :id', ['entity' => 999, 'id' => (int) $row->id]);
+
+		$this->expectException(AccessDeniedException::class);
+		$this->service()->share($this->target, (int) $row->id, true);
+	}
+
 	public function testRenameOfAnUnindexedFileCreatesItsRow(): void
 	{
 		file_put_contents($this->directoryOf($this->object).'/plain.txt', 'content');
@@ -516,6 +551,19 @@ final class AttachedFilesServiceTest extends TestCase
 	private function text(string $key, string ...$parameters): string
 	{
 		return trim(html_entity_decode($this->context->langs->trans($key, ...$parameters), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+	}
+
+	/**
+	 * What list_of_documents() does before listing: completeFileArrayWithDatabaseInfo() indexes the files of the
+	 * directory the index does not know, with the entity of the object or the current one when empty.
+	 */
+	private function indexAsTheListing(\User $object): void
+	{
+		global $modulepart;
+
+		$modulepart = 'user';
+		$fileArray = dol_dir_list($this->directoryOf($object), 'files', 0, '', '(\.meta|_preview.*\.png)$', 'name', SORT_ASC, 1);
+		completeFileArrayWithDatabaseInfo($fileArray, 'users/'.$object->id, $object);
 	}
 
 	private function testUser(): \User

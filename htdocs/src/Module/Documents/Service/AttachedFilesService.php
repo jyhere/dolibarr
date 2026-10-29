@@ -305,7 +305,7 @@ final class AttachedFilesService
 		}
 		$sourceIndexed = $this->files->findByPath(
 			$target->indexEntity(),
-			self::relativeDirectory($target->directory),
+			$target->relativeDirectory(),
 			(string) preg_replace('/\.noexe$/', '', $fromName)
 		) !== null;
 		if (!$this->storage->rename($sourcePath, $targetPath, $target->legacyObject)) {
@@ -342,6 +342,12 @@ final class AttachedFilesService
 	/**
 	 * Sharing of an indexed file (actions_linkedfiles.inc.php l.355-374): nothing for a row that does not exist.
 	 *
+	 * The legacy fetches the row by its id without any check (EcmFiles::fetch()). Here the row must be one of the
+	 * directory of the target (no row of another object: IDOR) and of one of its entities: the one its rows are
+	 * written with (indexEntity()) or the one list_of_documents() lists and indexes unknown files with
+	 * (listingEntity()). They differ for an object of the entity 0 (an admin user): the rename form then posts the
+	 * id of a row of the current entity.
+	 *
 	 * @throws AccessDeniedException The row is the one of a file of another directory or entity
 	 * @throws \LogicException       Without a logged user, or if the trigger object cannot be loaded
 	 * @throws DatabaseException
@@ -354,7 +360,7 @@ final class AttachedFilesService
 		if ($file === null) {
 			return $result;
 		}
-		if ($file->filepath !== self::relativeDirectory($target->directory) || $file->entity !== $target->indexEntity()) {
+		if ($file->filepath !== $target->relativeDirectory() || !in_array($file->entity, [$target->indexEntity(), $target->listingEntity()], true)) {
 			throw new AccessDeniedException();
 		}
 
@@ -476,16 +482,6 @@ final class AttachedFilesService
 		}
 
 		return $this->translator->transHtml($refusal->key, ...array_values($refusal->params));
-	}
-
-	/**
-	 * The directory relative to DOL_DATA_ROOT, as llx_ecm_files stores it in filepath.
-	 */
-	private static function relativeDirectory(string $directory): string
-	{
-		$relative = (string) preg_replace('/^'.preg_quote(DOL_DATA_ROOT, '/').'/', '', $directory);
-
-		return trim($relative, '/\\');
 	}
 
 	/**

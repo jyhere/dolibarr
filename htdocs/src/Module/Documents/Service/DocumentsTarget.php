@@ -54,4 +54,15 @@ final class DocumentsTarget
 
 		return $objectEntity !== 0 ? $objectEntity : (int) $conf->entity;
 	}
+
+	/**
+	 * The directory relative to DOL_DATA_ROOT, without leading nor ending slash: the filepath of its index rows
+	 * (e.g. 'users/3').
+	 */
+	public function relativeDirectory(): string
+	{
+		$relative = (string) preg_replace('/^'.preg_quote(DOL_DATA_ROOT, '/').'/', '', $this->directory);
+
+		return trim($relative, '/\\');
+	}
 }
