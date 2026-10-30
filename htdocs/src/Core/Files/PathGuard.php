@@ -44,18 +44,4 @@ final class PathGuard
 
 		return $path;
 	}
-
-	/**
-	 * Path of the thumbnail of a file: <dir>/thumbs/<name without extension><suffix>.<extension>.
-	 *
-	 * @throws UnsafePathException
-	 */
-	public function thumbsPath(string $fileName, string $suffix): string
-	{
-		$this->inside($fileName);
-		$info = pathinfo($fileName);
-		$extension = isset($info['extension']) && $info['extension'] !== '' ? '.'.$info['extension'] : '';
-
-		return $this->directory.'/thumbs/'.$info['filename'].$suffix.$extension;
-	}
 }

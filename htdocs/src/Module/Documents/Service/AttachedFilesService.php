@@ -414,8 +414,8 @@ final class AttachedFilesService
 
 	/**
 	 * The index row of an uploaded file (dol_add_file_process() l.2240-2268): the row of an overwritten file is
-	 * removed first (its stored name, ".noexe" included, as the legacy passes it); a failure to index is a warning,
-	 * not shown when overwriting.
+	 * removed first (its stored name, ".noexe" included, as the legacy passes it); a failure to remove it is logged and
+	 * ignored; a failure to index is a warning, not shown when overwriting.
 	 *
 	 * @throws \LogicException
 	 * @throws DatabaseException
@@ -425,7 +425,12 @@ final class AttachedFilesService
 	{
 		$directory = $target->directory;
 		if ($overwrite) {
-			$this->index->removeIndexRow($directory, $stored->storedName, $target->indexEntity());
+			try {
+				$this->index->removeIndexRow($directory, $stored->storedName, $target->indexEntity());
+			} catch (DatabaseException $e) {
+				// The legacy ignores the result of deleteFilesIntoDatabaseIndex(): the file is already overwritten
+				\dol_syslog('AttachedFilesService::indexUpload failed to remove the index row of '.$stored->storedName.': '.$e->engineMessage(), LOG_WARNING);
+			}
 		}
 
 		try {
@@ -489,7 +494,7 @@ final class AttachedFilesService
 	 */
 	private static function databaseError(DatabaseException $exception): string
 	{
-		return 'Error '.$exception->getMessage();
+		return 'Error '.$exception->engineMessage();
 	}
 
 	/**

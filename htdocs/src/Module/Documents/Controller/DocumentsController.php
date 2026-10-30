@@ -111,7 +111,7 @@ final class DocumentsController
 				// document_actions_post_headers.tpl.php l.181: if (getDolGlobalString(...)), '0' is one column
 				'twoColumns' => !in_array($this->config->string('MAIN_DOCUMENTS_LIST_IN_TWOCOLUMNS'), ['', '0'], true),
 				'chrome' => $chrome,
-				'fragments' => $this->chrome->fragments($target, $action, $sortfield, $sortorder),
+				'fragments' => $this->chrome->fragments($target, $action, $sortfield, $sortorder, $documents->savingDocMask($target->legacyObject)),
 			];
 		}
 

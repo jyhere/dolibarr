@@ -135,7 +135,7 @@ The table of files is still printed by `FormFile::list_of_documents()` (it reads
 
 Giving a new module an attached files tab (checklist):
 
-1. Create a service implementing `Core\Entity\EntityDocuments`: `modulePart()`, `directory($legacyObject)` (the `$upload_dir` of the legacy page), `canWriteDocuments($entity)` (`$permissiontoadd`), `pageTitle()`, `savingDocMask()`.
+1. Create a service implementing `Core\Entity\EntityDocuments`: `modulePart()`, `directory($legacyObject)` (the `$upload_dir` of the legacy page), `canWriteDocuments($entity)` (`$permissiontoadd`), `pageTitle()`, `savingDocMask()` (the `$savingdocmask` the legacy page sets before including the template, `''` for none: it is shown by the upload form and wins over the module-part ref-prefix list, which `MAIN_DISABLE_SUGGEST_REF_AS_PREFIX` disables).
 2. Register it in the module's `register()` container and pass its class as the last argument (`$documentsId`) of the module's `EntityDefinition`.
 3. Add the tab to the card chrome (`href` generated for the route `entity_documents` with `entity` and `id`).
 4. Declare the legacy redirect of the module's `document.php` (`LegacyRedirect(..., 'entity_documents', ['id' => 'id'], ['entity' => '<entity>'], ['id'], ['', 'deletefile', 'deletelink', 'editfile', 'update'], carry: ['action', 'token', 'urlfile', 'linkid', 'sortfield', 'sortorder'], requirements: ...)`); add one on `userid` first if the legacy tabs link with it (as `user/document.php?userid=` does: `userid` wins over `id`, like the legacy).

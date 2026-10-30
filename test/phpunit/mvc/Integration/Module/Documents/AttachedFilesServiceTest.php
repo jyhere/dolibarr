@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace Dolibarr\Tests\Integration\Module\Documents;
 
+use Dolibarr\Core\Database\BoundStatement;
 use Dolibarr\Core\Database\Connection;
+use Dolibarr\Core\Database\DatabaseException;
+use Dolibarr\Core\Database\Driver;
+use Dolibarr\Core\Database\LegacyDriver;
 use Dolibarr\Core\Entity\EntityDefinition;
 use Dolibarr\Core\Files\EcmFileRepository;
 use Dolibarr\Core\Files\ExternalLinkRepository;
@@ -78,17 +82,8 @@ final class AttachedFilesServiceTest extends TestCase
 			$this->context->langs->load($domain);
 		}
 		$this->connection = Connection::forLegacy($this->context->db);
-		$hydrator = new Hydrator();
-		$orm = new Orm(
-			$this->connection,
-			new MappingRegistry(),
-			new LegacyEntityScope(),
-			$hydrator,
-			new Snapshots($hydrator),
-			new LegacyExtraFieldCatalog($this->connection, new LegacyConfig($this->context), new Logger())
-		);
-		$this->files = (new EcmFileRepository($orm))->withoutEntityScope();
-		$this->links = (new ExternalLinkRepository($orm))->withoutEntityScope();
+		$this->files = $this->filesOn($this->connection);
+		$this->links = (new ExternalLinkRepository($this->orm($this->connection)))->withoutEntityScope();
 
 		$this->object = $this->testUser();
 		$this->otherObject = $this->testUser();
@@ -223,6 +218,32 @@ final class AttachedFilesServiceTest extends TestCase
 		self::assertNotSame($first->id, $rows[0]->id);
 		self::assertSame(md5('second'), $rows[0]->label);
 		self::assertSame(['ECMFILES_CREATE'], array_column(RecordingTriggers::calls(), 'action'), 'the old row is removed without trigger');
+	}
+
+	public function testOverwriteSurvivesAFailureToRemoveTheOldIndexRow(): void
+	{
+		$this->service()->upload($this->target, [$this->upload('doc.txt', 'first')], false, '');
+
+		$failing = $this->connectionFailingOn('DELETE', 'Deadlock found');
+		$service = $this->service(null, $failing);
+
+		$result = $service->upload($this->target, [$this->upload('doc.txt', 'second')], true, '');
+
+		self::assertSame([['type' => 'mesgs', 'text' => $this->text('FileTransferComplete')]], $result->messages);
+		self::assertSame('second', file_get_contents($this->directoryOf($this->object).'/doc.txt'));
+	}
+
+	public function testDatabaseWarningDoesNotShowTheSql(): void
+	{
+		file_put_contents($this->directoryOf($this->object).'/kept.txt', 'content');
+		addFileIntoDatabaseIndex($this->directoryOf($this->object), 'kept.txt', 'kept.txt', 'uploaded', 0, $this->object);
+		$row = $this->files->findByPath((int) $this->object->entity, 'users/'.$this->object->id, 'kept.txt');
+		self::assertNotNull($row);
+
+		$result = $this->service(null, $this->connectionFailingOn('UPDATE', 'Table is broken'))->share($this->target, (int) $row->id, true);
+
+		self::assertSame([['type' => 'warnings', 'text' => 'Error Table is broken']], $result->messages);
+		self::assertStringNotContainsString('SQL', $result->messages[0]['text']);
 	}
 
 	public function testDeleteFileUsesTheBasenameOfUrlfile(): void
@@ -517,8 +538,64 @@ final class AttachedFilesServiceTest extends TestCase
 		$result->add('info', 'text');
 	}
 
-	private function service(?ScriptedHooks $scripted = null): AttachedFilesService
+	/**
+	 * A connection whose statements starting with $keyword fail with $message (the others run on the legacy driver).
+	 */
+	private function connectionFailingOn(string $keyword, string $message): Connection
 	{
+		return new Connection($this->context->db, new class(new LegacyDriver($this->context->db), $keyword, $message) implements Driver {
+			public function __construct(private readonly Driver $inner, private readonly string $keyword, private readonly string $message)
+			{
+			}
+
+			public function fetchAll(BoundStatement $statement): array
+			{
+				return $this->inner->fetchAll($statement);
+			}
+
+			public function execute(BoundStatement $statement): int
+			{
+				if (str_starts_with($statement->sql, $this->keyword)) {
+					throw DatabaseException::fromStatement($statement, $this->message, 1213);
+				}
+
+				return $this->inner->execute($statement);
+			}
+
+			public function lastInsertId(string $table, string $column): int
+			{
+				return $this->inner->lastInsertId($table, $column);
+			}
+
+			public function placeholders(BoundStatement $statement): BoundStatement
+			{
+				return $this->inner->placeholders($statement);
+			}
+		});
+	}
+
+	private function orm(Connection $connection): Orm
+	{
+		$hydrator = new Hydrator();
+
+		return new Orm(
+			$connection,
+			new MappingRegistry(),
+			new LegacyEntityScope(),
+			$hydrator,
+			new Snapshots($hydrator),
+			new LegacyExtraFieldCatalog($connection, new LegacyConfig($this->context), new Logger())
+		);
+	}
+
+	private function filesOn(Connection $connection): EcmFileRepository
+	{
+		return (new EcmFileRepository($this->orm($connection)))->withoutEntityScope();
+	}
+
+	private function service(?ScriptedHooks $scripted = null, ?Connection $connection = null): AttachedFilesService
+	{
+		$files = $connection === null ? $this->files : $this->filesOn($connection);
 		$hookManager = new \HookManager($this->context->db);
 		if ($scripted !== null) {
 			ScriptedHooks::register($hookManager, 'actionlinkedfiles', $scripted);
@@ -532,12 +609,12 @@ final class AttachedFilesServiceTest extends TestCase
 
 		return new AttachedFilesService(
 			$storage,
-			new FileIndex($this->files, $this->connection, $triggers, $objects, $config, $this->context),
+			new FileIndex($files, $connection ?? $this->connection, $triggers, $objects, $config, $this->context),
 			new Thumbnails($storage),
 			$policy,
 			new LinkWriter($this->links, $this->connection, $triggers, $objects, $config, $this->context),
 			$this->links,
-			$this->files,
+			$files,
 			$hooks,
 			new LegacyTranslator($this->context->langs),
 			$config

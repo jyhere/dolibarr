@@ -43,6 +43,7 @@ use Dolibarr\Core\Security\NotFoundException;
 use Dolibarr\Module\Documents\Controller\DocumentsController;
 use Dolibarr\Module\Documents\Service\AttachedFilesService;
 use Dolibarr\Module\Documents\Service\LinkWriter;
+use Dolibarr\Core\Entity\EntityDocuments;
 use Dolibarr\Module\Documents\View\DocumentsChrome;
 use Dolibarr\Module\Notes\Controller\NotesController;
 use Dolibarr\Module\User\Controller\UserController;
@@ -158,6 +159,29 @@ final class DocumentsControllerTest extends TestCase
 		self::assertStringContainsString('id="formaddlink"', $view->data['fragments']['links']);
 		self::assertSame('', $view->data['fragments']['confirm']);
 		self::assertFalse($view->data['twoColumns']);
+	}
+
+	public function testCallerSavingMaskIsShownInTheUploadForm(): void
+	{
+		$target = $this->disposable('Masked');
+
+		$view = $this->controller(null, null, 'REF-__file__')->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+
+		self::assertMatchesRegularExpression('#<input type="checkbox"[^>]*name="savingdocmask"[^>]*value="REF-__file__"#', $view->data['fragments']['attachForms']['upload']);
+		self::assertStringContainsString('value="REF-__file__"', $view->data['fragments']['documents']);
+
+		$this->setConf('MAIN_DISABLE_SUGGEST_REF_AS_PREFIX', '1');
+		$disabled = $this->controller(null, null, 'REF-__file__')->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+		self::assertStringNotContainsString('name="savingdocmask"', $disabled->data['fragments']['attachForms']['upload']);
+	}
+
+	public function testUserHasNoSavingMask(): void
+	{
+		$target = $this->disposable('Unmasked');
+
+		$view = $this->controller()->show($this->request('GET', [], [], $target->id), 'user', $target->id);
+
+		self::assertStringNotContainsString('name="savingdocmask"', $view->data['fragments']['attachForms']['upload']);
 	}
 
 	public function testShowOfAnUnreadableUserIsDenied(): void
@@ -395,7 +419,7 @@ final class DocumentsControllerTest extends TestCase
 		return trim(html_entity_decode($this->context->langs->trans($key, ...$parameters), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
 	}
 
-	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null): DocumentsController
+	private function controller(?CurrentUser $me = null, ?ScriptedHooks $scripted = null, ?string $mask = null): DocumentsController
 	{
 		$context = $this->context;
 		$me ??= $this->legacyMe();
@@ -411,7 +435,37 @@ final class DocumentsControllerTest extends TestCase
 		$container->instance(UserRepository::class, $this->repo());
 		$container->instance(UserPermissionChecker::class, $checker);
 		$container->instance(UserCardChrome::class, new UserCardChrome($context, $urls));
-		$container->instance(UserDocuments::class, new UserDocuments($context, $checker));
+		$userDocuments = new UserDocuments($context, $checker);
+		$container->instance(UserDocuments::class, $mask === null ? $userDocuments : new class($userDocuments, $mask) implements EntityDocuments {
+			public function __construct(private readonly UserDocuments $inner, private readonly string $mask)
+			{
+			}
+
+			public function modulePart(): string
+			{
+				return $this->inner->modulePart();
+			}
+
+			public function directory(\CommonObject $legacyObject): string
+			{
+				return $this->inner->directory($legacyObject);
+			}
+
+			public function canWriteDocuments(object $entity): bool
+			{
+				return $this->inner->canWriteDocuments($entity);
+			}
+
+			public function pageTitle(\CommonObject $legacyObject): string
+			{
+				return $this->inner->pageTitle($legacyObject);
+			}
+
+			public function savingDocMask(\CommonObject $legacyObject): string
+			{
+				return $this->mask;
+			}
+		});
 
 		[$files, $links] = $this->repositories();
 		$config = new LegacyConfig($context);

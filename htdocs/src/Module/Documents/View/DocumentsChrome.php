@@ -38,9 +38,11 @@ final class DocumentsChrome
 	 *                          edition of a link, editfile (read by list_of_documents()) the renaming of a file
 	 * @param string $sortfield The sort field of the list of files (list_of_documents() and listOfLinks() read the globals)
 	 * @param string $sortorder The sort order of the list of files
+	 * @param string $callerMask The $savingdocmask of the caller of the legacy template (EntityDocuments::savingDocMask()),
+	 *                          '' for none
 	 * @return array{confirm: string, attachForms: array{upload: string, link: string}, documents: string, links: string}
 	 */
-	public function fragments(DocumentsTarget $target, string $action, string $sortfield, string $sortorder): array
+	public function fragments(DocumentsTarget $target, string $action, string $sortfield, string $sortorder, string $callerMask = ''): array
 	{
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/files.lib.php';
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/images.lib.php';
@@ -91,7 +93,7 @@ final class DocumentsChrome
 			$object,
 			'',
 			1,
-			$this->savingDocMask($modulepart, $object),
+			$this->savingDocMask($modulepart, $object, $callerMask),
 			1,
 			'formuserfile',
 			'',
@@ -156,12 +158,18 @@ final class DocumentsChrome
 	}
 
 	/**
-	 * l.111-147 (the legacy page sets no $savingdocmask): the ref of the object as prefix for some module parts, none
-	 * with MAIN_DISABLE_SUGGEST_REF_AS_PREFIX.
+	 * l.122-150: a $savingdocmask given by the caller wins; else the ref of the object as prefix for some module
+	 * parts. MAIN_DISABLE_SUGGEST_REF_AS_PREFIX forces none.
 	 */
-	private function savingDocMask(string $modulepart, \CommonObject $object): string
+	private function savingDocMask(string $modulepart, \CommonObject $object, string $callerMask): string
 	{
-		if (getDolGlobalString('MAIN_DISABLE_SUGGEST_REF_AS_PREFIX') || !in_array($modulepart, self::REF_PREFIXED_MODULE_PARTS, true)) {
+		if (getDolGlobalString('MAIN_DISABLE_SUGGEST_REF_AS_PREFIX')) {
+			return '';
+		}
+		if ($callerMask !== '') {
+			return $callerMask;
+		}
+		if (!in_array($modulepart, self::REF_PREFIXED_MODULE_PARTS, true)) {
 			return '';
 		}
 

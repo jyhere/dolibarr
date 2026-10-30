@@ -74,12 +74,4 @@ final class PathGuardTest extends TestCase
 
 		(new PathGuard('/tmp'))->inside('x.txt');
 	}
-
-	public function testThumbsPath(): void
-	{
-		self::assertSame(
-			$this->directory.'/thumbs/photo_small.jpg',
-			(new PathGuard($this->directory))->thumbsPath('photo.jpg', '_small')
-		);
-	}
 }

@@ -14,8 +14,8 @@ use Dolibarr\Module\User\Documents\UserDocuments;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Security\UserPermissionChecker;
 use Dolibarr\Module\User\UserModule;
-use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
 use Dolibarr\Module\User\View\UserCardChrome;
+use Dolibarr\Tests\Unit\Module\User\Fixture\RightsCurrentUser;
 use PHPUnit\Framework\TestCase;
 
 /**
