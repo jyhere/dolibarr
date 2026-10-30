@@ -8,6 +8,7 @@ use Dolibarr\Core\Legacy\Redirect\LegacyRedirector;
 use Dolibarr\Core\Legacy\Redirect\LegacyRedirectTable;
 use Dolibarr\Core\Routing\RouteCompiler;
 use Dolibarr\Core\Routing\UrlGenerator;
+use Dolibarr\Module\Documents\DocumentsModule;
 use Dolibarr\Module\Notes\NotesModule;
 use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Repository\UserSearch;
@@ -81,6 +82,21 @@ final class UserLegacyRedirectsTest extends TestCase
 			'note without id' => ['user/note.php', [], null],
 			'note id zero' => ['user/note.php', ['id' => '0'], null],
 			'note id not numeric' => ['user/note.php', ['id' => 'x'], null],
+			// document.php
+			'document show' => ['user/document.php', ['id' => '3'], '/user/3/documents'],
+			'document userid' => ['user/document.php', ['userid' => '3'], '/user/3/documents'],
+			'document userid wins over id' => ['user/document.php', ['userid' => '3', 'id' => '5'], '/user/3/documents'],
+			'document userid zero falls back to id' => ['user/document.php', ['userid' => '0', 'id' => '5'], '/user/5/documents'],
+			'document deletefile carry' => ['user/document.php', ['id' => '3', 'action' => 'deletefile', 'urlfile' => 'a.pdf', 'token' => 't', 'foo' => 'bar'], '/user/3/documents?action=deletefile&token=t&urlfile=a.pdf'],
+			'document userid deletelink carry' => ['user/document.php', ['userid' => '3', 'action' => 'deletelink', 'linkid' => '7'], '/user/3/documents?action=deletelink&linkid=7'],
+			'document editfile' => ['user/document.php', ['id' => '3', 'action' => 'editfile', 'urlfile' => 'a.pdf', 'token' => 't'], '/user/3/documents?action=editfile&token=t&urlfile=a.pdf'],
+			'document update' => ['user/document.php', ['id' => '3', 'action' => 'update', 'linkid' => '7'], '/user/3/documents?action=update&linkid=7'],
+			'document sort' => ['user/document.php', ['id' => '3', 'sortfield' => 'name', 'sortorder' => 'desc'], '/user/3/documents?sortfield=name&sortorder=desc'],
+			'document confirm_deletefile' => ['user/document.php', ['id' => '3', 'action' => 'confirm_deletefile'], null],
+			'document confirm param' => ['user/document.php', ['id' => '3', 'confirm' => 'yes'], null],
+			'document id zero' => ['user/document.php', ['id' => '0'], null],
+			'document userid zero' => ['user/document.php', ['userid' => '0'], null],
+			'document without id' => ['user/document.php', [], null],
 			// perms.php
 			'perms show' => ['user/perms.php', ['id' => '2'], '/user/2/rights'],
 			'perms carry' => ['user/perms.php', ['id' => '2', 'updatedmodulename' => 'user', 'page_y' => '120'], '/user/2/rights?updatedmodulename=user&page_y=120'],
@@ -132,7 +148,7 @@ final class UserLegacyRedirectsTest extends TestCase
 
 	public static function redirector(): LegacyRedirector
 	{
-		$modules = [new UserModule(), new NotesModule()];
+		$modules = [new UserModule(), new NotesModule(), new DocumentsModule()];
 		$controllers = [];
 		foreach ($modules as $module) {
 			$controllers = array_merge($controllers, $module->controllers());

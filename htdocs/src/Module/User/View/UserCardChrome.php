@@ -297,7 +297,7 @@ final class UserCardChrome implements EntityTabs
 		if (!$legacyObject instanceof \User) {
 			throw new \InvalidArgumentException('UserCardChrome only handles \\User, got '.$legacyObject::class);
 		}
-		if ($activeTab !== 'note' && $activeTab !== 'rights') {
+		if ($activeTab !== 'note' && $activeTab !== 'rights' && $activeTab !== 'document') {
 			throw new \InvalidArgumentException('No chrome for the user tab '.$activeTab);
 		}
 		require_once DOL_DOCUMENT_ROOT.'/core/lib/usergroups.lib.php';
@@ -317,7 +317,7 @@ final class UserCardChrome implements EntityTabs
 
 		return [
 			'tabsHtml' => $this->tabs($legacyObject, $activeTab),
-			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref, $activeTab === 'rights' ? 'user_rights' : 'entity_note', $activeTab === 'rights' ? [] : ['entity' => 'user']),
+			'bannerHtml' => $this->banner($legacyObject, $canList, $morehtmlref, $this->bannerRoute($activeTab), $activeTab === 'rights' ? [] : ['entity' => 'user']),
 			'tabsEndHtml' => dol_get_fiche_end(),
 			'headerRowsHtml' => $activeTab === 'rights' ? $this->rightsHeaderRows($legacyObject) : $this->noteLoginRow($legacyObject),
 		];
@@ -331,13 +331,18 @@ final class UserCardChrome implements EntityTabs
 	 */
 	public function legacyPageSettings(string $page): LegacyPageSettings
 	{
-		if ($page !== 'note' && $page !== 'rights') {
+		if ($page !== 'note' && $page !== 'rights' && $page !== 'document') {
 			throw new \InvalidArgumentException('No legacy page settings for the user page '.$page);
 		}
 		$socid = 0;
 		$me = $this->ctx->user;
 		if ($me !== null && $me->socid > 0) {
 			$socid = (int) $me->socid;
+		}
+
+		if ($page === 'document') {
+			// document.php l.46, l.87, l.130
+			return new LegacyPageSettings(['users', 'other'], ['usercard', 'userdoc', 'globalcard'], ['id' => $socid]);
 		}
 
 		return $page === 'rights'
@@ -357,15 +362,26 @@ final class UserCardChrome implements EntityTabs
 				$head[$i][0] = $this->urls->generate('user_show', ['id' => (int) $object->id]);
 			} elseif (($tab[2] ?? '') === 'note' && $this->urls->has('entity_note')) {
 				$head[$i][0] = $this->urls->generate('entity_note', ['entity' => 'user', 'id' => (int) $object->id]);
+			} elseif (($tab[2] ?? '') === 'document' && $this->urls->has('entity_documents')) {
+				$head[$i][0] = $this->urls->generate('entity_documents', ['entity' => 'user', 'id' => (int) $object->id]);
 			} elseif (($tab[2] ?? '') === 'rights' && $this->urls->has('user_rights')) {
 				$head[$i][0] = $this->urls->generate('user_rights', ['id' => (int) $object->id]);
 			}
 		}
 
-		// note.php l.106 and perms.php l.347 pass the defaults after the picto; card.php l.1741 enables the drag and drop of files
-		return $active === 'user'
-			? dol_get_fiche_head($head, 'user', $this->ctx->langs->trans('User'), -1, 'user', 0, '', '', 0, '', 1)
+		// note.php l.106 and perms.php l.347 pass the defaults after the picto; card.php l.1741 and document.php l.162 enable the drag and drop of files
+		return $active === 'user' || $active === 'document'
+			? dol_get_fiche_head($head, $active, $this->ctx->langs->trans('User'), -1, 'user', 0, '', '', 0, '', 1)
 			: dol_get_fiche_head($head, $active, $this->ctx->langs->trans('User'), -1, 'user');
+	}
+
+	private function bannerRoute(string $activeTab): string
+	{
+		return match ($activeTab) {
+			'rights' => 'user_rights',
+			'document' => 'entity_documents',
+			default => 'entity_note',
+		};
 	}
 
 	/**
@@ -406,7 +422,8 @@ final class UserCardChrome implements EntityTabs
 			$html = (string) ob_get_clean();
 		}
 
-		return $this->navigationLinks($html, $route, $fixed);
+		// A tab whose route does not exist yet keeps the legacy links of the banner
+		return $this->urls->has($route) ? $this->navigationLinks($html, $route, $fixed) : $html;
 	}
 
 	/**

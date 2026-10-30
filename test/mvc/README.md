@@ -119,7 +119,33 @@ Deploy: the caches are stamped by Dolibarr version and module list, not by rule 
 
 Route constants: `#[Route(..., constants: ['EVEN_IF_ONLY_LOGIN_ALLOWED'])]` makes `app.php` define those constants (to `1`) before `main.inc.php` for that route, as the legacy page did. The `logout` route uses it: under `MAIN_ONLY_LOGIN_ALLOWED`, the offline message links to `user/logout.php`, redirected to `/logout`, which must still disconnect.
 
-Covered URLs: `user/card.php` (`id`; `action=edit|disable|enable|delete|password|passwordsend`; `action=create`, with `employee`), `user/list.php` (plain filters and sort), `user/note.php`, `user/perms.php`, `user/logout.php`. `smoke.sh` asserts them on nginx and Apache, with the cases that must not redirect, the absence of loops, the switch and the logout under `MAIN_ONLY_LOGIN_ALLOWED` (set to a dummy login, then removed).
+Covered URLs: `user/card.php` (`id`; `action=edit|disable|enable|delete|password|passwordsend`; `action=create`, with `employee`), `user/list.php` (plain filters and sort), `user/note.php`, `user/document.php` (`id` or `userid`; `action=deletefile|deletelink|editfile|update`; the confirmations and any POST stay legacy), `user/perms.php`, `user/logout.php`. `smoke.sh` asserts them on nginx and Apache, with the cases that must not redirect, the absence of loops, the switch and the logout under `MAIN_ONLY_LOGIN_ALLOWED` (set to a dummy login, then removed).
+
+## Attached files (Documents)
+
+The tab of a record's files and external links is generic: `GET|POST /{entity}/{id}/documents` (routes `entity_documents` and `entity_documents_post`, module `htdocs/src/Module/Documents`), the equivalent of `user/document.php` for every entity type that declares it. The user is the first one.
+
+`Core/Files` holds what a file write needs, without the legacy orchestration functions (`dol_add_file_process`, `dol_move_uploaded_file`, `dol_move`, `dol_delete_file`, `addFileIntoDatabaseIndex`, `deleteFilesIntoDatabaseIndex`, `\EcmFiles::create/update/delete`, `\Link::create/update/delete` are never called):
+
+- `FileStorage`: upload, rename, deletion on disk (name sanitising, executable extensions renamed `.noexe`, virus check, thumbnails), `PathGuard` (a path outside the object's directory is refused), `UploadPolicy` (what is refused and why), `UploadedFileMover` (`PhpUploadedFileMover` in production, `rename` in tests);
+- `FileIndex`: the `llx_ecm_files` rows, with the `ECMFILES_CREATE`/`ECMFILES_DELETE`/`ECMFILES_MODIFY` triggers;
+- `EcmFile` / `EcmFileRepository` and `ExternalLink` / `ExternalLinkRepository`: ORM entities of `llx_ecm_files` and `llx_links` (not scoped by entity: the entity is an explicit criterion, the one of the object, see R2 of the plan).
+
+The table of files is still printed by `FormFile::list_of_documents()` (it reads the index itself), so the page is identical to the legacy one; the ORM serves the JSON, the counters of the header and every write. A delete popup is the legacy `Form::formconfirm()` (`useajax=1`) whose Yes button posts to the page.
+
+Giving a new module an attached files tab (checklist):
+
+1. Create a service implementing `Core\Entity\EntityDocuments`: `modulePart()`, `directory($legacyObject)` (the `$upload_dir` of the legacy page), `canWriteDocuments($entity)` (`$permissiontoadd`), `pageTitle()`, `savingDocMask()` (the `$savingdocmask` the legacy page sets before including the template, `''` for none: it is shown by the upload form and wins over the module-part ref-prefix list, which `MAIN_DISABLE_SUGGEST_REF_AS_PREFIX` disables).
+2. Register it in the module's `register()` container and pass its class as the last argument (`$documentsId`) of the module's `EntityDefinition`.
+3. Add the tab to the card chrome (`href` generated for the route `entity_documents` with `entity` and `id`).
+4. Declare the legacy redirect of the module's `document.php` (`LegacyRedirect(..., 'entity_documents', ['id' => 'id'], ['entity' => '<entity>'], ['id'], ['', 'deletefile', 'deletelink', 'editfile', 'update'], carry: ['action', 'token', 'urlfile', 'linkid', 'sortfield', 'sortorder'], requirements: ...)`); add one on `userid` first if the legacy tabs link with it (as `user/document.php?userid=` does: `userid` wins over `id`, like the legacy).
+5. Add the module to the unit redirect test and a parity case to the smoke (`== Documents component`).
+
+Parity (R7): `move_uploaded_file()` does not run in the CLI, so PHPUnit moves with `rename` through `UploadedFileMover` and compares the index of an upload with `addFileIntoDatabaseIndex()` (MariaDB and PostgreSQL). The complete upload (name on disk and index columns) is compared by HTTP in `smoke.sh`: the same file posted to `user/document.php?id=1` and to `/user/1/documents`. Quirk seen there: user 1 has entity 0, its rows are written with entity 0, but the listing indexes the file again with the current entity (1) and no deletion removes that second row; the smoke compares and counts the rows of entity 0 only and purges the other ones.
+
+Rules of the module: the link of a created link is the route's entity (never the `objecttype`/`objectid` posted by the form, which the legacy trusts); every POST answers 302 to the GET page with the messages in flash (`{"ok", "messages"}` in JSON); an action without a valid token writes nothing.
+
+Legacy functions still allowed as utilities: `dolCheckVirus`, `dolCheckOnFileName`, `vignette`, `image_format_supported`, `getDefaultImageSizes`, `dol_sanitizeFileName`, `dol_string_nohtmltag`, `isAFileWithExecutableContent`, `getExecutableContent`, `dol_hash`, `getRandomPassword`, `dolDocToText`, `dol_mkdir`, `dolChmod`, `dol_osencode`, `\CommonObject::addThumbs`/`delThumbs`, `\EcmFiles::fetch` and `\Link::fetch` (the objects handed to the triggers), and the display helpers of `FormFile` and `Form`.
 
 ## MVC routes available
 
@@ -136,6 +162,7 @@ Covered URLs: `user/card.php` (`id`; `action=edit|disable|enable|delete|password
 | POST | `/user/{id}/delete` | `card.php` `confirm_delete` |
 | GET/POST | `/{entity}/{id}/note` (e.g. `/user/1/note`) | `user/note.php` |
 | GET/POST | `/user/{id}/rights` | `user/perms.php` |
+| GET/POST | `/{entity}/{id}/documents` (e.g. `/user/1/documents`) | `user/document.php` |
 | GET/POST | `/login`, `/logout` | `index.php`, `user/logout.php` |
 
 Every write is a POST with a CSRF token; an invalid token cancels the action and shows a warning. `smoke.sh` creates and removes its own `smoke_*` users and groups (it needs a SQL client: host `mysql` on port 33306, or `docker compose exec mysql`, or `SMOKE_MYSQL`).

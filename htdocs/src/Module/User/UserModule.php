@@ -28,6 +28,7 @@ use Dolibarr\Module\User\Controller\LogoutController;
 use Dolibarr\Module\User\Controller\UserController;
 use Dolibarr\Module\User\Controller\UserListController;
 use Dolibarr\Module\User\Controller\UserRightsController;
+use Dolibarr\Module\User\Documents\UserDocuments;
 use Dolibarr\Module\User\Entity\User;
 use Dolibarr\Module\User\Listener\LegacyTriggerBridge;
 use Dolibarr\Module\User\Repository\LegacyUserWriter;
@@ -67,7 +68,7 @@ final class UserModule implements ModuleInterface
 	 */
 	public function entities(): array
 	{
-		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php')];
+		return [new EntityDefinition('user', User::class, UserRepository::class, 'user', 'user', UserPermissionChecker::class, UserCardChrome::class, 'user_show', \User::class, '/user/class/user.class.php', UserDocuments::class)];
 	}
 
 	public function services(Container $container): void
@@ -120,6 +121,7 @@ final class UserModule implements ModuleInterface
 			);
 		});
 		$container->set(UserCardChrome::class, static fn (Container $container): UserCardChrome => new UserCardChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
+		$container->set(UserDocuments::class, static fn (Container $container): UserDocuments => new UserDocuments(self::get($container, LegacyContext::class), self::get($container, UserPermissionChecker::class)));
 		$container->set(UserFormChrome::class, static fn (Container $container): UserFormChrome => new UserFormChrome(self::get($container, LegacyContext::class), self::get($container, UrlGenerator::class)));
 		$container->set(UserValidator::class, static fn (Container $container): UserValidator => new UserValidator(self::get($container, Translator::class), self::get($container, Config::class)));
 		$container->set(Authenticator::class, static function (Container $container): Authenticator {
@@ -262,6 +264,9 @@ final class UserModule implements ModuleInterface
 		);
 		// id=0 (and a leading 0) stays legacy: card.php?id=0 is not a user card
 		$id = ['id' => '[1-9]\d*'];
+		// Documents tab: the display actions only (confirm_*, sendit, linkit... stay legacy, as does any POST)
+		$documentActions = ['', 'deletefile', 'deletelink', 'editfile', 'update'];
+		$documentCarry = ['action', 'token', 'urlfile', 'linkid', 'sortfield', 'sortorder'];
 
 		return [
 			new LegacyRedirect('user/card.php', 'user_show', ['id' => 'id'], required: ['id'], carry: ['backtopage', 'save_lastsearch_values', 'mainmenu', 'leftmenu', 'optioncss'], requirements: $id),
@@ -288,6 +293,9 @@ final class UserModule implements ModuleInterface
 				forbiddenPrefixes: ['search_options_']
 			),
 			new LegacyRedirect('user/note.php', 'entity_note', ['id' => 'id'], ['entity' => 'user'], ['id'], ['', 'editnote_public', 'editnote_private'], carry: ['action', 'token'], requirements: $id),
+			// document.php reads userid first, then id (the user tabs link with userid): userid wins when both are present
+			new LegacyRedirect('user/document.php', 'entity_documents', ['userid' => 'id'], ['entity' => 'user'], ['userid'], $documentActions, carry: $documentCarry, requirements: ['userid' => '[1-9]\d*']),
+			new LegacyRedirect('user/document.php', 'entity_documents', ['id' => 'id'], ['entity' => 'user'], ['id'], $documentActions, carry: $documentCarry, requirements: $id),
 			new LegacyRedirect('user/perms.php', 'user_rights', ['id' => 'id'], required: ['id'], carry: ['updatedmodulename', 'page_y'], requirements: $id),
 			new LegacyRedirect('user/logout.php', 'logout', actions: null, forbidden: [], carry: ['urlfrom', 'noredirect']),
 		];

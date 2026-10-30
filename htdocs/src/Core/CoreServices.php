@@ -9,6 +9,14 @@ use Dolibarr\Core\Database\Connection;
 use Dolibarr\Core\Entity\EntityRegistry;
 use Dolibarr\Core\Entity\EntityServices;
 use Dolibarr\Core\Event\EventDispatcher;
+use Dolibarr\Core\Files\EcmFileRepository;
+use Dolibarr\Core\Files\ExternalLinkRepository;
+use Dolibarr\Core\Files\FileIndex;
+use Dolibarr\Core\Files\FileStorage;
+use Dolibarr\Core\Files\PhpUploadedFileMover;
+use Dolibarr\Core\Files\Thumbnails;
+use Dolibarr\Core\Files\UploadedFileMover;
+use Dolibarr\Core\Files\UploadPolicy;
 use Dolibarr\Core\Http\InputFilter;
 use Dolibarr\Core\Http\Request;
 use Dolibarr\Core\Legacy\FlashBag;
@@ -17,6 +25,7 @@ use Dolibarr\Core\Legacy\LegacyContext;
 use Dolibarr\Core\Legacy\LegacyCurrentUser;
 use Dolibarr\Core\Legacy\LegacyEntityScope;
 use Dolibarr\Core\Legacy\LegacyExtraFieldCatalog;
+use Dolibarr\Core\Legacy\LegacyFileObjects;
 use Dolibarr\Core\Legacy\LegacyHooks;
 use Dolibarr\Core\Legacy\LegacyInputFilter;
 use Dolibarr\Core\Legacy\LegacyLayout;
@@ -90,6 +99,25 @@ final class CoreServices
 				self::get($container, ExtraFieldCatalog::class)
 			);
 		});
+		$container->set(EcmFileRepository::class, static fn (Container $container): EcmFileRepository => (new EcmFileRepository(self::get($container, Orm::class)))->withoutEntityScope());
+		$container->set(ExternalLinkRepository::class, static fn (Container $container): ExternalLinkRepository => (new ExternalLinkRepository(self::get($container, Orm::class)))->withoutEntityScope());
+		$container->set(LegacyFileObjects::class, static fn (): LegacyFileObjects => new LegacyFileObjects($ctx->db));
+		$container->set(FileIndex::class, static fn (Container $container): FileIndex => new FileIndex(
+			self::get($container, EcmFileRepository::class),
+			self::get($container, Connection::class),
+			self::get($container, LegacyTriggers::class),
+			self::get($container, LegacyFileObjects::class),
+			self::get($container, Config::class),
+			$ctx
+		));
+		$container->set(UploadedFileMover::class, static fn (): UploadedFileMover => new PhpUploadedFileMover());
+		$container->set(UploadPolicy::class, static fn (): UploadPolicy => new UploadPolicy());
+		$container->set(FileStorage::class, static fn (Container $container): FileStorage => new FileStorage(
+			self::get($container, LegacyHooks::class),
+			self::get($container, UploadedFileMover::class),
+			self::get($container, UploadPolicy::class)
+		));
+		$container->set(Thumbnails::class, static fn (Container $container): Thumbnails => new Thumbnails(self::get($container, FileStorage::class)));
 		$container->set(Translator::class, static fn (): Translator => new LegacyTranslator($ctx->langs));
 		$user = $ctx->user;
 		if ($user !== null && $user->id > 0) {

@@ -8,6 +8,8 @@ final class DatabaseException extends \RuntimeException
 {
 	private string $engineCode = '';
 
+	private string $engineMessage = '';
+
 	/**
 	 * The engine message and the SQL with its placeholders, never the bound values: they may hold passwords or
 	 * personal data. Bound strings an engine echoes in its message (duplicate entry, syntax error near…) are masked.
@@ -16,7 +18,9 @@ final class DatabaseException extends \RuntimeException
 	 */
 	public static function fromStatement(BoundStatement $statement, string $message, int|string $code): self
 	{
-		$exception = new self(self::mask($message, $statement->values).' (SQL: '.$statement->sql.')', is_numeric($code) ? (int) $code : 0);
+		$masked = self::mask($message, $statement->values);
+		$exception = new self($masked.' (SQL: '.$statement->sql.')', is_numeric($code) ? (int) $code : 0);
+		$exception->engineMessage = $masked;
 		$exception->engineCode = (string) $code;
 
 		return $exception;
@@ -29,6 +33,14 @@ final class DatabaseException extends \RuntimeException
 	public function engineCode(): string
 	{
 		return $this->engineCode !== '' ? $this->engineCode : (string) $this->getCode();
+	}
+
+	/**
+	 * The message of the engine alone (what DoliDB::lasterror() gives), without the SQL: the one to show to a user.
+	 */
+	public function engineMessage(): string
+	{
+		return $this->engineMessage !== '' ? $this->engineMessage : $this->getMessage();
 	}
 
 	/**

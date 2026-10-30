@@ -1,0 +1,29 @@
+{* The documents tab of an entity: htdocs/user/document.php l.157-217 around core/tpl/document_actions_post_headers.tpl.php l.62-262. *}
+{layout 'core:@layout'}
+{block content}
+	{$chrome['tabsHtml']|noescape}
+	{$chrome['bannerHtml']|noescape}
+	<div class="fichecenter">
+		<div class="underbanner clearboth"></div>
+		<table class="border tableforfield centpercent">
+			{$chrome['headerRowsHtml']|noescape}
+		</table>
+	</div>
+	{$chrome['tabsEndHtml']|noescape}
+	{$fragments['confirm']|noescape}
+	{if $twoColumns}
+		<div class="fichecenter">
+			<div class="fichehalfleft">
+				{$fragments['documents']|noescape}
+			</div>
+			<div class="fichehalfright">
+				{$fragments['links']|noescape}
+			</div>
+		</div>
+	{else}
+		{$fragments['documents']|noescape}
+		<br>
+		{$fragments['links']|noescape}
+	{/if}
+	<br>
+{/block}
